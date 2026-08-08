@@ -22,15 +22,15 @@ var rng := RandomNumberGenerator.new()
 
 const LEVEL_CONFIG := [
 	{"individuals": 10, "world_size": 86.0, "species_range": Vector2i(4, 5), "establishment": 45.0, "convergence_ratio": 0.40},
-	{"individuals": 20, "world_size": 104.0, "species_range": Vector2i(5, 6), "establishment": 55.0, "convergence_ratio": 0.35},
-	{"individuals": 30, "world_size": 118.0, "species_range": Vector2i(6, 6), "establishment": 65.0, "convergence_ratio": 0.33},
-	{"individuals": 40, "world_size": 130.0, "species_range": Vector2i(6, 6), "establishment": 75.0, "convergence_ratio": 0.30},
-	{"individuals": 50, "world_size": 140.0, "species_range": Vector2i(6, 6), "establishment": 85.0, "convergence_ratio": 0.28},
-	{"individuals": 60, "world_size": 150.0, "species_range": Vector2i(6, 6), "establishment": 95.0, "convergence_ratio": 0.27},
-	{"individuals": 70, "world_size": 158.0, "species_range": Vector2i(6, 6), "establishment": 105.0, "convergence_ratio": 0.25},
-	{"individuals": 80, "world_size": 166.0, "species_range": Vector2i(6, 6), "establishment": 115.0, "convergence_ratio": 0.24},
-	{"individuals": 90, "world_size": 174.0, "species_range": Vector2i(6, 6), "establishment": 120.0, "convergence_ratio": 0.22},
-	{"individuals": 100, "world_size": 182.0, "species_range": Vector2i(6, 6), "establishment": 135.0, "convergence_ratio": 0.20},
+	{"individuals": 20, "world_size": 104.0, "species_range": Vector2i(5, 7), "establishment": 55.0, "convergence_ratio": 0.35},
+	{"individuals": 30, "world_size": 118.0, "species_range": Vector2i(6, 8), "establishment": 65.0, "convergence_ratio": 0.33},
+	{"individuals": 40, "world_size": 130.0, "species_range": Vector2i(7, 9), "establishment": 75.0, "convergence_ratio": 0.30},
+	{"individuals": 50, "world_size": 140.0, "species_range": Vector2i(8, 10), "establishment": 85.0, "convergence_ratio": 0.28},
+	{"individuals": 60, "world_size": 150.0, "species_range": Vector2i(9, 11), "establishment": 95.0, "convergence_ratio": 0.27},
+	{"individuals": 70, "world_size": 158.0, "species_range": Vector2i(10, 12), "establishment": 105.0, "convergence_ratio": 0.25},
+	{"individuals": 80, "world_size": 166.0, "species_range": Vector2i(11, 13), "establishment": 115.0, "convergence_ratio": 0.24},
+	{"individuals": 90, "world_size": 174.0, "species_range": Vector2i(12, 14), "establishment": 120.0, "convergence_ratio": 0.22},
+	{"individuals": 100, "world_size": 182.0, "species_range": Vector2i(14, 14), "establishment": 135.0, "convergence_ratio": 0.20},
 ]
 
 var world_seed: int = 0
@@ -175,14 +175,14 @@ func _start_new_world() -> void:
 	actors.clear()
 	corpses.clear()
 
-	var roster := Catalog.build_roster(rng, individual_count, species_range)
+	var roster := Catalog.build_roster(rng, individual_count, species_range, current_level)
 	roster_size = roster.size()
 	var player_index := rng.randi_range(0, roster.size() - 1)
 	if roster[player_index] == last_player_species and roster.size() > 1:
 		player_index = (player_index + rng.randi_range(1, roster.size() - 1)) % roster.size()
 	last_player_species = roster[player_index]
 	var spawn_positions: Array[Vector3] = []
-	var player_spawn := world.random_spawn([], 7.0)
+	var player_spawn := world.random_spawn_in_regions(Catalog.preferred_regions(roster[player_index]), [], 7.0)
 	spawn_positions.resize(roster.size())
 	spawn_positions[player_index] = player_spawn
 	var occupied: Array[Vector3] = [player_spawn]
@@ -192,7 +192,7 @@ func _start_new_world() -> void:
 		var min_distance := 8.0
 		if Catalog.considers_prey(roster[index], roster[player_index]):
 			min_distance = 22.0
-		var position_value := world.random_spawn(occupied, min_distance)
+		var position_value := world.random_spawn_in_regions(Catalog.preferred_regions(roster[index]), occupied, min_distance)
 		spawn_positions[index] = position_value
 		occupied.append(position_value)
 
@@ -214,6 +214,12 @@ func _start_new_world() -> void:
 		ui.show_hud(player, world_seed, threat_level, current_level)
 		ui.show_species_intro(player.species_id)
 		ui.add_event("第%d关 · 新的生态已经苏醒" % current_level, "#a8e3ac")
+		var unlocked_names: Array[String] = []
+		for species_id in Catalog.ORDER:
+			if Catalog.unlock_level(species_id) == current_level and current_level > 1:
+				unlocked_names.append(Catalog.display_name(species_id))
+		if not unlocked_names.is_empty():
+			ui.add_event("本关新物种：%s" % "、".join(unlocked_names), "#f0cf78")
 		ui.show_hint("观察冲突，利用生态活到最后")
 		if audio != null:
 			audio.set_context("game")

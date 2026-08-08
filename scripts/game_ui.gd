@@ -731,7 +731,7 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var music_toggle := CheckButton.new()
 	music_toggle.text = "背景音乐与森林环境声"
-	music_toggle.button_pressed = bool(game.is_music_enabled())
+	music_toggle.button_pressed = game.is_music_enabled()
 	music_toggle.add_theme_font_size_override("font_size", 21)
 	music_toggle.toggled.connect(func(enabled: bool):
 		game.set_music_enabled(enabled)
@@ -742,7 +742,7 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var sfx_toggle := CheckButton.new()
 	sfx_toggle.text = "战斗、技能与界面音效"
-	sfx_toggle.button_pressed = bool(game.is_sfx_enabled())
+	sfx_toggle.button_pressed = game.is_sfx_enabled()
 	sfx_toggle.add_theme_font_size_override("font_size", 21)
 	sfx_toggle.toggled.connect(func(enabled: bool): game.set_sfx_enabled(enabled))
 	audio_box.add_child(sfx_toggle)

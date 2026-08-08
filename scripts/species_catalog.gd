@@ -2,7 +2,33 @@ class_name SpeciesCatalog
 extends RefCounted
 
 
-const ORDER: Array[String] = ["rabbit", "fox", "deer", "wolf", "snake", "bear"]
+const ORDER: Array[String] = [
+	"rabbit", "fox", "deer", "wolf", "snake", "bear",
+	"boar", "lynx", "bison", "crocodile", "tiger", "moose", "rhino", "hippo"
+]
+
+const UNLOCK_LEVEL := {
+	"rabbit": 1, "fox": 1, "deer": 1, "wolf": 1, "snake": 1, "bear": 1,
+	"boar": 2, "lynx": 3, "bison": 4, "crocodile": 5,
+	"tiger": 6, "moose": 7, "rhino": 8, "hippo": 9,
+}
+
+const BIOME_PREFERENCES := {
+	"rabbit": ["forest", "grassland"],
+	"fox": ["forest", "highland"],
+	"deer": ["forest", "grassland"],
+	"wolf": ["forest", "highland"],
+	"snake": ["wetland", "forest"],
+	"bear": ["forest", "highland"],
+	"boar": ["forest", "wetland"],
+	"lynx": ["highland", "forest"],
+	"bison": ["grassland"],
+	"crocodile": ["wetland"],
+	"tiger": ["forest"],
+	"moose": ["highland", "wetland"],
+	"rhino": ["grassland", "highland"],
+	"hippo": ["wetland"],
+}
 
 const DATA: Dictionary = {
 	"rabbit": {
@@ -196,6 +222,262 @@ const DATA: Dictionary = {
 		"hunger_rate": 0.20,
 		"preferred_prey": ["rabbit", "fox", "deer", "wolf", "snake"],
 		"tip": "守住尸体热点，别浪费耐力长途追赶小型生物。"
+	},
+	"boar": {
+		"name": "獠牙野猪",
+		"subtitle": "不屈冲阵者",
+		"color": "#594338",
+		"accent": "#c9b18e",
+		"size": 3,
+		"diet": "omnivore",
+		"health": 175.0,
+		"xp_reward": 48,
+		"stamina": 112.0,
+		"speed": 5.9,
+		"sprint": 1.55,
+		"regen": 16.0,
+		"attack": 25.0,
+		"attack_range": 1.85,
+		"attack_interval": 0.94,
+		"attack_cost": 10.0,
+		"armor": 14.0,
+		"passive": "硬皮",
+		"passive_hint": "生命低于一半时受到的击退效果降低",
+		"skill": "獠牙突阵",
+		"skill_hint": "向目标短距冲锋，造成伤害和强力击退",
+		"skill_feedback": "冲锋撕开了包围，目标已被撞离原位",
+		"skill_color": "#e0a467",
+		"skill_cooldown": 7.5,
+		"skill_cost": 22.0,
+		"aggression": 0.48,
+		"courage": 0.68,
+		"hunger_rate": 0.18,
+		"preferred_prey": ["rabbit", "snake"],
+		"tip": "借冲锋撞散围攻者，再钻入树林切断追击路线。"
+	},
+	"lynx": {
+		"name": "荒原猞猁",
+		"subtitle": "潜伏突袭者",
+		"color": "#b68a58",
+		"accent": "#ead6ae",
+		"size": 2,
+		"diet": "carnivore",
+		"health": 108.0,
+		"xp_reward": 41,
+		"stamina": 122.0,
+		"speed": 7.05,
+		"sprint": 1.62,
+		"regen": 18.0,
+		"attack": 20.0,
+		"attack_range": 1.55,
+		"attack_interval": 0.72,
+		"attack_cost": 8.0,
+		"armor": 5.0,
+		"passive": "静猎",
+		"passive_hint": "静止片刻后进入潜伏，更难被远处猎食者发现",
+		"skill": "无声飞扑",
+		"skill_hint": "从潜伏中扑向猎物，造成伤害并短暂减速",
+		"skill_feedback": "飞扑命中，猎物的逃跑节奏已经被打断",
+		"skill_color": "#f0cb79",
+		"skill_cooldown": 6.5,
+		"skill_cost": 19.0,
+		"aggression": 0.60,
+		"courage": 0.40,
+		"hunger_rate": 0.16,
+		"preferred_prey": ["rabbit", "fox", "snake"],
+		"tip": "别参与正面混战。静止潜伏，等待受伤的小型动物脱离队伍。"
+	},
+	"bison": {
+		"name": "草原野牛",
+		"subtitle": "重型群居者",
+		"color": "#4e392d",
+		"accent": "#9c7651",
+		"size": 4,
+		"diet": "herbivore",
+		"health": 335.0,
+		"xp_reward": 82,
+		"stamina": 118.0,
+		"speed": 5.15,
+		"sprint": 1.46,
+		"regen": 14.0,
+		"attack": 37.0,
+		"attack_range": 2.10,
+		"attack_interval": 1.12,
+		"attack_cost": 14.0,
+		"armor": 31.0,
+		"passive": "结阵",
+		"passive_hint": "附近有同类时更加勇敢，不容易被小型动物惊吓",
+		"skill": "踏阵冲锋",
+		"skill_hint": "向前猛冲并撞飞目标，惊退沿途小型动物",
+		"skill_feedback": "沉重脚步震动草原，小型动物开始四散",
+		"skill_color": "#d5b06f",
+		"skill_cooldown": 9.0,
+		"skill_cost": 27.0,
+		"aggression": 0.18,
+		"courage": 0.82,
+		"hunger_rate": 0.19,
+		"preferred_prey": [],
+		"tip": "利用体型守住食物区，冲锋只用来脱围或惩罚靠得太近的猎手。"
+	},
+	"crocodile": {
+		"name": "沼泽鳄",
+		"subtitle": "水岸伏击者",
+		"color": "#465d38",
+		"accent": "#b4aa71",
+		"size": 4,
+		"diet": "carnivore",
+		"health": 285.0,
+		"xp_reward": 88,
+		"stamina": 94.0,
+		"speed": 4.75,
+		"sprint": 1.42,
+		"regen": 13.0,
+		"attack": 45.0,
+		"attack_range": 2.25,
+		"attack_interval": 1.18,
+		"attack_cost": 15.0,
+		"armor": 35.0,
+		"passive": "伏岸",
+		"passive_hint": "静止时降低被发现距离，适合守在浅水与鱼群附近",
+		"skill": "死亡翻滚",
+		"skill_hint": "咬住近距离目标造成重伤，并大幅降低其移动速度",
+		"skill_feedback": "翻滚撕裂目标，它暂时难以逃离水岸",
+		"skill_color": "#9dbb64",
+		"skill_cooldown": 10.0,
+		"skill_cost": 26.0,
+		"aggression": 0.66,
+		"courage": 0.80,
+		"hunger_rate": 0.15,
+		"preferred_prey": ["rabbit", "fox", "deer", "wolf", "snake", "boar", "lynx"],
+		"tip": "守住鱼群和尸体，不要在开阔地浪费耐力追逐高速猎物。"
+	},
+	"tiger": {
+		"name": "山林猛虎",
+		"subtitle": "顶级独行猎手",
+		"color": "#d8792e",
+		"accent": "#f0d7ad",
+		"size": 4,
+		"diet": "carnivore",
+		"health": 245.0,
+		"xp_reward": 96,
+		"stamina": 120.0,
+		"speed": 6.45,
+		"sprint": 1.58,
+		"regen": 15.0,
+		"attack": 43.0,
+		"attack_range": 2.05,
+		"attack_interval": 0.90,
+		"attack_cost": 13.0,
+		"armor": 19.0,
+		"passive": "独猎",
+		"passive_hint": "附近没有同类时，更愿意持续追击受伤猎物",
+		"skill": "裂风扑杀",
+		"skill_hint": "远距离扑向猎物并造成高额伤害，惊吓附近小型动物",
+		"skill_feedback": "扑杀落地，周围的弱小动物已被震慑",
+		"skill_color": "#ffad52",
+		"skill_cooldown": 8.5,
+		"skill_cost": 28.0,
+		"aggression": 0.78,
+		"courage": 0.76,
+		"hunger_rate": 0.20,
+		"preferred_prey": ["rabbit", "fox", "deer", "wolf", "snake", "boar", "lynx", "moose"],
+		"tip": "从战团侧面寻找残血目标，扑杀命中后不要恋战大型群居动物。"
+	},
+	"moose": {
+		"name": "巨角驼鹿",
+		"subtitle": "高地守卫者",
+		"color": "#70503a",
+		"accent": "#c49b69",
+		"size": 4,
+		"diet": "herbivore",
+		"health": 300.0,
+		"xp_reward": 84,
+		"stamina": 132.0,
+		"speed": 5.75,
+		"sprint": 1.52,
+		"regen": 16.0,
+		"attack": 39.0,
+		"attack_range": 2.35,
+		"attack_interval": 1.08,
+		"attack_cost": 13.0,
+		"armor": 24.0,
+		"passive": "巨角警戒",
+		"passive_hint": "面对小于自己的攻击者时更倾向反击而非逃跑",
+		"skill": "巨角横扫",
+		"skill_hint": "横扫身前与两侧敌人，造成伤害并击退",
+		"skill_feedback": "巨角清空了近身区域，包围出现缺口",
+		"skill_color": "#e5c486",
+		"skill_cooldown": 8.0,
+		"skill_cost": 24.0,
+		"aggression": 0.22,
+		"courage": 0.78,
+		"hunger_rate": 0.17,
+		"preferred_prey": [],
+		"tip": "背靠树木或岩石作战，用横扫一次处理多个贴身猎手。"
+	},
+	"rhino": {
+		"name": "披甲犀牛",
+		"subtitle": "不可阻挡的巨兽",
+		"color": "#7b817d",
+		"accent": "#d5c9ae",
+		"size": 5,
+		"diet": "herbivore",
+		"health": 470.0,
+		"xp_reward": 122,
+		"stamina": 108.0,
+		"speed": 4.95,
+		"sprint": 1.50,
+		"regen": 12.0,
+		"attack": 56.0,
+		"attack_range": 2.45,
+		"attack_interval": 1.30,
+		"attack_cost": 18.0,
+		"armor": 56.0,
+		"passive": "厚甲",
+		"passive_hint": "高护甲抵御正面围攻，但长距离追击消耗很大",
+		"skill": "破阵角冲",
+		"skill_hint": "蓄势冲撞远处目标，造成重伤与极强击退",
+		"skill_feedback": "角冲贯穿战团，沿途生物已被撞散",
+		"skill_color": "#d9d3bd",
+		"skill_cooldown": 11.0,
+		"skill_cost": 32.0,
+		"aggression": 0.28,
+		"courage": 0.94,
+		"hunger_rate": 0.22,
+		"preferred_prey": [],
+		"tip": "提前规划冲锋方向，撞开顶级猎食者后立刻去找食物恢复。"
+	},
+	"hippo": {
+		"name": "领地河马",
+		"subtitle": "湿地霸主",
+		"color": "#776d72",
+		"accent": "#c68d91",
+		"size": 5,
+		"diet": "herbivore",
+		"health": 525.0,
+		"xp_reward": 135,
+		"stamina": 102.0,
+		"speed": 4.65,
+		"sprint": 1.42,
+		"regen": 12.0,
+		"attack": 63.0,
+		"attack_range": 2.40,
+		"attack_interval": 1.34,
+		"attack_cost": 19.0,
+		"armor": 49.0,
+		"passive": "领地暴怒",
+		"passive_hint": "受到攻击后会坚决反击，极少被小型动物吓退",
+		"skill": "裂颚震慑",
+		"skill_hint": "猛咬近敌并震退周围所有较小动物",
+		"skill_feedback": "巨颚合拢，湿地周围的生物开始逃离",
+		"skill_color": "#e2a3a8",
+		"skill_cooldown": 10.5,
+		"skill_cost": 30.0,
+		"aggression": 0.70,
+		"courage": 0.98,
+		"hunger_rate": 0.24,
+		"preferred_prey": [],
+		"tip": "别追逐高速目标。控制湿地食物区，让敌人不得不靠近你的领地。"
 	}
 }
 
@@ -217,8 +499,27 @@ static func experience_reward(species_id: String, victim_level: int = 1) -> int:
 	return maxi(int(round(base_reward * (1.0 + maxi(victim_level - 1, 0) * 0.14))), 1)
 
 
-static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_type_range: Vector2i = Vector2i(6, 6)) -> Array[String]:
-	var pool := ORDER.duplicate()
+static func available_species(campaign_level: int) -> Array[String]:
+	var pool: Array[String] = []
+	for species_id in ORDER:
+		if int(UNLOCK_LEVEL.get(species_id, 1)) <= campaign_level:
+			pool.append(species_id)
+	return pool
+
+
+static func unlock_level(species_id: String) -> int:
+	return int(UNLOCK_LEVEL.get(species_id, 1))
+
+
+static func preferred_regions(species_id: String) -> Array[String]:
+	var regions: Array[String] = []
+	for region_id in BIOME_PREFERENCES.get(species_id, ["forest", "grassland", "wetland", "highland"]):
+		regions.append(str(region_id))
+	return regions
+
+
+static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_type_range: Vector2i = Vector2i(6, 6), campaign_level: int = 1) -> Array[String]:
+	var pool := available_species(campaign_level)
 	for index in range(pool.size() - 1, 0, -1):
 		var swap_index := rng.randi_range(0, index)
 		var value: String = pool[index]
@@ -231,6 +532,14 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 	var selected: Array[String] = pool.slice(0, type_count)
 	if not selected.has("rabbit"):
 		selected[selected.size() - 1] = "rabbit"
+	if campaign_level > 1:
+		for species_id in pool:
+			if unlock_level(species_id) != campaign_level or selected.has(species_id):
+				continue
+			var replace_index := selected.size() - 1
+			while replace_index > 0 and selected[replace_index] == "rabbit":
+				replace_index -= 1
+			selected[replace_index] = species_id
 
 	var roster: Array[String] = selected.duplicate()
 	while roster.size() < count:
@@ -239,10 +548,14 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 			var weight := 2
 			if species_id == "rabbit":
 				weight = 3
-			elif species_id == "bear":
+			elif species_id in ["bear", "bison", "crocodile", "tiger", "moose"]:
 				weight = 1
+			elif species_id in ["rhino", "hippo"]:
+				weight = 1 if campaign_level >= 10 else 0
 			for i in range(weight):
 				weighted.append(species_id)
+		if weighted.is_empty():
+			weighted = selected.duplicate()
 		roster.append(weighted[rng.randi_range(0, weighted.size() - 1)])
 
 	for index in range(roster.size() - 1, 0, -1):

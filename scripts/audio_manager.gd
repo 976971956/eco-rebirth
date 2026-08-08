@@ -67,6 +67,14 @@ func _build_effects() -> void:
 	effects["skill_wolf"] = _make_tone_effect(0.55, 270.0, 125.0, 0.50, 0.16)
 	effects["skill_snake"] = _make_noise_effect(0.48, 860.0, 310.0, 0.38)
 	effects["skill_bear"] = _make_noise_effect(0.58, 92.0, 42.0, 0.68)
+	effects["skill_boar"] = _make_noise_effect(0.40, 145.0, 62.0, 0.62)
+	effects["skill_lynx"] = _make_tone_effect(0.34, 620.0, 210.0, 0.42, 0.12)
+	effects["skill_bison"] = _make_noise_effect(0.62, 108.0, 44.0, 0.72)
+	effects["skill_crocodile"] = _make_noise_effect(0.52, 82.0, 176.0, 0.66)
+	effects["skill_tiger"] = _make_tone_effect(0.58, 310.0, 92.0, 0.62, 0.15)
+	effects["skill_moose"] = _make_tone_effect(0.50, 170.0, 470.0, 0.54, 0.08)
+	effects["skill_rhino"] = _make_noise_effect(0.68, 74.0, 38.0, 0.78)
+	effects["skill_hippo"] = _make_noise_effect(0.64, 88.0, 52.0, 0.76)
 	effects["eat"] = _make_bubble_effect()
 	effects["death"] = _make_tone_effect(0.62, 270.0, 58.0, 0.55, 0.18)
 	effects["victory"] = _make_arpeggio_effect()
@@ -285,5 +293,5 @@ func _load_settings() -> void:
 	var config := ConfigFile.new()
 	if config.load(CONFIG_PATH) != OK:
 		return
-	music_enabled = bool(config.get_value("audio", "music_enabled", true))
-	sfx_enabled = bool(config.get_value("audio", "sfx_enabled", true))
+	music_enabled = config.get_value("audio", "music_enabled", true)
+	sfx_enabled = config.get_value("audio", "sfx_enabled", true)

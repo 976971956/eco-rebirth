@@ -373,6 +373,23 @@ func random_spawn(avoid_positions: Array[Vector3] = [], minimum_actor_distance: 
 	return Vector3(rng.randf_range(-12.0, 12.0), 0.45, rng.randf_range(-12.0, 12.0))
 
 
+func random_spawn_in_regions(region_ids: Array[String], avoid_positions: Array[Vector3] = [], minimum_actor_distance: float = 6.0) -> Vector3:
+	if region_ids.is_empty():
+		return random_spawn(avoid_positions, minimum_actor_distance)
+	for attempt in range(220):
+		var pos := _random_valid_position(7.0)
+		if not region_ids.has(region_id_at(pos)):
+			continue
+		var valid := true
+		for other in avoid_positions:
+			if pos.distance_to(other) < minimum_actor_distance:
+				valid = false
+				break
+		if valid:
+			return pos
+	return random_spawn(avoid_positions, minimum_actor_distance)
+
+
 func clamp_position(pos: Vector3) -> Vector3:
 	# The ecological collapse changes resource regeneration, but must not create
 	# an invisible movement wall over otherwise visible terrain.
