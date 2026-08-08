@@ -5,6 +5,7 @@ const JoystickScript = preload("res://scripts/virtual_joystick.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 
 signal start_requested
+signal free_mode_requested(level: int, species_id: String)
 signal retry_requested
 signal menu_requested
 signal pause_requested
@@ -174,6 +175,13 @@ func _build_menu() -> void:
 	start_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	start_button.pressed.connect(func(): start_requested.emit())
 	content.add_child(start_button)
+
+	var free_button := Button.new()
+	free_button.text = "自由模式"
+	_style_button(free_button, false)
+	free_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	free_button.pressed.connect(show_free_mode)
+	content.add_child(free_button)
 
 	var settings_button := Button.new()
 	settings_button.text = "游戏设置"
@@ -549,7 +557,7 @@ func show_menu() -> void:
 	sprint_held = false
 
 
-func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1) -> void:
+func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1, free_mode: bool = false) -> void:
 	menu_root.hide()
 	hud_root.show()
 	modal_root.hide()
@@ -558,7 +566,7 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	var touch_available := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
 	touch_root.visible = touch_available
 	seed_label.text = "世界种子 %s" % world_seed
-	threat_label.text = "第%d关 · 世界威胁 %d" % [level, threat_level]
+	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
 	set_player(player_actor)
 
 
@@ -770,6 +778,148 @@ func show_pause() -> void:
 	show_result("生态暂停", "世界的呼吸暂时停止。\n继续观察、追猎或寻找食物。", "继续游戏", true)
 
 
+func show_free_mode() -> void:
+	for child in modal_root.get_children():
+		child.queue_free()
+	modal_root.show()
+	var shade := ColorRect.new()
+	shade.color = Color(0.008, 0.035, 0.032, 0.88)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal_root.add_child(shade)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-470, -325)
+	panel.size = Vector2(940, 650)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.99), 24, Color(0.64, 0.94, 0.62, 0.72), 2))
+	modal_root.add_child(panel)
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 9)
+	panel.add_child(box)
+
+	var title := Label.new()
+	title.text = "自由模式"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", Color("#f5efc8"))
+	box.add_child(title)
+	var subtitle := Label.new()
+	subtitle.text = "任选关卡与物种，专注练习地形、技能和生态策略。"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 18)
+	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
+	box.add_child(subtitle)
+
+	var selectors := HBoxContainer.new()
+	selectors.alignment = BoxContainer.ALIGNMENT_CENTER
+	selectors.add_theme_constant_override("separation", 22)
+	box.add_child(selectors)
+	var level_label := Label.new()
+	level_label.text = "挑选关卡"
+	level_label.add_theme_font_size_override("font_size", 21)
+	level_label.add_theme_color_override("font_color", Color("#e8edcf"))
+	selectors.add_child(level_label)
+	var level_select := OptionButton.new()
+	level_select.custom_minimum_size = Vector2(230, 54)
+	level_select.add_theme_font_size_override("font_size", 20)
+	for level_number in range(1, 11):
+		level_select.add_item("第 %d 关 · %d 个体" % [level_number, level_number * 10])
+	level_select.selected = clampi(game.get_selected_free_level() - 1, 0, 9)
+	selectors.add_child(level_select)
+	var species_label_text := Label.new()
+	species_label_text.text = "挑选物种"
+	species_label_text.add_theme_font_size_override("font_size", 21)
+	species_label_text.add_theme_color_override("font_color", Color("#e8edcf"))
+	selectors.add_child(species_label_text)
+	var species_select := OptionButton.new()
+	species_select.custom_minimum_size = Vector2(280, 54)
+	species_select.add_theme_font_size_override("font_size", 20)
+	var selected_species_id: String = str(game.get_selected_free_species()) if game.has_method("get_selected_free_species") else "rabbit"
+	var selected_species_index := 0
+	for species_index in range(Catalog.ORDER.size()):
+		var species_id: String = Catalog.ORDER[species_index]
+		var species_data := Catalog.get_data(species_id)
+		species_select.add_item(str(species_data["name"]))
+		species_select.set_item_metadata(species_index, species_id)
+		if species_id == selected_species_id:
+			selected_species_index = species_index
+	species_select.selected = selected_species_index
+	selectors.add_child(species_select)
+
+	var level_hint := Label.new()
+	level_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_hint.add_theme_font_size_override("font_size", 16)
+	level_hint.add_theme_color_override("font_color", Color("#a9c9aa"))
+	box.add_child(level_hint)
+
+	var preview_panel := PanelContainer.new()
+	preview_panel.custom_minimum_size = Vector2(0, 275)
+	preview_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preview_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.055, 0.047, 0.88), 18, Color(0.45, 0.76, 0.49, 0.42), 1))
+	box.add_child(preview_panel)
+	var preview := Label.new()
+	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	preview.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview.add_theme_font_size_override("font_size", 17)
+	preview.add_theme_color_override("font_color", Color("#e2ebd6"))
+	preview_panel.add_child(preview)
+
+	var refresh_level := func(index: int):
+		var level_number := index + 1
+		level_hint.text = _free_level_description(level_number)
+		if game.has_method("set_selected_free_level"):
+			game.set_selected_free_level(level_number)
+	var refresh_species := func(index: int):
+		var species_id := str(species_select.get_item_metadata(index))
+		preview.text = _free_species_description(species_id)
+		if game.has_method("set_selected_free_species"):
+			game.set_selected_free_species(species_id)
+	level_select.item_selected.connect(refresh_level)
+	species_select.item_selected.connect(refresh_species)
+	refresh_level.call(level_select.selected)
+	refresh_species.call(species_select.selected)
+
+	var mode_hint := Label.new()
+	mode_hint.text = "自由模式不推进战役，不计入死亡次数，不增加世界威胁。"
+	mode_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_hint.add_theme_font_size_override("font_size", 15)
+	mode_hint.add_theme_color_override("font_color", Color("#d6cda8"))
+	box.add_child(mode_hint)
+
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 14)
+	box.add_child(actions)
+	var start_button := Button.new()
+	start_button.text = "开始自由挑战"
+	_style_button(start_button, true)
+	start_button.pressed.connect(func():
+		var species_id := str(species_select.get_item_metadata(species_select.selected))
+		free_mode_requested.emit(level_select.selected + 1, species_id)
+	)
+	actions.add_child(start_button)
+	var back_button := Button.new()
+	back_button.text = "返回首页"
+	_style_button(back_button, false)
+	back_button.pressed.connect(func(): modal_root.hide())
+	actions.add_child(back_button)
+
+
+func _free_level_description(level: int) -> String:
+	var sizes := ["小型森林", "小型拓展", "中型河流", "中型山地", "大型猎场", "大型夜境", "巨型天气", "多生态区", "顶级猎食场", "终极生态"]
+	return "第 %d 关 · %s · %d 个生态个体" % [level, sizes[clampi(level - 1, 0, sizes.size() - 1)], level * 10]
+
+
+func _free_species_description(species_id: String) -> String:
+	var data := Catalog.get_data(species_id)
+	return "%s · %s\n生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动：%s — %s\n\n获胜思路：%s" % [
+		data["name"], data["subtitle"], int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
+		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id),
+	]
+
+
 func show_settings(from_pause: bool = false) -> void:
 	settings_from_pause = from_pause
 	for child in modal_root.get_children():
@@ -782,8 +932,8 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-350, -340)
-	panel.size = Vector2(700, 680)
+	panel.position = Vector2(-330, -300)
+	panel.size = Vector2(660, 600)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
 	modal_root.add_child(panel)
 	var box := VBoxContainer.new()
@@ -799,7 +949,7 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "声音、画质、教学与关卡选项会自动保存。"
+	subtitle.text = "声音、画质与教学选项会自动保存。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 17)
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
@@ -866,41 +1016,6 @@ func show_settings(from_pause: bool = false) -> void:
 	quality_select.selected = maxi(quality_values.find(game.get_quality_preset()), 1)
 	quality_select.item_selected.connect(func(index: int): game.set_quality_preset(quality_values[index]))
 	quality_row.add_child(quality_select)
-
-	var level_panel := PanelContainer.new()
-	level_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.01, 0.06, 0.052, 0.82), 16, Color(0.43, 0.73, 0.48, 0.35), 1))
-	level_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(level_panel)
-	var level_box := VBoxContainer.new()
-	level_box.add_theme_constant_override("separation", 3)
-	level_panel.add_child(level_box)
-	var level_row := HBoxContainer.new()
-	level_row.add_theme_constant_override("separation", 18)
-	level_box.add_child(level_row)
-	var level_toggle := CheckButton.new()
-	level_toggle.text = "自由选择全部关卡"
-	level_toggle.button_pressed = game.is_all_levels_unlocked()
-	level_toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	level_toggle.add_theme_font_size_override("font_size", 21)
-	level_row.add_child(level_toggle)
-	var level_select := OptionButton.new()
-	level_select.custom_minimum_size = Vector2(210, 52)
-	level_select.add_theme_font_size_override("font_size", 19)
-	for level_number in range(1, 11):
-		level_select.add_item("第 %d 关" % level_number)
-	level_select.selected = game.get_selected_free_level() - 1
-	level_select.disabled = not level_toggle.button_pressed
-	level_select.item_selected.connect(func(index: int): game.set_selected_free_level(index + 1))
-	level_row.add_child(level_select)
-	var level_hint := Label.new()
-	level_hint.text = "自由选关用于练习，不改变正常战役进度、死亡次数和世界威胁。"
-	level_hint.add_theme_font_size_override("font_size", 14)
-	level_hint.add_theme_color_override("font_color", Color("#c9d3aa"))
-	level_box.add_child(level_hint)
-	level_toggle.toggled.connect(func(enabled: bool):
-		level_select.disabled = not enabled
-		game.set_all_levels_unlocked(enabled)
-	)
 
 	var utility_row := HBoxContainer.new()
 	utility_row.alignment = BoxContainer.ALIGNMENT_CENTER

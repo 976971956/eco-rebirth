@@ -15,10 +15,10 @@ class PreviewGame:
 	func set_quality_preset(value: String) -> void: quality = value
 	func has_campaign_progress() -> bool: return true
 	func menu_start_text() -> String: return "继续轮回"
-	func is_all_levels_unlocked() -> bool: return true
 	func get_selected_free_level() -> int: return 7
-	func set_all_levels_unlocked(_value: bool) -> void: pass
+	func get_selected_free_species() -> String: return "cheetah"
 	func set_selected_free_level(_value: int) -> void: pass
+	func set_selected_free_species(_value: String) -> void: pass
 	func reset_tutorial_progress() -> void: pass
 
 
@@ -45,6 +45,14 @@ func _render() -> void:
 	var ui: GameUI = UIScript.new()
 	root.add_child(ui)
 	ui.setup(game)
+	for _frame in range(5):
+		await process_frame
+	var home_result := root.get_texture().get_image().save_png("res://docs/images/v14-home.png")
+	ui.show_free_mode()
+	for _frame in range(5):
+		await process_frame
+	var free_mode_result := root.get_texture().get_image().save_png("res://docs/images/v14-free-mode.png")
+	ui.modal_root.hide()
 	ui.menu_root.hide()
 	ui.hud_root.show()
 	ui.touch_root.show()
@@ -74,8 +82,8 @@ func _render() -> void:
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
-	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v13-settings-levels.png")
-	if tutorial_result == OK and guide_result == OK and settings_result == OK:
+	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
+	if home_result == OK and free_mode_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

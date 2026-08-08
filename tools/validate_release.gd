@@ -11,9 +11,10 @@ func _init() -> void:
 	_validate_save_migration()
 	_validate_quality_presets()
 	_validate_tutorial_contract()
+	_validate_free_mode_contract()
 	_validate_web_audio_contract()
 	if failures.is_empty():
-		print("[release] V1.1 发布校验通过：成长、物种攻略、自由选关、旧存档迁移与 Web 音频正常")
+		print("[release] V1.2 发布校验通过：首页自由模式、指定物种、旧存档迁移与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -29,6 +30,8 @@ func _validate_save_migration() -> void:
 	legacy.set_value("campaign", "last_species", "missing_species")
 	legacy.set_value("campaign", "current_level", 99)
 	legacy.set_value("audio", "music_enabled", false)
+	legacy.set_value("gameplay", "all_levels_unlocked", true)
+	legacy.set_value("gameplay", "selected_free_level", 7)
 	if legacy.save(test_path) != OK:
 		failures.append("无法创建临时旧存档")
 		return
@@ -44,18 +47,20 @@ func _validate_save_migration() -> void:
 	_expect(migrated.load(test_path) == OK, "迁移后存档无法重新读取")
 	_expect(int(migrated.get_value("meta", "save_version", 0)) == MainScript.SAVE_VERSION, "迁移后未写入存档版本")
 	_expect(not bool(migrated.get_value("audio", "music_enabled", true)), "迁移覆盖了原有声音设置")
+	_expect(not migrated.has_section_key("gameplay", "all_levels_unlocked"), "已移除的自由选关开关仍留在存档中")
 	main.campaign_level = 6
 	main.current_level = 6
 	main.last_completed_level = 5
 	main.quality_preset = "high"
 	main.tutorial_completed = true
-	main.all_levels_unlocked = true
 	main.selected_free_level = 9
+	main.selected_free_species = "eagle"
 	main._save_progress(test_path)
 	var reload := MainScript.new()
 	reload._load_progress(test_path)
 	_expect(reload.campaign_level == 6 and reload.last_completed_level == 5, "新存档关卡进度无法回读")
-	_expect(reload.all_levels_unlocked and reload.selected_free_level == 9 and reload.current_level == 9, "自由选关设置无法回读")
+	_expect(reload.selected_free_level == 9 and reload.selected_free_species == "eagle", "自由模式选择无法回读")
+	_expect(reload.current_level == 6, "自由模式选择不应覆盖战役关卡")
 	_expect(reload.quality_preset == "high", "画质档位无法回读")
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
 	DirAccess.remove_absolute(test_path)
@@ -85,6 +90,22 @@ func _validate_tutorial_contract() -> void:
 	var expected := ["move", "sprint", "attack", "skill", "eat"]
 	for index in range(expected.size()):
 		_expect(str(MainScript.TUTORIAL_STEPS[index]["id"]) == expected[index], "新手教学步骤顺序错误")
+
+
+func _validate_free_mode_contract() -> void:
+	var main := MainScript.new()
+	main.rng.seed = 1207
+	main.run_uses_free_mode = true
+	main.selected_free_species = "eagle"
+	main.last_player_species = "wolf"
+	var roster: Array[String] = ["rabbit", "fox", "deer"]
+	var player_index := main._select_player_roster_index(roster)
+	_expect(player_index >= 0 and roster[player_index] == "eagle", "自由模式没有生成玩家指定的物种")
+	_expect(main.last_player_species == "wolf", "自由模式污染了战役随机物种记录")
+	main.campaign_level = 4
+	main.selected_free_level = 10
+	_expect(main.menu_start_text() == "继续轮回", "首页战役按钮被自由模式选择覆盖")
+	main.free()
 
 
 func _validate_web_audio_contract() -> void:

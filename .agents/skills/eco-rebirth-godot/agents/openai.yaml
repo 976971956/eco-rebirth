@@ -1,0 +1,4 @@
+interface:
+  display_name: "生态轮回 Godot 开发"
+  short_description: "维护生态轮回的玩法、Godot代码、自动验证与跨端发布"
+  default_prompt: "使用 $eco-rebirth-godot 完成一次经过验证并自动提交的生态轮回项目修改。"
