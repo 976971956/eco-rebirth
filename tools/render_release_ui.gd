@@ -6,6 +6,8 @@ const UIScript = preload("res://scripts/game_ui.gd")
 class PreviewGame:
 	extends Node
 	var quality := "medium"
+	var state := "playing"
+	var level_elapsed := 0.0
 	func play_ui_sound() -> void: pass
 	func is_music_enabled() -> bool: return true
 	func is_sfx_enabled() -> bool: return true
@@ -69,6 +71,30 @@ func _render() -> void:
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
 	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
+	ui.update_leaderboard([
+		{"rank": 1, "name": "金雕", "level": 4, "experience": 21, "kills": 5, "is_player": false},
+		{"rank": 2, "name": "山林猛虎", "level": 3, "experience": 62, "kills": 4, "is_player": false},
+		{"rank": 3, "name": "狼", "level": 2, "experience": 34, "kills": 2, "is_player": true},
+		{"rank": 4, "name": "棕熊", "level": 2, "experience": 18, "kills": 1, "is_player": false},
+		{"rank": 5, "name": "赤狐", "level": 1, "experience": 31, "kills": 2, "is_player": false},
+		{"rank": 6, "name": "野猪", "level": 1, "experience": 12, "kills": 1, "is_player": false},
+	])
+	game.level_elapsed = 22.0
+	ui.add_battle_report("山林猛虎击倒了马鹿 · 累计3击杀 · 剩余18", "击杀", "#ecc89d")
+	game.level_elapsed = 49.0
+	ui.add_battle_report("你·狼升至 Lv.2 · 群猎进化", "成长", "#f1d46b")
+	game.level_elapsed = 73.0
+	ui.add_battle_report("赤狐对野猪形成生态助攻，获得18经验", "助攻", "#f0cf78")
+	game.level_elapsed = 96.0
+	ui.add_battle_report("金雕击倒了雪兔 · 累计5击杀 · 剩余16", "击杀", "#ecc89d")
+	for _frame in range(5):
+		await process_frame
+	var leaderboard_result := root.get_texture().get_image().save_png("res://docs/images/v15-leaderboard-ticker.png")
+	ui.show_battle_report()
+	for _frame in range(5):
+		await process_frame
+	var battle_report_result := root.get_texture().get_image().save_png("res://docs/images/v15-battle-report.png")
+	ui.hide_battle_report()
 	ui.show_tutorial_step(2, 5, "学会控制耐力", "移动时按住右侧“冲刺”。冲刺、攻击和技能都会消耗耐力。")
 	for _frame in range(5):
 		await process_frame
@@ -83,7 +109,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

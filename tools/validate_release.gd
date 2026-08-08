@@ -12,9 +12,10 @@ func _init() -> void:
 	_validate_quality_presets()
 	_validate_tutorial_contract()
 	_validate_free_mode_contract()
+	_validate_leaderboard_contract()
 	_validate_web_audio_contract()
 	if failures.is_empty():
-		print("[release] V1.2 发布校验通过：首页自由模式、指定物种、旧存档迁移与 Web 音频正常")
+		print("[release] V1.3 发布校验通过：等级排行、战斗播报、自由模式、旧存档迁移与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -106,6 +107,25 @@ func _validate_free_mode_contract() -> void:
 	main.selected_free_level = 10
 	_expect(main.menu_start_text() == "继续轮回", "首页战役按钮被自由模式选择覆盖")
 	main.free()
+
+
+func _validate_leaderboard_contract() -> void:
+	var entries: Array[Dictionary] = [
+		{"actor_id": 1, "level": 2, "experience": 99, "kills": 9, "health_ratio": 1.0, "is_player": false},
+		{"actor_id": 2, "level": 3, "experience": 50, "kills": 0, "health_ratio": 0.2, "is_player": false},
+		{"actor_id": 3, "level": 3, "experience": 40, "kills": 3, "health_ratio": 0.2, "is_player": false},
+		{"actor_id": 4, "level": 3, "experience": 40, "kills": 2, "health_ratio": 0.9, "is_player": false},
+		{"actor_id": 5, "level": 3, "experience": 40, "kills": 2, "health_ratio": 0.8, "is_player": true},
+		{"actor_id": 8, "level": 3, "experience": 40, "kills": 2, "health_ratio": 0.8, "is_player": false},
+		{"actor_id": 6, "level": 4, "experience": 0, "kills": 0, "health_ratio": 0.1, "is_player": false},
+	]
+	var ranked := MainScript.rank_level_entries(entries)
+	var expected_ids := [6, 2, 3, 4, 5, 8, 1]
+	_expect(ranked.size() == expected_ids.size(), "等级排行丢失了存活个体")
+	for index in range(mini(ranked.size(), expected_ids.size())):
+		_expect(int(ranked[index].get("actor_id", -1)) == expected_ids[index], "等级榜未按等级、经验、击杀、生命和稳定 ID 排序")
+		_expect(int(ranked[index].get("rank", 0)) == index + 1, "等级榜名次不连续")
+	_expect(bool(ranked[4].get("is_player", false)), "玩家当前名次未保留")
 
 
 func _validate_web_audio_contract() -> void:

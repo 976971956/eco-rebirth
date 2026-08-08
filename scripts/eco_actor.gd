@@ -2519,6 +2519,8 @@ func _level_up() -> void:
 	health_changed.emit(health, max_health)
 	stamina_changed.emit(stamina, max_stamina)
 	_update_health_bar()
+	if game.has_method("on_actor_level_up"):
+		game.on_actor_level_up(self, level)
 	if is_player and game.has_method("on_player_level_up"):
 		game.on_player_level_up(level, {
 			"profile": str(growth["name"]),

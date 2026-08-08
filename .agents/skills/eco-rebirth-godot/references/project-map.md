@@ -9,7 +9,7 @@
 | `scripts/species_catalog.gd` | All 30 species data, unlock pools, XP rewards, growth profiles, skills, traits, diets, preferred regions, victory guides |
 | `scripts/eco_actor.gd` | Shared player/AI movement, combat, hunger, stamina, experience, levels, animation, AI execution |
 | `scripts/eco_world.gd` | Procedural four-region world, terrain access, food, day/night, weather, collapse, quality settings |
-| `scripts/game_ui.gd` | Home, free-mode picker, HUD, enemy health, touch controls, tutorial, settings, pause/result modals |
+| `scripts/game_ui.gd` | Home, free-mode picker, HUD, live level leaderboard, rotating battle ticker/report, enemy health, touch controls, tutorial, settings, pause/result modals |
 | `scripts/audio_manager.gd` | Procedural adaptive music, ambient sound, SFX pool, audio persistence |
 | `scripts/low_poly_factory.gd` | Procedural animal and environment modeling |
 | `scripts/skill_vfx.gd` and `scripts/skill_projectile.gd` | Skill presentation and projectiles |
@@ -23,6 +23,8 @@
 - Keep free mode at zero world threat. Free-mode victory/death must not change `campaign_level`, `last_completed_level`, `total_deaths`, `threat_level`, or `last_player_species`.
 - Cap in-run level at 8. Every level improves health, current survivability, attack, speed, stamina, armor, and stamina regeneration according to the species growth profile.
 - Show exact player and enemy health values, player combat statistics, experience, hunger, stamina, region, weather, level, and mode.
+- Rank all living actors by level, current XP, kills, health ratio, then stable actor ID. Keep the player visible in the compact board.
+- Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
 

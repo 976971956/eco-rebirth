@@ -10,6 +10,8 @@ signal retry_requested
 signal menu_requested
 signal pause_requested
 signal tutorial_skipped
+signal battle_report_opened
+signal battle_report_closed
 
 var game: Node
 var menu_root: Control
@@ -34,6 +36,9 @@ var satiety_value_label: Label
 var xp_bar: ProgressBar
 var xp_value_label: Label
 var remaining_label: Label
+var leaderboard_panel: PanelContainer
+var leaderboard_content: RichTextLabel
+var leaderboard_entries: Array[Dictionary] = []
 var enemy_panel: PanelContainer
 var enemy_name_label: Label
 var enemy_hp_bar: ProgressBar
@@ -52,6 +57,10 @@ var intro_panel: PanelContainer
 var intro_title: Label
 var intro_body: Label
 var intro_controls: Label
+var battle_ticker_button: Button
+var battle_reports: Array[Dictionary] = []
+var battle_ticker_index: int = -1
+var battle_ticker_elapsed: float = 0.0
 var event_feed: RichTextLabel
 var event_lines: Array[String] = []
 var attack_button: Button
@@ -72,6 +81,22 @@ func setup(game_ref: Node) -> void:
 	_build_hud()
 	_build_modal_root()
 	show_menu()
+
+
+func _process(delta: float) -> void:
+	if battle_ticker_button == null or battle_reports.size() <= 1 or not hud_root.visible:
+		return
+	if game == null or str(game.get("state")) != "playing" or enemy_panel.visible:
+		return
+	battle_ticker_elapsed += delta
+	if battle_ticker_elapsed < 4.0:
+		return
+	battle_ticker_elapsed = 0.0
+	var first_recent_index := maxi(battle_reports.size() - 8, 0)
+	battle_ticker_index += 1
+	if battle_ticker_index < first_recent_index or battle_ticker_index >= battle_reports.size():
+		battle_ticker_index = first_recent_index
+	_refresh_battle_ticker()
 
 
 func _panel_style(color: Color, radius: int = 16, border_color: Color = Color.TRANSPARENT, border_width: int = 0) -> StyleBoxFlat:
@@ -250,6 +275,23 @@ func _build_hud() -> void:
 	remaining_label.size = Vector2(320, 46)
 	hud_root.add_child(remaining_label)
 
+	battle_ticker_button = Button.new()
+	battle_ticker_button.name = "BattleTicker"
+	battle_ticker_button.text = "战报 [展开] · 等待生态事件"
+	battle_ticker_button.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	battle_ticker_button.position = Vector2(-220, 70)
+	battle_ticker_button.size = Vector2(440, 50)
+	battle_ticker_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	battle_ticker_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	battle_ticker_button.add_theme_font_size_override("font_size", 16)
+	battle_ticker_button.add_theme_color_override("font_color", Color("#f3e5b5"))
+	battle_ticker_button.add_theme_stylebox_override("normal", _panel_style(Color(0.055, 0.13, 0.095, 0.92), 13, Color(0.74, 0.78, 0.40, 0.52), 1))
+	battle_ticker_button.add_theme_stylebox_override("hover", _panel_style(Color(0.085, 0.22, 0.15, 0.97), 13, Color(0.92, 0.88, 0.50, 0.80), 2))
+	battle_ticker_button.add_theme_stylebox_override("pressed", _panel_style(Color(0.04, 0.10, 0.075, 0.98), 13, Color("#f2df7a"), 2))
+	battle_ticker_button.pressed.connect(_play_ui_sound)
+	battle_ticker_button.pressed.connect(show_battle_report)
+	hud_root.add_child(battle_ticker_button)
+
 	enemy_panel = PanelContainer.new()
 	enemy_panel.name = "EnemyHealth"
 	enemy_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -280,8 +322,8 @@ func _build_hud() -> void:
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	info_panel.position = Vector2(-366, 20)
-	info_panel.size = Vector2(346, 142)
+	info_panel.position = Vector2(-420, 20)
+	info_panel.size = Vector2(350, 142)
 	info_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.82), 14))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
@@ -301,6 +343,33 @@ func _build_hud() -> void:
 	seed_label.add_theme_font_size_override("font_size", 15)
 	seed_label.add_theme_color_override("font_color", Color(0.75, 0.86, 0.78, 0.78))
 	info_box.add_child(seed_label)
+
+	leaderboard_panel = PanelContainer.new()
+	leaderboard_panel.name = "LevelLeaderboard"
+	leaderboard_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	leaderboard_panel.position = Vector2(-420, 170)
+	leaderboard_panel.size = Vector2(350, 188)
+	leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 14, Color(0.48, 0.80, 0.53, 0.36), 1))
+	hud_root.add_child(leaderboard_panel)
+	var leaderboard_box := VBoxContainer.new()
+	leaderboard_box.add_theme_constant_override("separation", 4)
+	leaderboard_panel.add_child(leaderboard_box)
+	var leaderboard_title := Label.new()
+	leaderboard_title.text = "等级排行榜"
+	leaderboard_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	leaderboard_title.add_theme_font_size_override("font_size", 21)
+	leaderboard_title.add_theme_color_override("font_color", Color("#f0e7b5"))
+	leaderboard_box.add_child(leaderboard_title)
+	leaderboard_content = RichTextLabel.new()
+	leaderboard_content.bbcode_enabled = true
+	leaderboard_content.fit_content = false
+	leaderboard_content.scroll_active = false
+	leaderboard_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	leaderboard_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	leaderboard_content.add_theme_font_size_override("normal_font_size", 16)
+	leaderboard_content.add_theme_color_override("default_color", Color("#dcebd6"))
+	leaderboard_box.add_child(leaderboard_content)
 
 	var skill_panel := PanelContainer.new()
 	skill_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -352,7 +421,7 @@ func _build_hud() -> void:
 	var pause_button := Button.new()
 	pause_button.text = "Ⅱ"
 	pause_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause_button.position = Vector2(-58, 170)
+	pause_button.position = Vector2(-58, 20)
 	pause_button.size = Vector2(42, 42)
 	pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	pause_button.pressed.connect(_play_ui_sound)
@@ -567,6 +636,7 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	touch_root.visible = touch_available
 	seed_label.text = "世界种子 %s" % world_seed
 	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
+	_reset_live_information()
 	set_player(player_actor)
 
 
@@ -583,6 +653,21 @@ func show_tutorial_step(step: int, total: int, title_text: String, body_text: St
 func hide_tutorial() -> void:
 	if tutorial_panel != null:
 		tutorial_panel.hide()
+
+
+func _reset_live_information() -> void:
+	leaderboard_entries.clear()
+	battle_reports.clear()
+	battle_ticker_index = -1
+	battle_ticker_elapsed = 0.0
+	if leaderboard_content != null:
+		leaderboard_content.text = "[center][color=#9fb9a2]正在统计生态个体…[/color][/center]"
+	if battle_ticker_button != null:
+		battle_ticker_button.text = "战报 [展开] · 等待生态事件"
+		battle_ticker_button.show()
+	event_lines.clear()
+	if event_feed != null:
+		event_feed.clear()
 
 
 func set_player(player_actor: EcoActor) -> void:
@@ -655,11 +740,170 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	_update_enemy_health_display()
 
 
+func update_leaderboard(entries: Array[Dictionary]) -> void:
+	leaderboard_entries = entries.duplicate(true)
+	if leaderboard_content == null:
+		return
+	leaderboard_content.clear()
+	var visible_entries: Array[Dictionary] = []
+	var top_count := mini(5, leaderboard_entries.size())
+	for index in range(top_count):
+		visible_entries.append(leaderboard_entries[index])
+	var player_entry: Dictionary = {}
+	for entry in leaderboard_entries:
+		if bool(entry.get("is_player", false)):
+			player_entry = entry
+			break
+	if not player_entry.is_empty() and int(player_entry.get("rank", 0)) > top_count:
+		if visible_entries.size() >= 5:
+			visible_entries.resize(4)
+		visible_entries.append(player_entry)
+	for entry in visible_entries:
+		var is_player_entry := bool(entry.get("is_player", false))
+		var row_color := "#f4df7b" if int(entry.get("rank", 0)) == 1 else ("#8fe0b0" if is_player_entry else "#dcebd6")
+		var player_mark := "你·" if is_player_entry else ""
+		leaderboard_content.append_text("[color=%s]%d　Lv.%d　%s%s　%d击杀[/color]\n" % [
+			row_color, int(entry.get("rank", 0)), int(entry.get("level", 1)), player_mark,
+			str(entry.get("name", "未知")), int(entry.get("kills", 0)),
+		])
+
+
+func add_battle_report(text_value: String, category: String = "战斗", color_hex: String = "#ecc89d") -> void:
+	var elapsed_seconds := 0
+	if game != null and game.get("level_elapsed") != null:
+		elapsed_seconds = maxi(int(float(game.get("level_elapsed"))), 0)
+	battle_reports.append({
+		"time": elapsed_seconds,
+		"category": category,
+		"text": text_value,
+		"color": color_hex,
+	})
+	if battle_reports.size() > 60:
+		battle_reports.pop_front()
+	battle_ticker_index = battle_reports.size() - 1
+	battle_ticker_elapsed = 0.0
+	_refresh_battle_ticker()
+
+
+func _refresh_battle_ticker() -> void:
+	if battle_ticker_button == null or battle_reports.is_empty():
+		return
+	battle_ticker_index = clampi(battle_ticker_index, 0, battle_reports.size() - 1)
+	var report: Dictionary = battle_reports[battle_ticker_index]
+	battle_ticker_button.text = "战报 [展开] · %s %s · %s" % [
+		_format_report_time(int(report.get("time", 0))), str(report.get("category", "战斗")), str(report.get("text", "")),
+	]
+
+
+func show_battle_report() -> void:
+	battle_report_opened.emit()
+	for child in modal_root.get_children():
+		child.queue_free()
+	modal_root.show()
+	var shade := ColorRect.new()
+	shade.color = Color(0.006, 0.025, 0.022, 0.90)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal_root.add_child(shade)
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-500, -310)
+	panel.size = Vector2(1000, 620)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.095, 0.078, 0.99), 24, Color(0.72, 0.86, 0.48, 0.68), 2))
+	modal_root.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "生态战况"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 38)
+	title.add_theme_color_override("font_color", Color("#f4edc5"))
+	box.add_child(title)
+	var summary := Label.new()
+	var player_rank := 0
+	for entry in leaderboard_entries:
+		if bool(entry.get("is_player", false)):
+			player_rank = int(entry.get("rank", 0))
+			break
+	summary.text = "已记录 %d 条关键战报　·　玩家当前等级排名 %s" % [battle_reports.size(), (str(player_rank) if player_rank > 0 else "--")]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary.add_theme_font_size_override("font_size", 17)
+	summary.add_theme_color_override("font_color", Color("#b9d5b7"))
+	box.add_child(summary)
+	var columns := HBoxContainer.new()
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_theme_constant_override("separation", 14)
+	box.add_child(columns)
+	var report_panel := PanelContainer.new()
+	report_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	report_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.006, 0.045, 0.038, 0.90), 16, Color(0.40, 0.68, 0.44, 0.38), 1))
+	columns.add_child(report_panel)
+	var report_log := RichTextLabel.new()
+	report_log.bbcode_enabled = true
+	report_log.scroll_active = true
+	report_log.scroll_following = false
+	report_log.mouse_filter = Control.MOUSE_FILTER_STOP
+	report_log.add_theme_font_size_override("normal_font_size", 18)
+	report_panel.add_child(report_log)
+	if battle_reports.is_empty():
+		report_log.append_text("[center][color=#9fb9a2]还没有关键战斗事件。[/color][/center]")
+	else:
+		for report_index in range(battle_reports.size() - 1, -1, -1):
+			var report: Dictionary = battle_reports[report_index]
+			report_log.append_text("[color=#91a999]%s[/color]　[color=%s][%s] %s[/color]\n\n" % [
+				_format_report_time(int(report.get("time", 0))), str(report.get("color", "#dcebd6")),
+				str(report.get("category", "战斗")), str(report.get("text", "")),
+			])
+	var rank_panel := PanelContainer.new()
+	rank_panel.custom_minimum_size = Vector2(292, 0)
+	rank_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.006, 0.045, 0.038, 0.90), 16, Color(0.40, 0.68, 0.44, 0.38), 1))
+	columns.add_child(rank_panel)
+	var rank_box := VBoxContainer.new()
+	rank_box.add_theme_constant_override("separation", 8)
+	rank_panel.add_child(rank_box)
+	var rank_title := Label.new()
+	rank_title.text = "完整等级排名"
+	rank_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rank_title.add_theme_font_size_override("font_size", 21)
+	rank_title.add_theme_color_override("font_color", Color("#f0e7b5"))
+	rank_box.add_child(rank_title)
+	var rank_log := RichTextLabel.new()
+	rank_log.bbcode_enabled = true
+	rank_log.scroll_active = true
+	rank_log.mouse_filter = Control.MOUSE_FILTER_STOP
+	rank_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rank_log.add_theme_font_size_override("normal_font_size", 17)
+	rank_box.add_child(rank_log)
+	for entry in leaderboard_entries:
+		var row_color := "#f4df7b" if int(entry.get("rank", 0)) == 1 else ("#8fe0b0" if bool(entry.get("is_player", false)) else "#dcebd6")
+		rank_log.append_text("[color=%s]%d. Lv.%d　%s%s　%d击杀[/color]\n" % [
+			row_color, int(entry.get("rank", 0)), int(entry.get("level", 1)),
+			("你·" if bool(entry.get("is_player", false)) else ""), str(entry.get("name", "未知")), int(entry.get("kills", 0)),
+		])
+	var close_button := Button.new()
+	close_button.text = "返回生态战场"
+	_style_button(close_button, true)
+	close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_button.pressed.connect(hide_battle_report)
+	box.add_child(close_button)
+
+
+func hide_battle_report() -> void:
+	modal_root.hide()
+	battle_report_closed.emit()
+
+
+func _format_report_time(seconds_value: int) -> String:
+	return "%02d:%02d" % [seconds_value / 60, seconds_value % 60]
+
+
 func show_enemy_health(target: EcoActor) -> void:
 	if enemy_panel == null or not is_instance_valid(target) or target.dead:
 		return
 	enemy_target = target
 	enemy_visible_until_msec = Time.get_ticks_msec() + 4200
+	if battle_ticker_button != null:
+		battle_ticker_button.hide()
 	enemy_panel.show()
 	_refresh_enemy_health()
 
@@ -669,6 +913,8 @@ func clear_enemy_health() -> void:
 	enemy_visible_until_msec = 0
 	if enemy_panel != null:
 		enemy_panel.hide()
+	if battle_ticker_button != null and hud_root.visible:
+		battle_ticker_button.show()
 
 
 func _update_enemy_health_display() -> void:

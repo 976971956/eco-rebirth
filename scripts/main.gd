@@ -75,6 +75,7 @@ var quality_preset: String = "medium"
 var selected_free_level: int = 1
 var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
+var leaderboard_refresh_remaining: float = 0.0
 
 
 func _ready() -> void:
@@ -97,6 +98,8 @@ func _ready() -> void:
 	ui.menu_requested.connect(_on_menu_requested)
 	ui.pause_requested.connect(_toggle_pause)
 	ui.tutorial_skipped.connect(_skip_tutorial)
+	ui.battle_report_opened.connect(_on_battle_report_opened)
+	ui.battle_report_closed.connect(_on_battle_report_closed)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
 	if batch_arg != "":
@@ -134,12 +137,19 @@ func _process(delta: float) -> void:
 		var domain_suffix: String = "" if player.movement_domain_label() == "地面" else "\n移动层：%s" % player.movement_domain_label()
 		var region_name := "%s · %s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix] if is_instance_valid(world) else "未知区域"
 		ui.update_hud(player, living_count, roster_size, region_name)
+		leaderboard_refresh_remaining -= delta
+		if leaderboard_refresh_remaining <= 0.0:
+			leaderboard_refresh_remaining = 0.45
+			ui.update_leaderboard(_build_level_leaderboard())
 		if audio != null and audio.has_method("set_game_intensity"):
 			var survival_pressure := 1.0 - float(living_count - 1) / maxf(float(roster_size - 1), 1.0)
 			var health_pressure := 1.0 - clampf(player.health / maxf(player.max_health, 1.0), 0.0, 1.0)
 			audio.set_game_intensity(clampf(survival_pressure * 0.72 + health_pressure * 0.28, 0.0, 1.0))
-	if (state == "playing" or state == "paused") and Input.is_action_just_pressed("pause"):
-		_toggle_pause()
+	if Input.is_action_just_pressed("pause"):
+		if state == "battle_report":
+			ui.hide_battle_report()
+		elif state == "playing" or state == "paused":
+			_toggle_pause()
 	corpses = corpses.filter(func(item): return is_instance_valid(item) and not item.is_queued_for_deletion())
 
 
@@ -183,6 +193,24 @@ func _on_menu_requested() -> void:
 		audio.set_context("menu")
 
 
+func _on_battle_report_opened() -> void:
+	if state != "playing":
+		return
+	state = "battle_report"
+	get_tree().paused = true
+	if audio != null:
+		audio.set_context("pause")
+
+
+func _on_battle_report_closed() -> void:
+	if state != "battle_report":
+		return
+	get_tree().paused = false
+	state = "playing"
+	if audio != null:
+		audio.set_context("game")
+
+
 func _start_new_world(free_mode: bool = false) -> void:
 	get_tree().paused = false
 	_clear_game_root()
@@ -191,6 +219,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		current_level = selected_free_level if run_uses_free_mode else campaign_level
 	state = "loading"
 	level_elapsed = 0.0
+	leaderboard_refresh_remaining = 0.0
 	collapse_triggered = false
 	world_seed = int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
 	rng.seed = world_seed
@@ -250,9 +279,11 @@ func _start_new_world(free_mode: bool = false) -> void:
 		game_root.add_child(camera_rig)
 		camera_rig.setup(player)
 		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode)
+		ui.update_leaderboard(_build_level_leaderboard())
 		ui.show_species_intro(player.species_id)
 		ui.add_event(("自由模式 · 第%d关 · %s" % [current_level, Catalog.display_name(player.species_id)]) if run_uses_free_mode else ("第%d关 · 新的生态已经苏醒" % current_level), "#a8e3ac")
 		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
+		ui.add_battle_report("第%d关生态战场已开启，%d个体进入竞争" % [current_level, roster_size], "战场", "#a8cde3")
 		var unlocked_names: Array[String] = []
 		for species_id in Catalog.ORDER:
 			if Catalog.unlock_level(species_id) == current_level and current_level > 1:
@@ -375,12 +406,22 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 		batch_deaths.append({"victim": actor.species_id, "killer": (killer.species_id if is_instance_valid(killer) else "")})
 	else:
 		var victim_name := Catalog.display_name(actor.species_id)
+		var remaining_count := get_living_actors().size()
 		if is_instance_valid(killer):
 			var killer_name := Catalog.display_name(killer.species_id)
 			ui.add_event("%s 被 %s 击倒" % [victim_name, killer_name], "#ecc89d")
+			ui.add_battle_report("Lv.%d %s%s 击倒 Lv.%d %s%s · 累计%d击杀 · 剩余%d" % [
+				killer.level, ("你·" if killer == player else ""), killer_name,
+				actor.level, ("你·" if actor == player else ""), victim_name,
+				killer.kills, remaining_count,
+			], "击杀", "#ecc89d")
 		else:
 			ui.add_event("%s 没能熬过饥饿" % victim_name, "#c7c7aa")
-		play_sfx_near("death", actor.global_position, actor == player)
+			ui.add_battle_report("Lv.%d %s%s 因饥饿倒下 · 剩余%d" % [
+				actor.level, ("你·" if actor == player else ""), victim_name, remaining_count,
+			], "生存", "#c7c7aa")
+		ui.update_leaderboard(_build_level_leaderboard())
+	play_sfx_near("death", actor.global_position, actor == player)
 
 	if actor == player:
 		state = "ending"
@@ -467,6 +508,7 @@ func _check_collapse_trigger() -> void:
 		world.trigger_collapse()
 	if not batch_mode:
 		ui.add_event("栖息地压力上升，外圈食物停止再生，幸存者将争夺中央领地", "#e8c34a")
+		ui.add_battle_report("栖息地开始收缩，幸存者将争夺中央领地", "环境", "#e8c34a")
 		if audio != null:
 			audio.play_sfx("collapse", -2.0)
 
@@ -581,6 +623,40 @@ func get_living_actors() -> Array[EcoActor]:
 	return living
 
 
+func _build_level_leaderboard() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for actor in get_living_actors():
+		entries.append({
+			"actor_id": actor.actor_id,
+			"species_id": actor.species_id,
+			"name": Catalog.display_name(actor.species_id),
+			"level": actor.level,
+			"experience": actor.experience,
+			"kills": actor.kills,
+			"health_ratio": clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0),
+			"is_player": actor == player,
+		})
+	return rank_level_entries(entries)
+
+
+static func rank_level_entries(entries: Array[Dictionary]) -> Array[Dictionary]:
+	var ranked: Array[Dictionary] = entries.duplicate(true)
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a.get("level", 1)) != int(b.get("level", 1)):
+			return int(a.get("level", 1)) > int(b.get("level", 1))
+		if int(a.get("experience", 0)) != int(b.get("experience", 0)):
+			return int(a.get("experience", 0)) > int(b.get("experience", 0))
+		if int(a.get("kills", 0)) != int(b.get("kills", 0)):
+			return int(a.get("kills", 0)) > int(b.get("kills", 0))
+		if not is_equal_approx(float(a.get("health_ratio", 0.0)), float(b.get("health_ratio", 0.0))):
+			return float(a.get("health_ratio", 0.0)) > float(b.get("health_ratio", 0.0))
+		return int(a.get("actor_id", 0)) < int(b.get("actor_id", 0))
+	)
+	for index in range(ranked.size()):
+		ranked[index]["rank"] = index + 1
+	return ranked
+
+
 func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
 	var nearest: Node3D
 	var nearest_distance := max_distance
@@ -662,6 +738,15 @@ func on_player_experience_gained(amount: int, defeated_species: String, reason: 
 		return
 	var action_text := "击倒" if reason == "击杀" else "%s ·" % reason
 	ui.add_event("%s%s · 获得 %d 经验" % [action_text, Catalog.display_name(defeated_species), amount], "#8fe0b0" if reason == "击杀" else "#f0cf78")
+	if reason != "击杀":
+		ui.add_battle_report("你对%s形成%s，获得%d经验" % [Catalog.display_name(defeated_species), reason, amount], "助攻", "#f0cf78")
+
+
+func on_actor_level_up(actor: EcoActor, new_level: int) -> void:
+	if ui == null or batch_mode or not is_instance_valid(actor) or actor == player:
+		return
+	ui.add_battle_report("%s 升至 Lv.%d，生存能力完成进化" % [Catalog.display_name(actor.species_id), new_level], "成长", "#9fd7e8")
+	ui.update_leaderboard(_build_level_leaderboard())
 
 
 func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
@@ -678,6 +763,8 @@ func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 		]
 	ui.show_hint("提升至 Lv.%d！%s" % [new_level, growth_text])
 	ui.add_event("%s · Lv.%d · %s" % [str(gains.get("profile", "生态适应")), new_level, growth_text], "#f1d46b")
+	ui.add_battle_report("你·%s 升至 Lv.%d · %s" % [Catalog.display_name(player.species_id), new_level, str(gains.get("profile", "生态适应"))], "成长", "#f1d46b")
+	ui.update_leaderboard(_build_level_leaderboard())
 	if audio != null:
 		audio.play_sfx("level_up", 1.0)
 
