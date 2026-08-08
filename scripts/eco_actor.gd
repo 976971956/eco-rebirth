@@ -2500,17 +2500,34 @@ func gain_experience(amount: int, defeated_species: String = "", reason: String 
 
 func _level_up() -> void:
 	level += 1
+	var growth := Catalog.growth_profile(species_id)
 	var old_max_health := max_health
-	max_health *= 1.10
-	max_stamina *= 1.055
-	data["attack"] = float(data["attack"]) * 1.065
-	data["armor"] = float(data["armor"]) + 1.5
-	data["speed"] = float(data["speed"]) * 1.012
-	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.22)
-	stamina = minf(max_stamina, stamina + max_stamina * 0.35)
+	var old_max_stamina := max_stamina
+	var old_attack := float(data["attack"])
+	var old_armor := float(data["armor"])
+	var old_speed := float(data["speed"])
+	max_health *= 1.0 + float(growth["health"])
+	max_stamina *= 1.0 + float(growth["stamina"])
+	data["attack"] = old_attack * (1.0 + float(growth["attack"]))
+	data["armor"] = old_armor + float(growth["armor"])
+	data["speed"] = old_speed * (1.0 + float(growth["speed"]))
+	data["regen"] = float(data["regen"]) * (1.0 + float(growth["regen"]))
+	# Leveling grows the health pool and also restores enough current health to
+	# make the power increase immediately useful during a difficult fight.
+	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.30)
+	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.42)
+	health_changed.emit(health, max_health)
+	stamina_changed.emit(stamina, max_stamina)
 	_update_health_bar()
 	if is_player and game.has_method("on_player_level_up"):
-		game.on_player_level_up(level)
+		game.on_player_level_up(level, {
+			"profile": str(growth["name"]),
+			"health": max_health - old_max_health,
+			"stamina": max_stamina - old_max_stamina,
+			"attack": float(data["attack"]) - old_attack,
+			"armor": float(data["armor"]) - old_armor,
+			"speed": float(data["speed"]) - old_speed,
+		})
 
 
 func die(killer: EcoActor) -> void:

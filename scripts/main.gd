@@ -9,7 +9,7 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
@@ -48,6 +48,7 @@ var world_seed: int = 0
 var threat_level: int = 0
 var total_deaths: int = 0
 var current_level: int = 1
+var campaign_level: int = 1
 var last_completed_level: int = 0
 var roster_size: int = 10
 var batch_mode: bool = false
@@ -71,6 +72,9 @@ var tutorial_step: int = -1
 var tutorial_world_seed: int = 0
 var tutorial_advance_frame: int = -1
 var quality_preset: String = "medium"
+var all_levels_unlocked: bool = false
+var selected_free_level: int = 1
+var run_uses_free_level_select: bool = false
 
 
 func _ready() -> void:
@@ -125,9 +129,14 @@ func _process(delta: float) -> void:
 	if state == "playing" and is_instance_valid(player):
 		if is_instance_valid(world):
 			world.update_weather_focus(player.global_position)
+		var living_count := get_living_actors().size()
 		var domain_suffix: String = "" if player.movement_domain_label() == "地面" else "\n移动层：%s" % player.movement_domain_label()
 		var region_name := "%s · %s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix] if is_instance_valid(world) else "未知区域"
-		ui.update_hud(player, get_living_actors().size(), roster_size, region_name)
+		ui.update_hud(player, living_count, roster_size, region_name)
+		if audio != null and audio.has_method("set_game_intensity"):
+			var survival_pressure := 1.0 - float(living_count - 1) / maxf(float(roster_size - 1), 1.0)
+			var health_pressure := 1.0 - clampf(player.health / maxf(player.max_health, 1.0), 0.0, 1.0)
+			audio.set_game_intensity(clampf(survival_pressure * 0.72 + health_pressure * 0.28, 0.0, 1.0))
 	if (state == "playing" or state == "paused") and Input.is_action_just_pressed("pause"):
 		_toggle_pause()
 	corpses = corpses.filter(func(item): return is_instance_valid(item) and not item.is_queued_for_deletion())
@@ -167,6 +176,9 @@ func _on_menu_requested() -> void:
 func _start_new_world() -> void:
 	get_tree().paused = false
 	_clear_game_root()
+	if not batch_mode:
+		run_uses_free_level_select = all_levels_unlocked
+		current_level = selected_free_level if run_uses_free_level_select else campaign_level
 	state = "loading"
 	level_elapsed = 0.0
 	collapse_triggered = false
@@ -263,7 +275,7 @@ func _begin_tutorial_if_needed() -> void:
 	tutorial_active = false
 	tutorial_step = 0
 	tutorial_world_seed = world_seed
-	await get_tree().create_timer(4.35).timeout
+	await get_tree().create_timer(8.75).timeout
 	if state != "playing" or tutorial_completed or tutorial_world_seed != world_seed:
 		return
 	tutorial_active = true
@@ -348,8 +360,9 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 
 	if actor == player:
 		state = "ending"
-		total_deaths += 1
-		threat_level = mini(threat_level + 1, 8)
+		if not run_uses_free_level_select:
+			total_deaths += 1
+			threat_level = mini(threat_level + 1, 8)
 		_save_progress()
 		_finish_loss(killer)
 		return
@@ -357,9 +370,11 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	var living := get_living_actors()
 	if living.size() == 1 and living[0] == player and is_instance_valid(player) and not player.dead:
 		state = "ending"
-		threat_level = maxi(threat_level - 2, 0)
-		last_completed_level = current_level
-		current_level = mini(current_level + 1, LEVEL_CONFIG.size())
+		if not run_uses_free_level_select:
+			threat_level = maxi(threat_level - 2, 0)
+			last_completed_level = current_level
+			campaign_level = mini(current_level + 1, LEVEL_CONFIG.size())
+			current_level = campaign_level
 		_save_progress()
 		_finish_victory()
 
@@ -372,13 +387,14 @@ func _finish_loss(killer: EcoActor) -> void:
 	if is_instance_valid(killer):
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
-	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　世界威胁升至：%d\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var pressure_text := "自由选关练习不改变战役威胁" if run_uses_free_level_select else "世界威胁升至：%d" % threat_level
+	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		_format_time(seconds),
 		player.kills if is_instance_valid(player) else 0,
 		player.assists if is_instance_valid(player) else 0,
-		threat_level
+		pressure_text
 	]
 	ui.show_result("本次生命结束", body, "轮回重生")
 	if audio != null:
@@ -392,6 +408,7 @@ func _finish_victory() -> void:
 	if state != "ending" or not is_instance_valid(player):
 		return
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
+	var progression_text := "自由选关第 %d 关练习完成；战役进度保持不变。" % current_level if run_uses_free_level_select else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
 	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		_format_time(seconds),
@@ -399,7 +416,7 @@ func _finish_victory() -> void:
 		player.assists,
 		total_deaths,
 		world_seed,
-		("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
+		progression_text
 	]
 	ui.show_result("生态胜者", body, "再启新世界")
 	if audio != null:
@@ -623,13 +640,22 @@ func on_player_experience_gained(amount: int, defeated_species: String, reason: 
 	ui.add_event("%s%s · 获得 %d 经验" % [action_text, Catalog.display_name(defeated_species), amount], "#8fe0b0" if reason == "击杀" else "#f0cf78")
 
 
-func on_player_level_up(new_level: int) -> void:
+func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 	if ui == null or batch_mode:
 		return
-	ui.show_hint("等级提升至 Lv.%d！生命、攻击、耐力与护甲获得成长" % new_level)
-	ui.add_event("完成生态适应 · 升至 Lv.%d" % new_level, "#f1d46b")
+	var growth_text := "生命、攻击、速度、耐力与护甲提升"
+	if not gains.is_empty():
+		growth_text = "生命+%d　攻击+%.1f　速度+%.2f　耐力+%d　护甲+%.1f" % [
+			ceili(float(gains.get("health", 0.0))),
+			float(gains.get("attack", 0.0)),
+			float(gains.get("speed", 0.0)),
+			ceili(float(gains.get("stamina", 0.0))),
+			float(gains.get("armor", 0.0)),
+		]
+	ui.show_hint("提升至 Lv.%d！%s" % [new_level, growth_text])
+	ui.add_event("%s · Lv.%d · %s" % [str(gains.get("profile", "生态适应")), new_level, growth_text], "#f1d46b")
 	if audio != null:
-		audio.play_sfx("skill", 2.0)
+		audio.play_sfx("level_up", 1.0)
 
 
 func play_ui_sound() -> void:
@@ -670,7 +696,37 @@ func set_sfx_enabled(value: bool) -> void:
 
 
 func has_campaign_progress() -> bool:
-	return current_level > 1 or total_deaths > 0 or threat_level > 0
+	return campaign_level > 1 or total_deaths > 0 or threat_level > 0
+
+
+func menu_start_text() -> String:
+	if all_levels_unlocked:
+		return "开始第 %d 关" % selected_free_level
+	return "继续轮回" if has_campaign_progress() else "开始轮回"
+
+
+func is_all_levels_unlocked() -> bool:
+	return all_levels_unlocked
+
+
+func get_selected_free_level() -> int:
+	return selected_free_level
+
+
+func set_all_levels_unlocked(value: bool) -> void:
+	all_levels_unlocked = value
+	if state == "menu":
+		current_level = selected_free_level if all_levels_unlocked else campaign_level
+	_save_progress()
+	if ui != null:
+		ui.show_hint("已开放全部关卡，可自由选择练习" if value else "已恢复正常战役推进")
+
+
+func set_selected_free_level(value: int) -> void:
+	selected_free_level = clampi(value, 1, LEVEL_CONFIG.size())
+	if all_levels_unlocked and state == "menu":
+		current_level = selected_free_level
+	_save_progress()
 
 
 func get_quality_preset() -> String:
@@ -707,12 +763,16 @@ func reset_game_progress() -> void:
 	threat_level = 0
 	total_deaths = 0
 	current_level = 1
+	campaign_level = 1
 	last_completed_level = 0
 	last_player_species = ""
 	world_seed = 0
 	tutorial_completed = false
 	tutorial_active = false
 	tutorial_step = -1
+	all_levels_unlocked = false
+	selected_free_level = 1
+	run_uses_free_level_select = false
 	_save_progress()
 	if audio != null:
 		audio.set_context("menu")
@@ -760,10 +820,13 @@ func _save_progress(path: String = CONFIG_PATH) -> void:
 	config.set_value("campaign", "threat_level", threat_level)
 	config.set_value("campaign", "total_deaths", total_deaths)
 	config.set_value("campaign", "last_species", last_player_species)
-	config.set_value("campaign", "current_level", current_level)
+	config.set_value("campaign", "current_level", campaign_level)
+	config.set_value("campaign", "campaign_level", campaign_level)
 	config.set_value("campaign", "last_completed_level", last_completed_level)
 	config.set_value("onboarding", "tutorial_completed", tutorial_completed)
 	config.set_value("video", "quality_preset", quality_preset)
+	config.set_value("gameplay", "all_levels_unlocked", all_levels_unlocked)
+	config.set_value("gameplay", "selected_free_level", selected_free_level)
 	config.save(path)
 
 
@@ -777,10 +840,13 @@ func _load_progress(path: String = CONFIG_PATH) -> void:
 	last_player_species = str(config.get_value("campaign", "last_species", ""))
 	if not Catalog.ORDER.has(last_player_species):
 		last_player_species = ""
-	current_level = clampi(int(config.get_value("campaign", "current_level", 1)), 1, LEVEL_CONFIG.size())
-	last_completed_level = clampi(int(config.get_value("campaign", "last_completed_level", maxi(current_level - 1, 0))), 0, LEVEL_CONFIG.size())
+	campaign_level = clampi(int(config.get_value("campaign", "campaign_level", config.get_value("campaign", "current_level", 1))), 1, LEVEL_CONFIG.size())
+	last_completed_level = clampi(int(config.get_value("campaign", "last_completed_level", maxi(campaign_level - 1, 0))), 0, LEVEL_CONFIG.size())
 	tutorial_completed = bool(config.get_value("onboarding", "tutorial_completed", false))
 	quality_preset = _sanitize_quality(str(config.get_value("video", "quality_preset", quality_preset)))
+	all_levels_unlocked = bool(config.get_value("gameplay", "all_levels_unlocked", false))
+	selected_free_level = clampi(int(config.get_value("gameplay", "selected_free_level", campaign_level)), 1, LEVEL_CONFIG.size())
+	current_level = selected_free_level if all_levels_unlocked else campaign_level
 	if loaded_version < SAVE_VERSION:
 		_save_progress(path)
 

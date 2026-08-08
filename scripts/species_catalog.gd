@@ -93,6 +93,57 @@ const REPEAT_WEIGHT := {
 
 const REPEAT_FROM_LEVEL := {"elephant": 10, "owl": 10, "rhino": 10, "eagle": 10, "hippo": 10, "lion": 10}
 
+const GROWTH_ARCHETYPE := {
+	"rabbit": "survivor", "raccoon": "survivor", "monkey": "survivor",
+	"fox": "skirmisher", "lynx": "skirmisher", "otter": "skirmisher", "owl": "skirmisher", "cheetah": "skirmisher", "eagle": "skirmisher",
+	"wolf": "hunter", "snake": "hunter", "wolverine": "hunter", "crocodile": "hunter", "tiger": "hunter", "hyena": "hunter", "lion": "hunter",
+	"deer": "runner", "capybara": "runner", "goat": "runner", "zebra": "runner",
+	"bear": "guardian", "boar": "guardian", "porcupine": "guardian", "bison": "guardian", "moose": "guardian", "turtle": "guardian", "gorilla": "guardian",
+	"elephant": "giant", "rhino": "giant", "hippo": "giant",
+}
+
+const GROWTH_PROFILES := {
+	"survivor": {"name": "生存适应", "health": 0.080, "attack": 0.055, "speed": 0.025, "stamina": 0.060, "armor": 0.8, "regen": 0.025},
+	"skirmisher": {"name": "敏捷猎手", "health": 0.085, "attack": 0.070, "speed": 0.022, "stamina": 0.055, "armor": 0.9, "regen": 0.024},
+	"hunter": {"name": "捕食进化", "health": 0.090, "attack": 0.075, "speed": 0.018, "stamina": 0.050, "armor": 1.2, "regen": 0.022},
+	"runner": {"name": "迁徙强化", "health": 0.095, "attack": 0.060, "speed": 0.021, "stamina": 0.065, "armor": 1.1, "regen": 0.030},
+	"guardian": {"name": "重装成长", "health": 0.115, "attack": 0.065, "speed": 0.012, "stamina": 0.055, "armor": 1.8, "regen": 0.024},
+	"giant": {"name": "巨兽蜕变", "health": 0.120, "attack": 0.070, "speed": 0.008, "stamina": 0.050, "armor": 2.2, "regen": 0.020},
+}
+
+const VICTORY_GUIDES := {
+	"rabbit": "前期沿地图外圈吃植物升级，不和任何捕食者换血。中期把狼、狐引向熊或蛇制造混战；终局保留月影折跃和半条以上耐力，用连续变向拖垮最后的追猎者。",
+	"fox": "围绕尸体和残血目标行动，不做第一只开战的动物。先用血味佯攻把猎物暴露给其他捕食者，再补刀获取经验；终局依靠速度和更高等级逐个收割。",
+	"deer": "优先积累耐力与等级，保持长直线移动，不在树林死角停留。用蹬踏把追兵推入其他战团；终局控制耐力节奏，让敌人冲刺耗尽后再反击。",
+	"wolf": "尽快靠近同类，选择中小型落单猎物，不要独自挑战巨兽。扑杀前先让狼群形成夹击；终局若失去同伴，利用速度反复脱战，等目标残血后再收尾。",
+	"snake": "藏在植物、尸体或狭窄路线附近，避免长距离追击。用毒迫使强敌离开资源点并交给第三方消耗；终局保持距离，反复上毒后等待生命自然下降。",
+	"bear": "占据尸体和植物都丰富的区域，以反击而非追击为主。重击用于打断围攻并守住资源；终局靠高生命和怒意换血，但要防止毒与群猎持续破甲。",
+	"boar": "在开阔路线积累冲锋空间，撞散小型围攻并抢先吃掉资源。不要把突阵浪费在巨兽正面；终局用低血量抗击退优势守住中央食物。",
+	"raccoon": "避开正面战斗，持续偷取植物和尸体，把资源转化为等级。技能后立刻撤离并更换热点；终局依靠速度成长诱导最后两名强敌互斗。",
+	"porcupine": "选择狭窄通路或尸体旁防守，让近战敌人主动承受反刺。怒刺绽放留给多人贴身时使用；终局不要追人，守住收束区资源迫使对手靠近。",
+	"crocodile": "长期围绕湿地、鱼群和过河点伏击，离水后不做远追。死亡翻滚优先锁住正在进食或耐力不足的目标；终局提前进入中央水岸，逼敌在你的优势地形接战。",
+	"capybara": "利用湿地续航和安抚穿过混战，优先吃植物稳定升级。安抚不是进攻技能，用它打断追猎并带同类转移；终局保存耐力，以反复脱战等待强敌互相消耗。",
+	"otter": "把湿地当作高速公路，快速争夺鱼群和残血目标。旋水突袭在水中收益最高，命中后立刻回到水带；终局不要在陆地和重装动物持续换血。",
+	"lynx": "保持静止或利用高地隐藏，专找小型、残血和脱队目标。无声飞扑用于确认能击杀的猎物；终局耐心等待敌人技能进入冷却，再从侧后方收割。",
+	"goat": "沿岩丘和狭窄路线活动，利用高地出生优势避开大型追兵。角击主要用于突围和把敌人推入混战；终局依靠速度与耐力成长争夺最后资源。",
+	"wolverine": "以尸体热点为中心骚扰大型动物，但不要一次打到底。不屈狂袭在巨兽被围攻时切入收益最高；终局靠高攻击成长处理重装目标，生命过半前就准备脱战。",
+	"bison": "保持直线迁徙，避免被树林和岩石限制转向。踏阵冲锋用来拆散狼群或保护进食窗口；终局用生命、护甲成长占住中央，但不要连续空放冲锋。",
+	"zebra": "与同类保持相近方向，通过群体转向摆脱猎手。技能用来穿过战团而不是单纯逃远；终局保留一次完整冲刺，在对手技能落空后回头反击。",
+	"elephant": "前期持续寻找植物，避免因体型优势忽视饥饿。践踏只在多人贴身或能推倒小树开路时使用；终局优先处理毒蛇和群猎者，靠等级成长建立生命优势。",
+	"tiger": "利用森林侧翼接近，选择一轮爆发能压低的中型目标。扑杀后不要停在尸体中央，先观察其他捕食者；终局依靠攻击成长快速结束战斗，避免被围攻。",
+	"monkey": "靠森林植物和远程投掷安全积累经验，始终记住附近可攀爬树木。被贴身时进入树冠换位；终局用投掷减速、落地进食和再次上树形成循环。",
+	"owl": "夜晚从巡航空域侦察小型落单目标，白天降低冒险频率。俯冲前确认附近没有大型守尸者；终局必须控制落地点，命中后立即拉升或脱离。",
+	"moose": "在湿地与高地边缘活动，用体型和横扫阻止多人贴身。不要追逐高速小动物；终局站住资源热点，等对手靠近后用范围技能建立换血优势。",
+	"turtle": "前期安静吃植物升级，遇到爆发攻击再缩壳，不要长期空耗时间。利用其他动物争夺你的低收益目标；终局在收束区保存技能，等敌人攻击后解除防御反打。",
+	"cheetah": "晴朗草原是主战场，锁定生命低且没有同伴的猎物。极速猎杀后会疲劳，必须预留撤离方向；终局等对手交完控制技能再爆发，避免坏天气下强追。",
+	"rhino": "选择开阔道路蓄力，破阵角冲用来击穿战团而不是贴墙起步。靠植物维持巨兽消耗；终局用护甲成长逼迫对手正面接战，同时警惕毒和群猎破甲。",
+	"gorilla": "把森林资源区设为领地，追击超出范围后主动返回。震地示威用于驱散入侵者并重设安全区；终局随着收束迁移领地，保持自己始终靠近食物。",
+	"eagle": "白天从高空选择小型、孤立且远离守尸者的目标。天穹贯击距离越长收益越高，但落点也更危险；终局用巡航侦察等待机会，不要反复无效落地。",
+	"hippo": "守住湿地水源和高价值食物，让其他动物主动进入你的攻击范围。裂颚震慑用于阻止围攻，不做长距离追击；终局提前占据中央水岸，以生命和攻击成长硬控资源。",
+	"hyena": "跟随同类和尸体热点行动，通过围堵夺走其他捕食者的战利品。狂笑围猎优先标记残血或落单目标；终局不要单挑满血巨兽，先持续骚扰等待破绽。",
+	"lion": "在草原寻找同类并控制开阔区域，避免在密林里浪费号令。先标记目标再让狮群夹击，自己保留耐力收尾；终局失去同伴后要像伏击者一样耐心，不能硬追。",
+}
+
 const DATA: Dictionary = {
 	"rabbit": {
 		"name": "雪兔",
@@ -1065,6 +1116,31 @@ const DATA: Dictionary = {
 
 static func get_data(species_id: String) -> Dictionary:
 	return DATA.get(species_id, DATA["rabbit"]).duplicate(true)
+
+
+static func growth_archetype(species_id: String) -> String:
+	return str(GROWTH_ARCHETYPE.get(species_id, "survivor"))
+
+
+static func growth_profile(species_id: String) -> Dictionary:
+	var archetype := growth_archetype(species_id)
+	return GROWTH_PROFILES.get(archetype, GROWTH_PROFILES["survivor"]).duplicate(true)
+
+
+static func growth_description(species_id: String) -> String:
+	var profile := growth_profile(species_id)
+	return "%s：每级生命 +%.1f%%、攻击 +%.1f%%、速度 +%.1f%%、耐力 +%.1f%%、护甲 +%.1f" % [
+		str(profile["name"]),
+		float(profile["health"]) * 100.0,
+		float(profile["attack"]) * 100.0,
+		float(profile["speed"]) * 100.0,
+		float(profile["stamina"]) * 100.0,
+		float(profile["armor"]),
+	]
+
+
+static func victory_guide(species_id: String) -> String:
+	return str(VICTORY_GUIDES.get(species_id, "优先获取食物和经验，观察其他动物互斗，在终局保留耐力与技能完成最后一战。"))
 
 
 static func display_name(species_id: String) -> String:

@@ -13,7 +13,7 @@ func _init() -> void:
 	_validate_tutorial_contract()
 	_validate_web_audio_contract()
 	if failures.is_empty():
-		print("[release] V1.0 发布校验通过：旧存档迁移、画质档位、新手教学与 Web 音频合约正常")
+		print("[release] V1.1 发布校验通过：成长、物种攻略、自由选关、旧存档迁移与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -44,14 +44,18 @@ func _validate_save_migration() -> void:
 	_expect(migrated.load(test_path) == OK, "迁移后存档无法重新读取")
 	_expect(int(migrated.get_value("meta", "save_version", 0)) == MainScript.SAVE_VERSION, "迁移后未写入存档版本")
 	_expect(not bool(migrated.get_value("audio", "music_enabled", true)), "迁移覆盖了原有声音设置")
+	main.campaign_level = 6
 	main.current_level = 6
 	main.last_completed_level = 5
 	main.quality_preset = "high"
 	main.tutorial_completed = true
+	main.all_levels_unlocked = true
+	main.selected_free_level = 9
 	main._save_progress(test_path)
 	var reload := MainScript.new()
 	reload._load_progress(test_path)
-	_expect(reload.current_level == 6 and reload.last_completed_level == 5, "新存档关卡进度无法回读")
+	_expect(reload.campaign_level == 6 and reload.last_completed_level == 5, "新存档关卡进度无法回读")
+	_expect(reload.all_levels_unlocked and reload.selected_free_level == 9 and reload.current_level == 9, "自由选关设置无法回读")
 	_expect(reload.quality_preset == "high", "画质档位无法回读")
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
 	DirAccess.remove_absolute(test_path)
@@ -86,7 +90,22 @@ func _validate_tutorial_contract() -> void:
 func _validate_web_audio_contract() -> void:
 	var audio := AudioScript.new()
 	audio._build_music_player()
+	audio._build_effects()
 	_expect(audio.music_player.playback_type == AudioServer.PLAYBACK_TYPE_STREAM, "Web 背景音乐必须使用流式播放")
+	_expect(audio.effects.has("level_up"), "升级提示音没有生成")
+	var menu_frame := audio._music_frame(3.2)
+	audio.set_context("game")
+	audio.game_intensity = 0.8
+	var game_frame := audio._music_frame(3.2)
+	_expect(menu_frame.length() > 0.0001 and game_frame.length() > 0.0001 and menu_frame != game_frame, "动态背景音乐没有随场景变化")
+	var peak := 0.0
+	var all_finite := true
+	for sample_index in range(int(AudioScript.MIX_RATE)):
+		var frame := audio._music_frame(float(sample_index) / AudioScript.MIX_RATE)
+		all_finite = all_finite and is_finite(frame.x) and is_finite(frame.y)
+		peak = maxf(peak, maxf(absf(frame.x), absf(frame.y)))
+	_expect(all_finite, "背景音乐生成了非法采样")
+	_expect(peak > 0.01 and peak <= 0.82, "背景音乐音量范围异常")
 	audio.free()
 
 

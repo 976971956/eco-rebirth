@@ -3,6 +3,15 @@ extends Node
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const MIX_RATE := 22050.0
+const FOREST_CHORDS := [
+	[130.81, 164.81, 196.00, 246.94],
+	[110.00, 146.83, 164.81, 220.00],
+	[98.00, 130.81, 164.81, 196.00],
+	[116.54, 146.83, 174.61, 233.08],
+]
+const MENU_MELODY := [392.00, 440.00, 523.25, 0.0, 493.88, 440.00, 392.00, 329.63, 349.23, 392.00, 440.00, 0.0, 392.00, 349.23, 293.66, 0.0]
+const GAME_MELODY := [261.63, 329.63, 392.00, 440.00, 392.00, 523.25, 493.88, 392.00, 349.23, 440.00, 523.25, 659.25, 587.33, 493.88, 440.00, 392.00]
+const RESULT_MELODY := [523.25, 659.25, 783.99, 659.25, 587.33, 523.25, 440.00, 392.00, 440.00, 523.25, 659.25, 0.0, 587.33, 493.88, 392.00, 0.0]
 
 var music_enabled: bool = true
 var sfx_enabled: bool = true
@@ -17,6 +26,9 @@ var context: String = "menu"
 var current_music_db: float = -15.0
 var target_music_db: float = -15.0
 var pool_cursor: int = 0
+var filtered_wind: float = 0.0
+var game_intensity: float = 0.12
+var target_game_intensity: float = 0.12
 
 
 func setup() -> void:
@@ -97,6 +109,7 @@ func _build_effects() -> void:
 	effects["eat"] = _make_bubble_effect()
 	effects["death"] = _make_tone_effect(0.62, 270.0, 58.0, 0.55, 0.18)
 	effects["victory"] = _make_arpeggio_effect()
+	effects["level_up"] = _make_level_up_effect()
 	effects["collapse"] = _make_noise_effect(0.85, 78.0, 34.0, 0.58)
 	effects["reset"] = _make_tone_effect(0.42, 360.0, 120.0, 0.42, 0.12)
 
@@ -109,6 +122,7 @@ func _process(delta: float) -> void:
 	if not music_player.playing:
 		_start_music()
 	current_music_db = move_toward(current_music_db, target_music_db, delta * 8.0)
+	game_intensity = move_toward(game_intensity, target_game_intensity, delta * 0.42)
 	music_player.volume_db = current_music_db
 	if music_playback == null:
 		return
@@ -126,60 +140,82 @@ func _start_music() -> void:
 
 
 func _music_frame(time_value: float) -> Vector2:
-	var chord_length := 10.0
+	var chord_length := 8.0
 	var chord_number := int(floor(time_value / chord_length))
 	var local_time := fmod(time_value, chord_length)
-	var blend := smoothstep(8.2, 10.0, local_time)
-	var current_chord := _chord(chord_number)
-	var next_chord := _chord(chord_number + 1)
-	var pad_left := _chord_sample(current_chord, time_value, 0.0)
-	var pad_right := _chord_sample(current_chord, time_value, 0.017)
-	pad_left = lerpf(pad_left, _chord_sample(next_chord, time_value, 0.0), blend)
-	pad_right = lerpf(pad_right, _chord_sample(next_chord, time_value, 0.017), blend)
+	var blend := smoothstep(6.4, 8.0, local_time)
+	var current_chord: Array = FOREST_CHORDS[posmod(chord_number, FOREST_CHORDS.size())]
+	var next_chord: Array = FOREST_CHORDS[posmod(chord_number + 1, FOREST_CHORDS.size())]
+	var pad_left := lerpf(_pad_sample(current_chord, time_value, 0.0), _pad_sample(next_chord, time_value, 0.0), blend)
+	var pad_right := lerpf(_pad_sample(current_chord, time_value, 0.021), _pad_sample(next_chord, time_value, 0.021), blend)
 
 	noise_state = (noise_state * 48271) % 2147483647
-	var wind := (float(noise_state % 65536) / 32768.0 - 1.0) * 0.012
-	var slow_breath := 0.76 + sin(TAU * 0.045 * time_value) * 0.18
-	var melody := _melody_sample(time_value)
+	var raw_wind := float(noise_state % 65536) / 32768.0 - 1.0
+	filtered_wind = lerpf(filtered_wind, raw_wind, 0.008)
+	var wind := filtered_wind * 0.018
+	var slow_breath := 0.78 + sin(TAU * 0.035 * time_value) * 0.16
+	var melody_left := _melody_sample(time_value, 0.0)
+	var melody_right := _melody_sample(time_value, 0.012)
+	var bass := _bass_sample(current_chord, time_value)
+	var pulse := _pulse_sample(time_value) * game_intensity
 	var bird := _bird_sample(time_value)
-	var intensity := 0.78 if context == "game" else (0.58 if context == "pause" else 0.67)
+	var energy := 0.66 + game_intensity * 0.28 if context == "game" else (0.48 if context == "pause" else 0.58)
 	return Vector2(
-		clampf((pad_left * slow_breath + melody + wind + bird) * intensity, -0.82, 0.82),
-		clampf((pad_right * slow_breath + melody * 0.86 + wind * 0.72 + bird * 0.48) * intensity, -0.82, 0.82)
+		clampf((pad_left * slow_breath + melody_left + bass + pulse + wind + bird) * energy, -0.82, 0.82),
+		clampf((pad_right * slow_breath + melody_right + bass * 0.92 + pulse * 0.82 + wind * 0.68 + bird * 0.42) * energy, -0.82, 0.82)
 	)
 
 
-func _chord(index: int) -> PackedFloat32Array:
-	var progression := [
-		PackedFloat32Array([130.81, 164.81, 196.00]),
-		PackedFloat32Array([110.00, 146.83, 164.81]),
-		PackedFloat32Array([98.00, 130.81, 164.81]),
-		PackedFloat32Array([116.54, 146.83, 174.61])
-	]
-	return progression[posmod(index, progression.size())]
-
-
-func _chord_sample(chord: PackedFloat32Array, time_value: float, stereo_offset: float) -> float:
+func _pad_sample(chord: Array, time_value: float, stereo_offset: float) -> float:
 	var value := 0.0
 	for note_index in range(chord.size()):
-		var frequency := chord[note_index]
-		value += sin(TAU * frequency * (time_value + stereo_offset * float(note_index + 1))) * 0.030
-		value += sin(TAU * frequency * 0.5 * time_value + float(note_index) * 0.8) * 0.018
+		var frequency := float(chord[note_index])
+		var phase_time := time_value + stereo_offset * float(note_index + 1)
+		value += sin(TAU * frequency * phase_time) * 0.021
+		value += sin(TAU * frequency * 0.5 * phase_time + float(note_index) * 0.72) * 0.013
+		value += sin(TAU * frequency * 2.0 * phase_time + 0.35) * 0.0035
 	return value
 
 
-func _melody_sample(time_value: float) -> float:
-	var notes := PackedFloat32Array([392.0, 440.0, 523.25, 440.0, 349.23, 392.0, 329.63, 293.66])
-	var step_length := 1.25
-	var step := int(floor(time_value / step_length))
-	var local := fmod(time_value, step_length)
-	var envelope := exp(-local * 3.4) * smoothstep(0.0, 0.025, local)
-	var frequency := notes[posmod(step, notes.size())]
-	return sin(TAU * frequency * time_value) * envelope * 0.018
+func _melody_sample(time_value: float, stereo_offset: float) -> float:
+	var notes: Array = GAME_MELODY if context == "game" else (RESULT_MELODY if context == "result" else MENU_MELODY)
+	var step_length := 0.72 if context == "game" else 0.94
+	var shifted_time := time_value + stereo_offset
+	var step := int(floor(shifted_time / step_length))
+	var local := fmod(shifted_time, step_length)
+	var frequency := float(notes[posmod(step, notes.size())])
+	if frequency <= 0.0:
+		return 0.0
+	var envelope := exp(-local * (3.0 + game_intensity * 1.8)) * smoothstep(0.0, 0.018, local)
+	var vibrato := sin(TAU * 4.8 * shifted_time) * 0.0028
+	var flute := sin(TAU * frequency * shifted_time + vibrato)
+	var bell := sin(TAU * frequency * 2.0 * shifted_time + 0.28) * 0.20
+	return (flute + bell) * envelope * (0.020 + game_intensity * 0.006)
+
+
+func _bass_sample(chord: Array, time_value: float) -> float:
+	var beat_length := 2.0
+	var local := fmod(time_value, beat_length)
+	var envelope := exp(-local * 2.2) * smoothstep(0.0, 0.035, local)
+	var root := float(chord[0]) * 0.5
+	return (sin(TAU * root * time_value) + sin(TAU * root * 2.0 * time_value) * 0.12) * envelope * (0.030 + game_intensity * 0.018)
+
+
+func _pulse_sample(time_value: float) -> float:
+	if context != "game":
+		return 0.0
+	var local := fmod(time_value, 0.72)
+	var envelope := exp(-local * 18.0)
+	# Build each low pulse from its local phase so the waveform restarts at zero
+	# without a click when the beat loops.
+	var low_phase := 72.0 * local - 14.0 * local * local
+	var low_hit := sin(TAU * low_phase) * envelope * 0.030
+	var leaf_click := sin(TAU * 880.0 * local) * exp(-local * 46.0) * 0.004
+	return low_hit + leaf_click
 
 
 func _bird_sample(time_value: float) -> float:
-	var local := fmod(time_value + 2.4, 13.0)
+	var local := fmod(time_value + 2.4, 15.0)
 	if local > 0.62:
 		return 0.0
 	var envelope := sin(PI * local / 0.62)
@@ -257,6 +293,17 @@ func _make_arpeggio_effect() -> AudioStreamWAV:
 	)
 
 
+func _make_level_up_effect() -> AudioStreamWAV:
+	var notes := PackedFloat32Array([392.00, 523.25, 659.25, 783.99])
+	return _make_wav(0.92, func(time_value: float, progress: float) -> float:
+		var note_index := mini(int(time_value / 0.20), notes.size() - 1)
+		var local := fmod(time_value, 0.20)
+		var envelope := exp(-local * 6.0) * (1.0 - progress * 0.22)
+		var frequency := notes[note_index]
+		return (sin(TAU * frequency * time_value) + sin(TAU * frequency * 2.0 * time_value) * 0.24) * envelope * 0.34
+	)
+
+
 func _make_wav(duration: float, sample_function: Callable) -> AudioStreamWAV:
 	var sample_count := maxi(int(duration * MIX_RATE), 1)
 	var bytes := PackedByteArray()
@@ -276,10 +323,23 @@ func _make_wav(duration: float, sample_function: Callable) -> AudioStreamWAV:
 func set_context(new_context: String) -> void:
 	context = new_context
 	match context:
-		"game": target_music_db = -13.0
-		"pause": target_music_db = -20.0
-		"result": target_music_db = -18.0
-		_: target_music_db = -15.0
+		"game":
+			target_music_db = -13.0
+			target_game_intensity = maxf(target_game_intensity, 0.18)
+		"pause":
+			target_music_db = -20.0
+			target_game_intensity = 0.12
+		"result":
+			target_music_db = -16.5
+			target_game_intensity = 0.42
+		_:
+			target_music_db = -15.0
+			target_game_intensity = 0.10
+
+
+func set_game_intensity(value: float) -> void:
+	if context == "game":
+		target_game_intensity = clampf(value, 0.12, 1.0)
 
 
 func set_music_enabled(value: bool) -> void:

@@ -23,6 +23,7 @@ var skill_requested: bool = false
 var interact_requested: bool = false
 
 var species_label: Label
+var combat_stats_label: Label
 var hp_bar: ProgressBar
 var stamina_bar: ProgressBar
 var hunger_bar: ProgressBar
@@ -49,6 +50,7 @@ var hint_tween: Tween
 var intro_panel: PanelContainer
 var intro_title: Label
 var intro_body: Label
+var intro_controls: Label
 var event_feed: RichTextLabel
 var event_lines: Array[String] = []
 var attack_button: Button
@@ -204,7 +206,7 @@ func _build_hud() -> void:
 
 	var status_panel := PanelContainer.new()
 	status_panel.position = Vector2(20, 20)
-	status_panel.custom_minimum_size = Vector2(378, 224)
+	status_panel.custom_minimum_size = Vector2(400, 252)
 	status_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 16, Color(0.48, 0.80, 0.53, 0.40), 1))
 	hud_root.add_child(status_panel)
 	var status_box := VBoxContainer.new()
@@ -214,6 +216,10 @@ func _build_hud() -> void:
 	species_label.add_theme_font_size_override("font_size", 25)
 	species_label.add_theme_color_override("font_color", Color("#f4f2d3"))
 	status_box.add_child(species_label)
+	combat_stats_label = Label.new()
+	combat_stats_label.add_theme_font_size_override("font_size", 15)
+	combat_stats_label.add_theme_color_override("font_color", Color("#b9d9bd"))
+	status_box.add_child(combat_stats_label)
 	hp_bar = _make_bar(Color("#d84d4d"), 100.0)
 	hp_value_label = _make_value_label()
 	status_box.add_child(_bar_row("生命", hp_bar, hp_value_label))
@@ -397,8 +403,8 @@ func _make_value_label() -> Label:
 func _build_intro() -> void:
 	intro_panel = PanelContainer.new()
 	intro_panel.set_anchors_preset(Control.PRESET_CENTER)
-	intro_panel.position = Vector2(-300, -170)
-	intro_panel.size = Vector2(600, 310)
+	intro_panel.position = Vector2(-390, -220)
+	intro_panel.size = Vector2(780, 440)
 	intro_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.94), 24, Color(0.61, 0.92, 0.61, 0.62), 2))
 	hud_root.add_child(intro_panel)
 	var box := VBoxContainer.new()
@@ -419,16 +425,18 @@ func _build_intro() -> void:
 	intro_body = Label.new()
 	intro_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intro_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	intro_body.add_theme_font_size_override("font_size", 20)
+	intro_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	intro_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	intro_body.add_theme_font_size_override("font_size", 18)
 	intro_body.add_theme_color_override("font_color", Color("#dfecd9"))
 	box.add_child(intro_body)
-	var controls := Label.new()
-	controls.text = "WASD / 摇杆移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
-	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	controls.add_theme_font_size_override("font_size", 17)
-	controls.add_theme_color_override("font_color", Color(0.75, 0.86, 0.75, 0.82))
-	box.add_child(controls)
+	intro_controls = Label.new()
+	intro_controls.text = "WASD / 摇杆移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
+	intro_controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	intro_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro_controls.add_theme_font_size_override("font_size", 17)
+	intro_controls.add_theme_color_override("font_color", Color(0.75, 0.86, 0.75, 0.82))
+	box.add_child(intro_controls)
 
 
 func _build_tutorial() -> void:
@@ -530,8 +538,8 @@ func _build_modal_root() -> void:
 
 
 func show_menu() -> void:
-	if menu_start_button != null and game != null and game.has_method("has_campaign_progress"):
-		menu_start_button.text = "继续轮回" if game.has_campaign_progress() else "开始轮回"
+	if menu_start_button != null and game != null:
+		menu_start_button.text = game.menu_start_text() if game.has_method("menu_start_text") else ("继续轮回" if game.has_campaign_progress() else "开始轮回")
 	menu_root.show()
 	hud_root.hide()
 	modal_root.hide()
@@ -572,6 +580,7 @@ func hide_tutorial() -> void:
 func set_player(player_actor: EcoActor) -> void:
 	var data := Catalog.get_data(player_actor.species_id)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, data["name"], data["subtitle"]]
+	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"])]
 	hp_bar.max_value = player_actor.max_health
 	stamina_bar.max_value = player_actor.max_stamina
 	hp_bar.value = player_actor.health
@@ -592,13 +601,19 @@ func set_player(player_actor: EcoActor) -> void:
 
 func show_species_intro(species_id: String) -> void:
 	var data := Catalog.get_data(species_id)
+	var touch_layout := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_body.text = "%s\n被动：%s — %s\n主动技能：%s — %s" % [data["tip"], data["passive"], data["passive_hint"], data["skill"], data["skill_hint"]]
+	intro_controls.text = "左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
+	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
+		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
+		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
+	]
 	intro_panel.modulate = Color.WHITE
+	intro_panel.move_to_front()
 	intro_panel.show()
 	var tween := create_tween()
-	tween.tween_interval(3.6)
-	tween.tween_property(intro_panel, "modulate", Color(1, 1, 1, 0), 0.7)
+	tween.tween_interval(8.0)
+	tween.tween_property(intro_panel, "modulate", Color(1, 1, 1, 0), 0.6)
 	tween.tween_callback(intro_panel.hide)
 
 
@@ -613,6 +628,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	stamina_value_label.text = "%d / %d" % [maxi(ceili(player_actor.stamina), 0), ceili(player_actor.max_stamina)]
 	satiety_value_label.text = "%d / 100" % ceili(satiety)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, player_actor.data["name"], player_actor.data["subtitle"]]
+	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"])]
 	var needed_xp := player_actor.experience_to_next_level()
 	xp_bar.max_value = maxf(float(needed_xp), 1.0)
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
@@ -766,13 +782,13 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-330, -330)
-	panel.size = Vector2(660, 660)
+	panel.position = Vector2(-350, -340)
+	panel.size = Vector2(700, 680)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
 	modal_root.add_child(panel)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 9)
+	box.add_theme_constant_override("separation", 7)
 	panel.add_child(box)
 
 	var title := Label.new()
@@ -783,7 +799,7 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "声音、画质与教学选项会自动保存。"
+	subtitle.text = "声音、画质、教学与关卡选项会自动保存。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 17)
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
@@ -851,6 +867,45 @@ func show_settings(from_pause: bool = false) -> void:
 	quality_select.item_selected.connect(func(index: int): game.set_quality_preset(quality_values[index]))
 	quality_row.add_child(quality_select)
 
+	var level_panel := PanelContainer.new()
+	level_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.01, 0.06, 0.052, 0.82), 16, Color(0.43, 0.73, 0.48, 0.35), 1))
+	level_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(level_panel)
+	var level_box := VBoxContainer.new()
+	level_box.add_theme_constant_override("separation", 3)
+	level_panel.add_child(level_box)
+	var level_row := HBoxContainer.new()
+	level_row.add_theme_constant_override("separation", 18)
+	level_box.add_child(level_row)
+	var level_toggle := CheckButton.new()
+	level_toggle.text = "自由选择全部关卡"
+	level_toggle.button_pressed = game.is_all_levels_unlocked()
+	level_toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	level_toggle.add_theme_font_size_override("font_size", 21)
+	level_row.add_child(level_toggle)
+	var level_select := OptionButton.new()
+	level_select.custom_minimum_size = Vector2(210, 52)
+	level_select.add_theme_font_size_override("font_size", 19)
+	for level_number in range(1, 11):
+		level_select.add_item("第 %d 关" % level_number)
+	level_select.selected = game.get_selected_free_level() - 1
+	level_select.disabled = not level_toggle.button_pressed
+	level_select.item_selected.connect(func(index: int): game.set_selected_free_level(index + 1))
+	level_row.add_child(level_select)
+	var level_hint := Label.new()
+	level_hint.text = "自由选关用于练习，不改变正常战役进度、死亡次数和世界威胁。"
+	level_hint.add_theme_font_size_override("font_size", 14)
+	level_hint.add_theme_color_override("font_color", Color("#c9d3aa"))
+	level_box.add_child(level_hint)
+	level_toggle.toggled.connect(func(enabled: bool):
+		level_select.disabled = not enabled
+		game.set_all_levels_unlocked(enabled)
+	)
+
+	var utility_row := HBoxContainer.new()
+	utility_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	utility_row.add_theme_constant_override("separation", 12)
+	box.add_child(utility_row)
 	var tutorial_button := Button.new()
 	tutorial_button.text = "重新开启新手教学"
 	_style_button(tutorial_button, false)
@@ -860,14 +915,14 @@ func show_settings(from_pause: bool = false) -> void:
 		tutorial_button.disabled = true
 		tutorial_button.text = "已设置，下局显示教学"
 	)
-	box.add_child(tutorial_button)
+	utility_row.add_child(tutorial_button)
 
 	var reset_button := Button.new()
 	reset_button.text = "重置游戏进度"
 	_style_button(reset_button, false)
 	reset_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	reset_button.pressed.connect(func(): show_reset_confirmation())
-	box.add_child(reset_button)
+	utility_row.add_child(reset_button)
 
 	var reset_hint := Label.new()
 	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音与画质会保留。"
@@ -884,7 +939,7 @@ func show_settings(from_pause: bool = false) -> void:
 		if settings_from_pause:
 			show_pause()
 		else:
-			modal_root.hide()
+			show_menu()
 	)
 	box.add_child(close_button)
 

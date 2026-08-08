@@ -14,6 +14,11 @@ class PreviewGame:
 	func get_quality_preset() -> String: return quality
 	func set_quality_preset(value: String) -> void: quality = value
 	func has_campaign_progress() -> bool: return true
+	func menu_start_text() -> String: return "继续轮回"
+	func is_all_levels_unlocked() -> bool: return true
+	func get_selected_free_level() -> int: return 7
+	func set_all_levels_unlocked(_value: bool) -> void: pass
+	func set_selected_free_level(_value: int) -> void: pass
 	func reset_tutorial_progress() -> void: pass
 
 
@@ -45,6 +50,7 @@ func _render() -> void:
 	ui.touch_root.show()
 	ui.intro_panel.hide()
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
+	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2"
 	ui.hp_value_label.text = "132 / 150"
 	ui.stamina_value_label.text = "76 / 100"
 	ui.satiety_value_label.text = "68 / 100"
@@ -59,11 +65,17 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var tutorial_result := root.get_texture().get_image().save_png("res://docs/images/v12-release-tutorial.png")
+	ui.hide_tutorial()
+	ui.show_species_intro("cheetah")
+	for _frame in range(5):
+		await process_frame
+	var guide_result := root.get_texture().get_image().save_png("res://docs/images/v13-growth-guide.png")
+	ui.intro_panel.hide()
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
-	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v12-release-settings.png")
-	if tutorial_result == OK and settings_result == OK:
+	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v13-settings-levels.png")
+	if tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

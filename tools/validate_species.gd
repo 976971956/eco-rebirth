@@ -67,6 +67,22 @@ func _run_validation() -> void:
 		for prey_id in data.get("preferred_prey", []):
 			if not Catalog.DATA.has(prey_id):
 				failures.append("%s 配置了未知猎物 %s" % [species_id, prey_id])
+		if Catalog.victory_guide(species_id).length() < 45:
+			failures.append("%s 缺少完整获胜攻略" % species_id)
+		var growth := Catalog.growth_profile(species_id)
+		for growth_key in ["health", "attack", "speed", "stamina", "armor", "regen"]:
+			if not growth.has(growth_key) or float(growth[growth_key]) <= 0.0:
+				failures.append("%s 的成长配置 %s 无效" % [species_id, growth_key])
+		var base_health := actor.max_health
+		var base_attack := float(actor.data["attack"])
+		var base_speed := float(actor.data["speed"])
+		var base_stamina := actor.max_stamina
+		for _growth_level in range(2, actor.MAX_LEVEL + 1):
+			actor._level_up()
+		if actor.max_health <= base_health or float(actor.data["attack"]) <= base_attack or float(actor.data["speed"]) <= base_speed or actor.max_stamina <= base_stamina:
+			failures.append("%s 升到满级后没有全面提升生命、攻击、速度与耐力" % species_id)
+		if actor.max_health > base_health * 2.25 or float(actor.data["attack"]) > base_attack * 1.72 or float(actor.data["speed"]) > base_speed * 1.20:
+			failures.append("%s 的满级成长超过首发平衡上限" % species_id)
 
 	var rng := RandomNumberGenerator.new()
 	var minimum_types_by_level := [4, 6, 8, 10, 12, 14, 16, 18, 20, 22]
@@ -188,7 +204,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:
