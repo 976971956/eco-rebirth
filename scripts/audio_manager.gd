@@ -38,6 +38,9 @@ func _build_music_player() -> void:
 	music_player = AudioStreamPlayer.new()
 	music_player.name = "LivingForestMusic"
 	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Web exports may default AudioStreamPlayer to sample playback. A live
+	# AudioStreamGenerator cannot be sampled up front, so force streaming.
+	music_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	var generator := AudioStreamGenerator.new()
 	generator.mix_rate = MIX_RATE
 	generator.buffer_length = 1.25
@@ -68,13 +71,29 @@ func _build_effects() -> void:
 	effects["skill_snake"] = _make_noise_effect(0.48, 860.0, 310.0, 0.38)
 	effects["skill_bear"] = _make_noise_effect(0.58, 92.0, 42.0, 0.68)
 	effects["skill_boar"] = _make_noise_effect(0.40, 145.0, 62.0, 0.62)
+	effects["skill_raccoon"] = _make_tone_effect(0.28, 720.0, 340.0, 0.40, 0.16)
+	effects["skill_porcupine"] = _make_noise_effect(0.38, 960.0, 260.0, 0.46)
 	effects["skill_lynx"] = _make_tone_effect(0.34, 620.0, 210.0, 0.42, 0.12)
+	effects["skill_capybara"] = _make_tone_effect(0.62, 260.0, 510.0, 0.34, 0.22)
+	effects["skill_otter"] = _make_tone_effect(0.42, 540.0, 980.0, 0.42, 0.26)
+	effects["skill_goat"] = _make_tone_effect(0.38, 240.0, 610.0, 0.50, 0.09)
+	effects["skill_wolverine"] = _make_noise_effect(0.44, 260.0, 74.0, 0.63)
 	effects["skill_bison"] = _make_noise_effect(0.62, 108.0, 44.0, 0.72)
+	effects["skill_zebra"] = _make_tone_effect(0.42, 420.0, 860.0, 0.44, 0.13)
+	effects["skill_elephant"] = _make_noise_effect(0.92, 62.0, 28.0, 0.86)
 	effects["skill_crocodile"] = _make_noise_effect(0.52, 82.0, 176.0, 0.66)
 	effects["skill_tiger"] = _make_tone_effect(0.58, 310.0, 92.0, 0.62, 0.15)
+	effects["skill_monkey"] = _make_tone_effect(0.36, 820.0, 330.0, 0.44, 0.24)
+	effects["skill_owl"] = _make_tone_effect(0.66, 520.0, 118.0, 0.48, 0.22)
 	effects["skill_moose"] = _make_tone_effect(0.50, 170.0, 470.0, 0.54, 0.08)
+	effects["skill_turtle"] = _make_tone_effect(0.64, 180.0, 96.0, 0.50, 0.08)
+	effects["skill_cheetah"] = _make_noise_effect(0.48, 780.0, 96.0, 0.58)
 	effects["skill_rhino"] = _make_noise_effect(0.68, 74.0, 38.0, 0.78)
+	effects["skill_gorilla"] = _make_noise_effect(0.74, 68.0, 31.0, 0.82)
+	effects["skill_eagle"] = _make_tone_effect(0.72, 860.0, 170.0, 0.54, 0.28)
 	effects["skill_hippo"] = _make_noise_effect(0.64, 88.0, 52.0, 0.76)
+	effects["skill_hyena"] = _make_tone_effect(0.52, 440.0, 150.0, 0.58, 0.18)
+	effects["skill_lion"] = _make_tone_effect(0.82, 190.0, 54.0, 0.72, 0.13)
 	effects["eat"] = _make_bubble_effect()
 	effects["death"] = _make_tone_effect(0.62, 270.0, 58.0, 0.55, 0.18)
 	effects["victory"] = _make_arpeggio_effect()

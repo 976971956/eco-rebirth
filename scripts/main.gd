@@ -8,6 +8,17 @@ const CameraScript = preload("res://scripts/camera_rig.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 
+const CONFIG_PATH := "user://eco_rebirth.cfg"
+const SAVE_VERSION := 1
+const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
+const TUTORIAL_STEPS := [
+	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
+	{"id": "sprint", "title": "学会控制耐力", "desktop": "移动时按住 Shift 冲刺。冲刺、攻击和技能都会消耗耐力。", "touch": "移动时按住右侧“冲刺”。冲刺、攻击和技能都会消耗耐力。"},
+	{"id": "attack", "title": "自动接敌", "desktop": "靠近其他动物并按住 J 或鼠标左键，进入距离后会自动攻击。", "touch": "靠近其他动物并按住右侧“攻击”，进入距离后会自动攻击。"},
+	{"id": "skill", "title": "释放物种技能", "desktop": "按空格释放本物种的专属技能。技能效果会随物种改变。", "touch": "点击右侧绿色技能按钮。每种动物都有不同的专属能力。"},
+	{"id": "eat", "title": "寻找食物", "desktop": "靠近尸体或可食用资源后按 E 进食。饱腹归零会持续损失生命。", "touch": "靠近尸体或可食用资源后点击“进食”。饱腹归零会持续损失生命。"},
+]
+
 var game_root: Node3D
 var actor_root: Node3D
 var corpse_root: Node3D
@@ -22,15 +33,15 @@ var rng := RandomNumberGenerator.new()
 
 const LEVEL_CONFIG := [
 	{"individuals": 10, "world_size": 86.0, "species_range": Vector2i(4, 5), "establishment": 45.0, "convergence_ratio": 0.40},
-	{"individuals": 20, "world_size": 104.0, "species_range": Vector2i(5, 7), "establishment": 55.0, "convergence_ratio": 0.35},
-	{"individuals": 30, "world_size": 118.0, "species_range": Vector2i(6, 8), "establishment": 65.0, "convergence_ratio": 0.33},
-	{"individuals": 40, "world_size": 130.0, "species_range": Vector2i(7, 9), "establishment": 75.0, "convergence_ratio": 0.30},
-	{"individuals": 50, "world_size": 140.0, "species_range": Vector2i(8, 10), "establishment": 85.0, "convergence_ratio": 0.28},
-	{"individuals": 60, "world_size": 150.0, "species_range": Vector2i(9, 11), "establishment": 95.0, "convergence_ratio": 0.27},
-	{"individuals": 70, "world_size": 158.0, "species_range": Vector2i(10, 12), "establishment": 105.0, "convergence_ratio": 0.25},
-	{"individuals": 80, "world_size": 166.0, "species_range": Vector2i(11, 13), "establishment": 115.0, "convergence_ratio": 0.24},
-	{"individuals": 90, "world_size": 174.0, "species_range": Vector2i(12, 14), "establishment": 120.0, "convergence_ratio": 0.22},
-	{"individuals": 100, "world_size": 182.0, "species_range": Vector2i(14, 14), "establishment": 135.0, "convergence_ratio": 0.20},
+	{"individuals": 20, "world_size": 104.0, "species_range": Vector2i(6, 8), "establishment": 55.0, "convergence_ratio": 0.35},
+	{"individuals": 30, "world_size": 118.0, "species_range": Vector2i(8, 11), "establishment": 65.0, "convergence_ratio": 0.33},
+	{"individuals": 40, "world_size": 130.0, "species_range": Vector2i(10, 13), "establishment": 75.0, "convergence_ratio": 0.30},
+	{"individuals": 50, "world_size": 140.0, "species_range": Vector2i(12, 15), "establishment": 85.0, "convergence_ratio": 0.28},
+	{"individuals": 60, "world_size": 150.0, "species_range": Vector2i(14, 18), "establishment": 95.0, "convergence_ratio": 0.27},
+	{"individuals": 70, "world_size": 158.0, "species_range": Vector2i(16, 20), "establishment": 105.0, "convergence_ratio": 0.25},
+	{"individuals": 80, "world_size": 166.0, "species_range": Vector2i(18, 22), "establishment": 115.0, "convergence_ratio": 0.24},
+	{"individuals": 90, "world_size": 174.0, "species_range": Vector2i(20, 25), "establishment": 120.0, "convergence_ratio": 0.22},
+	{"individuals": 100, "world_size": 182.0, "species_range": Vector2i(22, 26), "establishment": 135.0, "convergence_ratio": 0.20},
 ]
 
 var world_seed: int = 0
@@ -54,6 +65,12 @@ var last_player_species: String = ""
 var world_started_msec: int = 0
 var _skill_request_latched: bool = false
 var _interact_request_latched: bool = false
+var tutorial_completed: bool = false
+var tutorial_active: bool = false
+var tutorial_step: int = -1
+var tutorial_world_seed: int = 0
+var tutorial_advance_frame: int = -1
+var quality_preset: String = "medium"
 
 
 func _ready() -> void:
@@ -74,6 +91,7 @@ func _ready() -> void:
 	ui.retry_requested.connect(_on_retry_requested)
 	ui.menu_requested.connect(_on_menu_requested)
 	ui.pause_requested.connect(_toggle_pause)
+	ui.tutorial_skipped.connect(_skip_tutorial)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
 	if batch_arg != "":
@@ -82,7 +100,7 @@ func _ready() -> void:
 		var level_arg := _find_cmdline_value("--batch-level")
 		batch_level = clampi(int(level_arg) if level_arg != "" else 1, 1, LEVEL_CONFIG.size())
 		batch_mode = true
-		Engine.time_scale = 4.0
+		Engine.time_scale = 8.0
 		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
 		if batch_log_file != null:
 			batch_log_file.store_line("run,level,winner,duration_s,death_count,outcome")
@@ -105,7 +123,10 @@ func _process(delta: float) -> void:
 			_finish_batch_run(living)
 			return
 	if state == "playing" and is_instance_valid(player):
-		var region_name := world.region_name_at(player.global_position) if is_instance_valid(world) else "未知区域"
+		if is_instance_valid(world):
+			world.update_weather_focus(player.global_position)
+		var domain_suffix: String = "" if player.movement_domain_label() == "地面" else "\n移动层：%s" % player.movement_domain_label()
+		var region_name := "%s · %s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix] if is_instance_valid(world) else "未知区域"
 		ui.update_hud(player, get_living_actors().size(), roster_size, region_name)
 	if (state == "playing" or state == "paused") and Input.is_action_just_pressed("pause"):
 		_toggle_pause()
@@ -118,10 +139,6 @@ func _notification(what: int) -> void:
 
 
 func _on_start_requested() -> void:
-	threat_level = 0
-	total_deaths = 0
-	current_level = 1
-	_save_progress()
 	_start_new_world()
 
 
@@ -140,6 +157,7 @@ func _on_retry_requested() -> void:
 func _on_menu_requested() -> void:
 	get_tree().paused = false
 	state = "menu"
+	tutorial_active = false
 	_clear_game_root()
 	ui.show_menu()
 	if audio != null:
@@ -165,7 +183,7 @@ func _start_new_world() -> void:
 	add_child(game_root)
 	world = WorldScript.new()
 	game_root.add_child(world)
-	world.setup(world_seed, world_size_value)
+	world.setup(world_seed, world_size_value, current_level, not batch_mode, "", "", quality_preset)
 	actor_root = Node3D.new()
 	actor_root.name = "Actors"
 	game_root.add_child(actor_root)
@@ -214,6 +232,7 @@ func _start_new_world() -> void:
 		ui.show_hud(player, world_seed, threat_level, current_level)
 		ui.show_species_intro(player.species_id)
 		ui.add_event("第%d关 · 新的生态已经苏醒" % current_level, "#a8e3ac")
+		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
 		var unlocked_names: Array[String] = []
 		for species_id in Catalog.ORDER:
 			if Catalog.unlock_level(species_id) == current_level and current_level > 1:
@@ -224,9 +243,11 @@ func _start_new_world() -> void:
 		if audio != null:
 			audio.set_context("game")
 			audio.play_sfx("world")
+		_begin_tutorial_if_needed()
 
 
 func _clear_game_root() -> void:
+	tutorial_active = false
 	player = null
 	world = null
 	actors.clear()
@@ -234,6 +255,66 @@ func _clear_game_root() -> void:
 	if is_instance_valid(game_root):
 		game_root.free()
 	game_root = null
+
+
+func _begin_tutorial_if_needed() -> void:
+	if batch_mode or tutorial_completed:
+		return
+	tutorial_active = false
+	tutorial_step = 0
+	tutorial_world_seed = world_seed
+	await get_tree().create_timer(4.35).timeout
+	if state != "playing" or tutorial_completed or tutorial_world_seed != world_seed:
+		return
+	tutorial_active = true
+	_show_current_tutorial_step()
+
+
+func _show_current_tutorial_step() -> void:
+	if ui == null or not tutorial_active or tutorial_step < 0 or tutorial_step >= TUTORIAL_STEPS.size():
+		return
+	var step_data: Dictionary = TUTORIAL_STEPS[tutorial_step]
+	var touch_layout := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
+	ui.show_tutorial_step(
+		tutorial_step + 1,
+		TUTORIAL_STEPS.size(),
+		str(step_data["title"]),
+		str(step_data["touch"] if touch_layout else step_data["desktop"])
+	)
+
+
+func on_player_action(action_id: String) -> void:
+	if not tutorial_active or tutorial_completed or tutorial_step < 0 or tutorial_step >= TUTORIAL_STEPS.size():
+		return
+	var current_frame := Engine.get_physics_frames()
+	if tutorial_advance_frame == current_frame:
+		return
+	if str(TUTORIAL_STEPS[tutorial_step]["id"]) != action_id:
+		return
+	tutorial_advance_frame = current_frame
+	tutorial_step += 1
+	if tutorial_step >= TUTORIAL_STEPS.size():
+		_complete_tutorial(false)
+	else:
+		_show_current_tutorial_step()
+
+
+func _skip_tutorial() -> void:
+	_complete_tutorial(true)
+
+
+func _complete_tutorial(skipped: bool) -> void:
+	if tutorial_completed:
+		return
+	tutorial_completed = true
+	tutorial_active = false
+	tutorial_step = -1
+	_save_progress()
+	if ui != null:
+		ui.hide_tutorial()
+		ui.show_hint("教学已跳过，可在设置中重新开启" if skipped else "基础教学完成！现在利用生态活到最后")
+		if not skipped:
+			ui.add_event("已完成新手生态适应", "#f1d46b")
 
 
 func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
@@ -335,13 +416,16 @@ func _check_collapse_trigger() -> void:
 		return
 	var ratio: float = level_config["convergence_ratio"]
 	var living_ratio := float(get_living_actors().size()) / maxf(float(roster_size), 1.0)
-	if living_ratio > ratio and level_elapsed < establishment * 5.333:
+	# Large late-game maps need more time for ecology to develop, but waiting five
+	# full establishment windows leaves too little room for a 100-animal finale.
+	var forced_collapse_factor := 3.5 if current_level >= 10 else (4.0 if current_level >= 8 else 5.0)
+	if living_ratio > ratio and level_elapsed < establishment * forced_collapse_factor:
 		return
 	collapse_triggered = true
 	if is_instance_valid(world):
 		world.trigger_collapse()
 	if not batch_mode:
-		ui.add_event("栖息地压力上升，外圈食物不再再生", "#e8c34a")
+		ui.add_event("栖息地压力上升，外圈食物停止再生，幸存者将争夺中央领地", "#e8c34a")
 		if audio != null:
 			audio.play_sfx("collapse", -2.0)
 
@@ -374,6 +458,13 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d%s" % [
 		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), " (超时)" if timed_out else ""
 	])
+	if timed_out:
+		var survivor_details: Array[String] = []
+		for survivor in living:
+			survivor_details.append("%s(HP %.0f, %.1f/%.1f, %s)" % [
+				survivor.species_id, survivor.health, survivor.global_position.x, survivor.global_position.z, survivor.ai_state
+			])
+		print("[batch] survivors: %s" % ", ".join(survivor_details))
 	batch_runs_remaining -= 1
 	if batch_runs_remaining > 0:
 		_start_batch_run()
@@ -578,6 +669,37 @@ func set_sfx_enabled(value: bool) -> void:
 			audio.play_sfx("ui")
 
 
+func has_campaign_progress() -> bool:
+	return current_level > 1 or total_deaths > 0 or threat_level > 0
+
+
+func get_quality_preset() -> String:
+	return quality_preset
+
+
+func set_quality_preset(value: String) -> void:
+	quality_preset = _sanitize_quality(value)
+	if is_instance_valid(world) and world.has_method("apply_quality_preset"):
+		world.apply_quality_preset(quality_preset)
+	_save_progress()
+	if ui != null:
+		ui.show_hint("画质已切换为%s" % quality_display_name(quality_preset))
+
+
+func quality_display_name(value: String) -> String:
+	return {"low": "性能", "medium": "平衡", "high": "高画质"}.get(_sanitize_quality(value), "平衡")
+
+
+func reset_tutorial_progress() -> void:
+	tutorial_completed = false
+	tutorial_active = false
+	tutorial_step = -1
+	_save_progress()
+	if ui != null:
+		ui.hide_tutorial()
+		ui.show_hint("新手教学已重新开启，将在下一局显示")
+
+
 func reset_game_progress() -> void:
 	get_tree().paused = false
 	state = "menu"
@@ -588,6 +710,9 @@ func reset_game_progress() -> void:
 	last_completed_level = 0
 	last_player_species = ""
 	world_seed = 0
+	tutorial_completed = false
+	tutorial_active = false
+	tutorial_step = -1
 	_save_progress()
 	if audio != null:
 		audio.set_context("menu")
@@ -628,21 +753,37 @@ func _add_key_action(action_name: StringName, keys: Array[Key]) -> void:
 			InputMap.action_add_event(action_name, event)
 
 
-func _save_progress() -> void:
+func _save_progress(path: String = CONFIG_PATH) -> void:
 	var config := ConfigFile.new()
-	config.load("user://eco_rebirth.cfg")
+	config.load(path)
+	config.set_value("meta", "save_version", SAVE_VERSION)
 	config.set_value("campaign", "threat_level", threat_level)
 	config.set_value("campaign", "total_deaths", total_deaths)
 	config.set_value("campaign", "last_species", last_player_species)
 	config.set_value("campaign", "current_level", current_level)
-	config.save("user://eco_rebirth.cfg")
+	config.set_value("campaign", "last_completed_level", last_completed_level)
+	config.set_value("onboarding", "tutorial_completed", tutorial_completed)
+	config.set_value("video", "quality_preset", quality_preset)
+	config.save(path)
 
 
-func _load_progress() -> void:
+func _load_progress(path: String = CONFIG_PATH) -> void:
 	var config := ConfigFile.new()
-	if config.load("user://eco_rebirth.cfg") != OK:
+	if config.load(path) != OK:
 		return
-	threat_level = int(config.get_value("campaign", "threat_level", 0))
-	total_deaths = int(config.get_value("campaign", "total_deaths", 0))
+	var loaded_version := int(config.get_value("meta", "save_version", 0))
+	threat_level = clampi(int(config.get_value("campaign", "threat_level", 0)), 0, 8)
+	total_deaths = maxi(int(config.get_value("campaign", "total_deaths", 0)), 0)
 	last_player_species = str(config.get_value("campaign", "last_species", ""))
+	if not Catalog.ORDER.has(last_player_species):
+		last_player_species = ""
 	current_level = clampi(int(config.get_value("campaign", "current_level", 1)), 1, LEVEL_CONFIG.size())
+	last_completed_level = clampi(int(config.get_value("campaign", "last_completed_level", maxi(current_level - 1, 0))), 0, LEVEL_CONFIG.size())
+	tutorial_completed = bool(config.get_value("onboarding", "tutorial_completed", false))
+	quality_preset = _sanitize_quality(str(config.get_value("video", "quality_preset", quality_preset)))
+	if loaded_version < SAVE_VERSION:
+		_save_progress(path)
+
+
+func _sanitize_quality(value: String) -> String:
+	return value if QUALITY_PRESETS.has(value) else "medium"

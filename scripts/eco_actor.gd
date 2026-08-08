@@ -4,6 +4,7 @@ extends CharacterBody3D
 const Catalog = preload("res://scripts/species_catalog.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const SkillVFX = preload("res://scripts/skill_vfx.gd")
+const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -45,6 +46,21 @@ var ecology_influence_timer: float = 0.0
 var last_attacker: EcoActor
 var rage_timer: float = 0.0
 var rage_cooldown_timer: float = 0.0
+var quill_guard_timer: float = 0.0
+var shell_guard_timer: float = 0.0
+var forage_speed_timer: float = 0.0
+var obstacle_break_timer: float = 0.0
+var flight_ground_timer: float = 0.0
+var flight_dive_timer: float = 0.0
+var flight_target_height: float = 0.45
+var landing_target_position := Vector3.ZERO
+var pending_food_resource: Node3D
+var burst_exhaustion_timer: float = 0.0
+var canopy_timer: float = 0.0
+var canopy_anchor := Vector3.ZERO
+var calm_timer: float = 0.0
+var territory_center := Vector3.ZERO
+var territory_radius: float = 0.0
 var still_timer: float = 0.0
 var straight_run_timer: float = 0.0
 var previous_flat_direction := Vector3.ZERO
@@ -76,6 +92,8 @@ var gait_blend: float = 0.0
 var leg_pivots: Array[Node3D] = []
 var leg_phases: Array[float] = []
 var leg_stride_scales: Array[float] = []
+var wing_pivots: Array[Node3D] = []
+var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
 var spawn_protection: float = 0.0
@@ -99,8 +117,15 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	max_stamina = float(data["stamina"])
 	stamina = max_stamina
 	position = spawn_position
+	if Catalog.has_trait(species_id, "flying"):
+		flight_target_height = float(data.get("flight_height", 4.2))
+		position.y = flight_target_height
+		landing_target_position = position
+	territory_center = spawn_position
+	if Catalog.has_trait(species_id, "territorial"):
+		territory_radius = 10.0 + float(int(data["size"])) * 1.8
 	collision_layer = 1
-	collision_mask = 2
+	collision_mask = 0 if Catalog.has_trait(species_id, "flying") else 2
 	_build_collision()
 	_build_visual()
 	spawn_protection = 6.0 if is_player else 0.0
@@ -136,13 +161,29 @@ func _build_visual() -> void:
 		"snake": _build_snake()
 		"bear": _build_bear()
 		"boar": _build_boar()
+		"raccoon": _build_raccoon()
+		"porcupine": _build_porcupine()
 		"lynx": _build_feline(false)
+		"capybara": _build_capybara()
+		"otter": _build_otter()
+		"goat": _build_goat()
+		"wolverine": _build_wolverine()
 		"bison": _build_bison()
+		"zebra": _build_zebra()
+		"elephant": _build_elephant()
 		"crocodile": _build_crocodile()
 		"tiger": _build_feline(true)
+		"monkey": _build_monkey()
+		"owl": _build_bird(true)
 		"moose": _build_moose()
+		"turtle": _build_turtle()
+		"cheetah": _build_cheetah()
 		"rhino": _build_rhino()
+		"gorilla": _build_gorilla()
+		"eagle": _build_bird(false)
 		"hippo": _build_hippo()
+		"hyena": _build_hyena()
+		"lion": _build_lion()
 	base_visual_scale = body_root.scale
 	_build_health_bar()
 	if is_player:
@@ -240,7 +281,7 @@ func _health_bar_color(ratio: float) -> Color:
 
 
 func is_stealthed() -> bool:
-	return not dead and (hidden_timer > 0.0 or (species_id in ["snake", "lynx", "crocodile"] and still_timer > 1.5))
+	return not dead and (hidden_timer > 0.0 or (Catalog.has_trait(species_id, "ambusher") and still_timer > 1.5))
 
 
 func _build_rabbit() -> void:
@@ -439,6 +480,376 @@ func _build_boar() -> void:
 	_add_legs(color.darkened(0.18), 0.42, 0.76, 0.57, 0.72, Color("#282321"))
 
 
+func _build_raccoon() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#d5d0bc"))
+	body_root.scale = Vector3.ONE * 0.88
+	body_root.add_child(Factory.loft("RaccoonBody", color, [
+		Vector3(0.0, 0.88, 1.02), Vector3(0.0, 0.90, 0.48), Vector3(0.0, 0.93, -0.12),
+		Vector3(0.0, 1.06, -0.64), Vector3(0.0, 1.30, -0.99), Vector3(0.0, 1.43, -1.35),
+		Vector3(0.0, 1.34, -1.73), Vector3(0.0, 1.27, -2.02)
+	], [
+		Vector2(0.33, 0.31), Vector2(0.53, 0.42), Vector2(0.54, 0.43), Vector2(0.47, 0.49),
+		Vector2(0.34, 0.35), Vector2(0.40, 0.34), Vector2(0.27, 0.20), Vector2(0.14, 0.11)
+	], 9))
+	body_root.add_child(Factory.sphere("FaceMask", Color("#252b2d"), Vector3(0.58, 0.25, 0.16), Vector3(0.0, 1.49, -1.70), 8, 4))
+	body_root.add_child(Factory.sphere("Muzzle", accent, Vector3(0.43, 0.27, 0.28), Vector3(0.0, 1.29, -1.93), 8, 5))
+	for side in [-1.0, 1.0]:
+		var ear := Factory.cone("RoundEar", color.darkened(0.18), 0.22, 0.45, Vector3(side * 0.34, 1.88, -1.29), 7)
+		ear.rotation.z = side * 0.20
+		body_root.add_child(ear)
+	_add_eye_pair(1.53, -1.86, 0.22, 0.085)
+	body_root.add_child(Factory.sphere("Nose", Color("#1d2221"), Vector3(0.17, 0.12, 0.12), Vector3(0.0, 1.28, -2.20), 7, 4))
+	var tail_points := [
+		Vector3(0.0, 0.99, 0.96), Vector3(0.12, 1.12, 1.45), Vector3(0.28, 1.38, 1.93),
+		Vector3(0.38, 1.63, 2.38), Vector3(0.31, 1.76, 2.72)
+	]
+	for segment in range(tail_points.size()):
+		var ring_color := accent.darkened(0.10) if segment % 2 == 0 else Color("#303638")
+		var segment_scale := 0.30 - float(segment) * 0.035
+		body_root.add_child(Factory.sphere("TailRing", ring_color, Vector3(segment_scale, segment_scale, 0.48), tail_points[segment], 8, 5))
+	_add_legs(color.darkened(0.22), 0.32, 0.70, 0.46, 0.66, Color("#25292a"))
+
+
+func _build_porcupine() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#dfcfaa"))
+	body_root.scale = Vector3.ONE * 0.96
+	body_root.add_child(Factory.loft("PorcupineBody", color, [
+		Vector3(0.0, 0.86, 1.13), Vector3(0.0, 1.02, 0.58), Vector3(0.0, 1.16, -0.08),
+		Vector3(0.0, 1.25, -0.70), Vector3(0.0, 1.20, -1.18), Vector3(0.0, 1.03, -1.60),
+		Vector3(0.0, 0.94, -1.98)
+	], [
+		Vector2(0.38, 0.35), Vector2(0.64, 0.57), Vector2(0.69, 0.62), Vector2(0.63, 0.61),
+		Vector2(0.48, 0.44), Vector2(0.30, 0.23), Vector2(0.14, 0.10)
+	], 9))
+	for row in [-1.0, 0.0, 1.0]:
+		for quill_index in range(6):
+			var quill_z := 0.82 - float(quill_index) * 0.42
+			var quill_height := 0.72 + float(quill_index % 3) * 0.12
+			var quill := Factory.cone("BackQuill", accent if quill_index % 2 == 0 else Color("#332c27"), 0.085, quill_height, Vector3(row * 0.34, 1.60 + (1.0 - absf(row)) * 0.14, quill_z), 6)
+			quill.rotation.x = row * 0.08
+			quill.rotation.z = -row * 0.22
+			body_root.add_child(quill)
+	body_root.add_child(Factory.sphere("SmallFace", color.darkened(0.16), Vector3(0.42, 0.35, 0.48), Vector3(0.0, 1.02, -1.72), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("Ear", color.lightened(0.05), Vector3(0.18, 0.20, 0.13), Vector3(side * 0.25, 1.38, -1.47), 7, 4))
+	_add_eye_pair(1.13, -1.96, 0.19, 0.075)
+	body_root.add_child(Factory.sphere("Nose", Color("#201d1b"), Vector3(0.14, 0.10, 0.10), Vector3(0.0, 0.94, -2.18), 7, 4))
+	_add_legs(color.darkened(0.20), 0.34, 0.58, 0.49, 0.65, Color("#2b2521"))
+
+
+func _build_capybara() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#d6b58a"))
+	body_root.scale = Vector3.ONE * 1.04
+	body_root.add_child(Factory.loft("CapybaraBody", color, [
+		Vector3(0.0, 0.92, 1.18), Vector3(0.0, 1.02, 0.55), Vector3(0.0, 1.07, -0.14),
+		Vector3(0.0, 1.17, -0.75), Vector3(0.0, 1.29, -1.20), Vector3(0.0, 1.24, -1.70),
+		Vector3(0.0, 1.15, -2.14)
+	], [
+		Vector2(0.42, 0.39), Vector2(0.72, 0.59), Vector2(0.75, 0.61), Vector2(0.68, 0.63),
+		Vector2(0.54, 0.47), Vector2(0.46, 0.34), Vector2(0.26, 0.18)
+	], 9))
+	body_root.add_child(Factory.sphere("SquareMuzzle", accent.darkened(0.12), Vector3(0.50, 0.31, 0.44), Vector3(0.0, 1.18, -1.96), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("SmallEar", color.darkened(0.15), Vector3(0.18, 0.18, 0.12), Vector3(side * 0.30, 1.67, -1.41), 7, 4))
+		body_root.add_child(Factory.sphere("Nostril", Color("#30241e"), Vector3(0.065, 0.045, 0.055), Vector3(side * 0.15, 1.30, -2.34), 6, 3))
+	_add_eye_pair(1.48, -1.86, 0.27, 0.08)
+	_add_legs(color.darkened(0.15), 0.43, 0.72, 0.61, 0.77, Color("#3e3028"))
+
+
+func _build_otter() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#e2c79b"))
+	body_root.scale = Vector3.ONE * 0.92
+	body_root.add_child(Factory.loft("OtterBody", color, [
+		Vector3(0.0, 0.58, 1.28), Vector3(0.0, 0.64, 0.74), Vector3(0.0, 0.70, 0.08),
+		Vector3(0.0, 0.77, -0.58), Vector3(0.0, 0.95, -1.02), Vector3(0.0, 1.20, -1.36),
+		Vector3(0.0, 1.15, -1.76), Vector3(0.0, 1.08, -2.04)
+	], [
+		Vector2(0.25, 0.22), Vector2(0.48, 0.34), Vector2(0.53, 0.37), Vector2(0.45, 0.43),
+		Vector2(0.32, 0.35), Vector2(0.38, 0.32), Vector2(0.27, 0.20), Vector2(0.13, 0.10)
+	], 9))
+	body_root.add_child(Factory.sphere("CreamThroat", accent, Vector3(0.48, 0.52, 0.19), Vector3(0.0, 0.83, -1.12), 8, 5))
+	body_root.add_child(Factory.sphere("OtterMuzzle", accent.lightened(0.06), Vector3(0.43, 0.25, 0.28), Vector3(0.0, 1.10, -1.88), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("RoundEar", color.darkened(0.08), Vector3(0.19, 0.19, 0.13), Vector3(side * 0.30, 1.54, -1.34), 7, 4))
+		for whisker_index in range(2):
+			var whisker := Factory.tapered_cylinder("Whisker", accent.lightened(0.20), 0.018, 0.006, 0.58, Vector3(side * (0.39 + whisker_index * 0.03), 1.10 + whisker_index * 0.10, -2.02), 5)
+			whisker.rotation.z = side * (PI * 0.50 - 0.12 + whisker_index * 0.10)
+			body_root.add_child(whisker)
+	_add_eye_pair(1.34, -1.70, 0.22, 0.085)
+	body_root.add_child(Factory.sphere("OtterNose", Color("#22211f"), Vector3(0.18, 0.12, 0.12), Vector3(0.0, 1.10, -2.20), 7, 4))
+	body_root.add_child(Factory.loft("RudderTail", color.darkened(0.10), [
+		Vector3(0.0, 0.65, 1.18), Vector3(0.08, 0.61, 1.78), Vector3(0.16, 0.56, 2.48), Vector3(0.12, 0.48, 3.16)
+	], [Vector2(0.24, 0.18), Vector2(0.22, 0.15), Vector2(0.14, 0.10), Vector2(0.035, 0.025)], 8))
+	_add_legs(color.darkened(0.12), 0.30, 0.48, 0.45, 0.64, accent.darkened(0.16))
+
+
+func _build_turtle() -> void:
+	var color := Catalog.get_color(species_id)
+	var shell_color := Color.from_string(str(data["accent"]), Color("#b6a76b"))
+	body_root.scale = Vector3.ONE * 0.96
+	body_root.add_child(Factory.sphere("StoneShell", shell_color.darkened(0.16), Vector3(1.42, 0.66, 1.72), Vector3(0.0, 0.78, 0.05), 10, 6))
+	body_root.add_child(Factory.sphere("ShellCrown", shell_color, Vector3(1.18, 0.54, 1.46), Vector3(0.0, 1.02, 0.00), 9, 5))
+	for plate_index in range(7):
+		var angle := TAU * float(plate_index) / 7.0
+		body_root.add_child(Factory.sphere("ShellPlate", shell_color.darkened(0.08 if plate_index % 2 == 0 else 0.20), Vector3(0.28, 0.08, 0.35), Vector3(cos(angle) * 0.68, 1.28 - absf(sin(angle)) * 0.10, sin(angle) * 0.90), 7, 3))
+	body_root.add_child(Factory.loft("TurtleNeck", color, [
+		Vector3(0.0, 0.70, -0.82), Vector3(0.0, 0.72, -1.22), Vector3(0.0, 0.82, -1.55), Vector3(0.0, 0.82, -1.86)
+	], [Vector2(0.27, 0.24), Vector2(0.25, 0.22), Vector2(0.32, 0.28), Vector2(0.18, 0.13)], 8))
+	_add_eye_pair(0.96, -1.72, 0.19, 0.075)
+	body_root.add_child(Factory.sphere("Beak", shell_color.lightened(0.12), Vector3(0.19, 0.11, 0.15), Vector3(0.0, 0.81, -2.01), 7, 4))
+	_add_legs(color.darkened(0.08), 0.38, 0.42, 0.88, 0.88, shell_color.darkened(0.28))
+	var short_tail := Factory.cone("ShortTail", color.darkened(0.12), 0.17, 0.50, Vector3(0.0, 0.62, 1.66), 7)
+	short_tail.rotation.x = PI * 0.50
+	body_root.add_child(short_tail)
+
+
+func _build_goat() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#5b4a38"))
+	body_root.scale = Vector3.ONE * 1.05
+	body_root.add_child(Factory.loft("GoatBody", color, [
+		Vector3(0.0, 1.18, 1.06), Vector3(0.0, 1.22, 0.48), Vector3(0.0, 1.25, -0.16),
+		Vector3(0.0, 1.38, -0.70), Vector3(0.0, 1.72, -1.02), Vector3(0.0, 2.06, -1.30),
+		Vector3(0.0, 2.18, -1.72), Vector3(0.0, 2.08, -2.05)
+	], [
+		Vector2(0.33, 0.34), Vector2(0.55, 0.44), Vector2(0.56, 0.45), Vector2(0.48, 0.50),
+		Vector2(0.34, 0.36), Vector2(0.36, 0.33), Vector2(0.25, 0.19), Vector2(0.13, 0.10)
+	], 9))
+	for side in [-1.0, 1.0]:
+		var horn_base := Factory.tapered_cylinder("CurvedHorn", accent, 0.11, 0.065, 0.82, Vector3(side * 0.25, 2.69, -1.45), 7)
+		horn_base.rotation.z = side * -0.42
+		horn_base.rotation.x = 0.18
+		body_root.add_child(horn_base)
+		var horn_tip := Factory.cone("HornTip", accent.darkened(0.10), 0.075, 0.55, Vector3(side * 0.43, 2.95, -1.22), 7)
+		horn_tip.rotation.z = side * 0.28
+		horn_tip.rotation.x = 0.30
+		body_root.add_child(horn_tip)
+		var ear := Factory.cone("GoatEar", color.darkened(0.08), 0.18, 0.42, Vector3(side * 0.40, 2.40, -1.55), 7)
+		ear.rotation.z = side * 1.05
+		body_root.add_child(ear)
+	body_root.add_child(Factory.cone("Beard", accent.darkened(0.18), 0.16, 0.58, Vector3(0.0, 1.72, -1.93), 7))
+	_add_eye_pair(2.28, -1.86, 0.22, 0.085)
+	body_root.add_child(Factory.sphere("Nose", Color("#3b342d"), Vector3(0.19, 0.12, 0.14), Vector3(0.0, 2.05, -2.25), 7, 4))
+	_add_legs(color.darkened(0.16), 0.25, 1.18, 0.50, 0.78, Color("#302a24"))
+
+
+func _build_wolverine() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#c19a62"))
+	body_root.scale = Vector3.ONE * 0.94
+	body_root.add_child(Factory.loft("WolverineBody", color, [
+		Vector3(0.0, 0.82, 1.35), Vector3(0.0, 0.90, 0.72), Vector3(0.0, 0.96, -0.06),
+		Vector3(0.0, 1.05, -0.73), Vector3(0.0, 1.22, -1.17), Vector3(0.0, 1.35, -1.55),
+		Vector3(0.0, 1.27, -1.95)
+	], [
+		Vector2(0.34, 0.33), Vector2(0.62, 0.49), Vector2(0.65, 0.52), Vector2(0.58, 0.56),
+		Vector2(0.42, 0.40), Vector2(0.42, 0.34), Vector2(0.19, 0.14)
+	], 9))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("SideBand", accent, Vector3(0.14, 0.39, 1.18), Vector3(side * 0.58, 1.09, 0.05), 7, 5))
+		body_root.add_child(Factory.sphere("Ear", color.lightened(0.10), Vector3(0.20, 0.20, 0.15), Vector3(side * 0.30, 1.72, -1.42), 7, 4))
+	body_root.add_child(Factory.sphere("Muzzle", accent.darkened(0.16), Vector3(0.43, 0.28, 0.32), Vector3(0.0, 1.31, -1.92), 8, 5))
+	_add_eye_pair(1.48, -1.80, 0.22, 0.08)
+	body_root.add_child(Factory.sphere("Nose", Color("#191817"), Vector3(0.18, 0.12, 0.13), Vector3(0.0, 1.27, -2.23), 7, 4))
+	body_root.add_child(Factory.loft("BushTail", color.darkened(0.18), [Vector3(0.0, 0.91, 1.16), Vector3(0.12, 1.08, 1.65), Vector3(0.17, 1.31, 2.05)], [Vector2(0.23, 0.22), Vector2(0.31, 0.29), Vector2(0.11, 0.10)], 8))
+	_add_legs(color.darkened(0.15), 0.38, 0.62, 0.55, 0.82, Color("#211d1a"))
+
+
+func _build_zebra() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#25282a"))
+	body_root.scale = Vector3.ONE * 1.08
+	body_root.add_child(Factory.loft("ZebraBody", color, [
+		Vector3(0.0, 1.40, 1.15), Vector3(0.0, 1.43, 0.58), Vector3(0.0, 1.45, -0.12),
+		Vector3(0.0, 1.55, -0.73), Vector3(0.0, 1.88, -1.02), Vector3(0.0, 2.33, -1.22),
+		Vector3(0.0, 2.64, -1.56), Vector3(0.0, 2.54, -2.00), Vector3(0.0, 2.48, -2.30)
+	], [
+		Vector2(0.32, 0.34), Vector2(0.58, 0.46), Vector2(0.60, 0.48), Vector2(0.52, 0.54),
+		Vector2(0.36, 0.39), Vector2(0.29, 0.34), Vector2(0.35, 0.31), Vector2(0.24, 0.18), Vector2(0.13, 0.10)
+	], 9))
+	for stripe_index in range(7):
+		var stripe_z := 0.90 - float(stripe_index) * 0.34
+		body_root.add_child(Factory.sphere("BodyStripe", accent, Vector3(0.59, 0.055, 0.11), Vector3(0.0, 1.69, stripe_z), 7, 3))
+	for mane_index in range(6):
+		var mane := Factory.cone("Mane", accent, 0.10, 0.38, Vector3(0.0, 2.26 + float(mane_index) * 0.10, -0.86 - float(mane_index) * 0.18), 6)
+		mane.rotation.x = -0.12
+		body_root.add_child(mane)
+	for side in [-1.0, 1.0]:
+		var ear := Factory.cone("ZebraEar", color, 0.17, 0.55, Vector3(side * 0.28, 3.08, -1.52), 7)
+		ear.rotation.z = side * 0.16
+		body_root.add_child(ear)
+	_add_eye_pair(2.72, -1.91, 0.18, 0.085)
+	body_root.add_child(Factory.sphere("DarkMuzzle", accent, Vector3(0.32, 0.19, 0.40), Vector3(0.0, 2.48, -2.18), 8, 5))
+	_add_legs(color.darkened(0.05), 0.23, 1.38, 0.51, 0.90, accent)
+	body_root.add_child(Factory.loft("ZebraTail", accent, [Vector3(0.0, 1.52, 1.26), Vector3(0.04, 1.23, 1.68), Vector3(0.10, 0.92, 1.98)], [Vector2(0.11, 0.11), Vector2(0.12, 0.11), Vector2(0.24, 0.22)], 7))
+
+
+func _build_hyena() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#3f3328"))
+	body_root.scale = Vector3.ONE * 1.02
+	body_root.add_child(Factory.loft("HyenaBody", color, [
+		Vector3(0.0, 0.92, 1.18), Vector3(0.0, 1.04, 0.58), Vector3(0.0, 1.20, -0.10),
+		Vector3(0.0, 1.42, -0.70), Vector3(0.0, 1.61, -1.12), Vector3(0.0, 1.67, -1.52),
+		Vector3(0.0, 1.52, -1.96), Vector3(0.0, 1.40, -2.24)
+	], [
+		Vector2(0.33, 0.32), Vector2(0.55, 0.43), Vector2(0.58, 0.47), Vector2(0.54, 0.56),
+		Vector2(0.39, 0.40), Vector2(0.43, 0.35), Vector2(0.28, 0.20), Vector2(0.15, 0.11)
+	], 9))
+	for mane_index in range(6):
+		var mane := Factory.cone("BackMane", accent, 0.11, 0.42, Vector3(0.0, 1.92, -0.88 + float(mane_index) * 0.28), 6)
+		body_root.add_child(mane)
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("LargeEar", accent.darkened(0.05), Vector3(0.27, 0.34, 0.17), Vector3(side * 0.34, 2.12, -1.43), 8, 5))
+		for spot_index in range(4):
+			body_root.add_child(Factory.sphere("CoatSpot", accent, Vector3(0.09, 0.07, 0.12), Vector3(side * 0.51, 1.44, -0.40 + float(spot_index) * 0.42), 6, 3))
+	_add_eye_pair(1.72, -1.93, 0.23, 0.085)
+	body_root.add_child(Factory.sphere("Muzzle", accent.darkened(0.10), Vector3(0.38, 0.25, 0.41), Vector3(0.0, 1.43, -2.12), 8, 5))
+	body_root.add_child(Factory.sphere("Nose", Color("#1d1b18"), Vector3(0.18, 0.12, 0.13), Vector3(0.0, 1.39, -2.48), 7, 4))
+	body_root.add_child(Factory.loft("HyenaTail", accent, [Vector3(0.0, 0.98, 1.10), Vector3(0.10, 1.08, 1.55), Vector3(0.15, 1.18, 1.93)], [Vector2(0.18, 0.17), Vector2(0.24, 0.22), Vector2(0.08, 0.07)], 8))
+	_add_legs(color.darkened(0.15), 0.34, 0.92, 0.52, 0.74, accent.darkened(0.18))
+
+
+func _build_monkey() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#d0a07e"))
+	body_root.scale = Vector3.ONE * 0.90
+	body_root.add_child(Factory.sphere("MonkeyTorso", color, Vector3(0.88, 1.25, 0.66), Vector3(0.0, 1.30, 0.0), 9, 6))
+	body_root.add_child(Factory.sphere("LightChest", accent.darkened(0.10), Vector3(0.62, 0.72, 0.18), Vector3(0.0, 1.35, -0.53), 8, 5))
+	body_root.add_child(Factory.sphere("MonkeyHead", color.darkened(0.08), Vector3(0.62, 0.65, 0.56), Vector3(0.0, 2.27, -0.28), 9, 6))
+	body_root.add_child(Factory.sphere("Face", accent, Vector3(0.47, 0.42, 0.24), Vector3(0.0, 2.18, -0.71), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("RoundEar", accent.darkened(0.18), Vector3(0.24, 0.28, 0.14), Vector3(side * 0.52, 2.33, -0.25), 7, 4))
+	_add_eye_pair(2.39, -0.82, 0.20, 0.075)
+	body_root.add_child(Factory.sphere("Nose", Color("#392b25"), Vector3(0.16, 0.11, 0.10), Vector3(0.0, 2.13, -0.91), 7, 4))
+	_add_primate_limbs(color.darkened(0.10), 1.38, 0.82, 0.55, 0.30, false)
+	body_root.add_child(Factory.loft("LongTail", color.darkened(0.16), [
+		Vector3(0.0, 1.00, 0.48), Vector3(0.20, 1.05, 1.15), Vector3(0.48, 1.35, 1.76),
+		Vector3(0.58, 1.82, 2.22), Vector3(0.34, 2.20, 2.45)
+	], [Vector2(0.13, 0.13), Vector2(0.15, 0.14), Vector2(0.12, 0.11), Vector2(0.085, 0.08), Vector2(0.04, 0.04)], 7))
+
+
+func _build_gorilla() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#aeb4b2"))
+	body_root.scale = Vector3.ONE * 1.24
+	body_root.add_child(Factory.sphere("GorillaTorso", color, Vector3(1.18, 1.48, 0.86), Vector3(0.0, 1.48, 0.10), 10, 6))
+	body_root.add_child(Factory.sphere("ShoulderMass", color.darkened(0.06), Vector3(1.46, 0.74, 0.78), Vector3(0.0, 2.00, -0.05), 10, 6))
+	body_root.add_child(Factory.sphere("SilverBack", accent, Vector3(1.04, 0.84, 0.20), Vector3(0.0, 1.84, 0.76), 9, 5))
+	body_root.add_child(Factory.sphere("GorillaHead", color.darkened(0.12), Vector3(0.70, 0.72, 0.62), Vector3(0.0, 2.62, -0.42), 9, 6))
+	body_root.add_child(Factory.sphere("HeavyBrow", color.darkened(0.25), Vector3(0.62, 0.20, 0.18), Vector3(0.0, 2.77, -0.88), 8, 4))
+	body_root.add_child(Factory.sphere("GorillaMuzzle", Color("#625a52"), Vector3(0.52, 0.38, 0.36), Vector3(0.0, 2.45, -0.91), 9, 5))
+	_add_eye_pair(2.76, -0.96, 0.23, 0.075)
+	body_root.add_child(Factory.sphere("FlatNose", Color("#202323"), Vector3(0.24, 0.15, 0.12), Vector3(0.0, 2.52, -1.23), 7, 4))
+	_add_primate_limbs(color.darkened(0.08), 1.72, 0.96, 0.86, 0.40, true)
+
+
+func _build_bird(is_owl: bool) -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#d5c292"))
+	body_root.scale = Vector3.ONE * (0.96 if is_owl else 1.02)
+	if is_owl:
+		body_root.add_child(Factory.sphere("OwlBody", color, Vector3(0.72, 1.02, 0.66), Vector3(0.0, 1.25, 0.05), 9, 6))
+		body_root.add_child(Factory.sphere("OwlChest", accent.darkened(0.08), Vector3(0.54, 0.72, 0.18), Vector3(0.0, 1.18, -0.58), 8, 5))
+		body_root.add_child(Factory.sphere("FacialDisc", accent, Vector3(0.66, 0.62, 0.22), Vector3(0.0, 2.00, -0.46), 9, 6))
+		for side in [-1.0, 1.0]:
+			var ear_tuft := Factory.cone("EarTuft", color.darkened(0.20), 0.16, 0.55, Vector3(side * 0.38, 2.55, -0.37), 7)
+			ear_tuft.rotation.z = side * 0.16
+			body_root.add_child(ear_tuft)
+			body_root.add_child(Factory.sphere("AmberEye", Color("#f1b542"), Vector3(0.13, 0.15, 0.07), Vector3(side * 0.23, 2.05, -0.68), 8, 4))
+			body_root.add_child(Factory.sphere("Pupil", Color("#151511"), Vector3(0.055, 0.085, 0.035), Vector3(side * 0.23, 2.05, -0.745), 7, 4))
+	else:
+		body_root.add_child(Factory.loft("EagleBody", color, [
+			Vector3(0.0, 1.05, 0.82), Vector3(0.0, 1.14, 0.18), Vector3(0.0, 1.30, -0.48),
+			Vector3(0.0, 1.48, -0.92), Vector3(0.0, 1.50, -1.34)
+		], [Vector2(0.24, 0.24), Vector2(0.48, 0.40), Vector2(0.50, 0.43), Vector2(0.37, 0.34), Vector2(0.20, 0.18)], 9))
+		body_root.add_child(Factory.sphere("GoldenNape", accent, Vector3(0.46, 0.43, 0.38), Vector3(0.0, 1.62, -1.20), 9, 6))
+		body_root.add_child(Factory.sphere("EagleHead", color.darkened(0.08), Vector3(0.38, 0.38, 0.34), Vector3(0.0, 1.66, -1.53), 9, 6))
+		_add_eye_pair(1.75, -1.83, 0.19, 0.070)
+	var beak_color := Color("#d9aa3c") if is_owl else Color("#e2b64d")
+	var beak := Factory.cone("HookedBeak", beak_color, 0.16 if is_owl else 0.18, 0.52, Vector3(0.0, 1.86 if is_owl else 1.55, -0.90 if is_owl else -1.91), 7)
+	beak.rotation.x = -PI * 0.50
+	body_root.add_child(beak)
+	for side in [-1.0, 1.0]:
+		var wing := Node3D.new()
+		wing.name = "WingPivot"
+		wing.position = Vector3(side * 0.42, 1.38, -0.05)
+		body_root.add_child(wing)
+		wing.add_child(Factory.sphere("WingCover", color.darkened(0.06), Vector3(1.28, 0.12, 0.48), Vector3(side * 0.82, 0.0, 0.03), 9, 4))
+		for feather_index in range(4):
+			var feather_length := (0.96 if is_owl else 1.18) - feather_index * 0.08
+			var feather := Factory.sphere("FlightFeather", color.darkened(0.14 + feather_index * 0.025), Vector3(feather_length, 0.075, 0.13), Vector3(side * (1.20 + feather_index * 0.18), -0.04, 0.26 + feather_index * 0.18), 8, 3)
+			feather.rotation.y = side * (-0.08 - feather_index * 0.035)
+			wing.add_child(feather)
+		wing_pivots.append(wing)
+	for tail_index in range(3):
+		var tail := Factory.sphere("TailFeather", accent.darkened(0.18), Vector3(0.16, 0.08, 0.72), Vector3((tail_index - 1) * 0.18, 1.02, 1.04), 8, 3)
+		tail.rotation.y = (tail_index - 1) * 0.12
+		body_root.add_child(tail)
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("Talon", Color("#d3ad50"), Vector3(0.14, 0.10, 0.22), Vector3(side * 0.24, 0.53, -0.22), 7, 3))
+
+
+func _build_cheetah() -> void:
+	var color := Catalog.get_color(species_id)
+	var dark := Color.from_string(str(data["accent"]), Color("#3b2b22"))
+	body_root.scale = Vector3.ONE * 1.02
+	body_root.add_child(Factory.loft("CheetahBody", color, [
+		Vector3(0.0, 1.08, 1.35), Vector3(0.0, 1.12, 0.70), Vector3(0.0, 1.14, -0.05),
+		Vector3(0.0, 1.22, -0.72), Vector3(0.0, 1.48, -1.18), Vector3(0.0, 1.58, -1.58),
+		Vector3(0.0, 1.48, -2.00)
+	], [Vector2(0.28, 0.27), Vector2(0.46, 0.34), Vector2(0.47, 0.35), Vector2(0.39, 0.37), Vector2(0.29, 0.28), Vector2(0.34, 0.28), Vector2(0.13, 0.10)], 9))
+	body_root.add_child(Factory.sphere("CheetahMuzzle", Color("#ead39c"), Vector3(0.38, 0.23, 0.25), Vector3(0.0, 1.48, -2.08), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("RoundEar", dark, Vector3(0.17, 0.20, 0.12), Vector3(side * 0.28, 1.96, -1.48), 7, 4))
+	_add_eye_pair(1.70, -1.98, 0.18, 0.075)
+	body_root.add_child(Factory.sphere("CheetahNose", Color("#201b18"), Vector3(0.15, 0.10, 0.10), Vector3(0.0, 1.46, -2.34), 7, 4))
+	for side in [-1.0, 1.0]:
+		var tear_mark := Factory.sphere("TearMark", dark, Vector3(0.045, 0.22, 0.035), Vector3(side * 0.17, 1.57, -2.24), 7, 3)
+		tear_mark.rotation.z = side * 0.18
+		body_root.add_child(tear_mark)
+	for spot_index in range(12):
+		var row := spot_index / 4
+		var column := spot_index % 4
+		var side_sign := -1.0 if column < 2 else 1.0
+		body_root.add_child(Factory.sphere("CheetahSpot", dark, Vector3(0.065, 0.040, 0.085), Vector3(side_sign * (0.36 + (column % 2) * 0.06), 1.20 + row * 0.10, 0.72 - row * 0.52), 6, 3))
+	body_root.add_child(Factory.loft("CheetahTail", color.darkened(0.08), [
+		Vector3(0.0, 1.10, 1.26), Vector3(0.16, 1.18, 1.88), Vector3(0.42, 1.38, 2.50), Vector3(0.48, 1.58, 3.10)
+	], [Vector2(0.13, 0.13), Vector2(0.14, 0.13), Vector2(0.11, 0.10), Vector2(0.06, 0.06)], 8))
+	body_root.add_child(Factory.sphere("TailTip", dark, Vector3(0.15, 0.14, 0.30), Vector3(0.48, 1.58, 3.18), 7, 4))
+	_add_legs(color.darkened(0.07), 0.29, 1.02, 0.43, 0.78, dark)
+
+
+func _build_lion() -> void:
+	var color := Catalog.get_color(species_id)
+	var accent := Color.from_string(str(data["accent"]), Color("#5a3926"))
+	body_root.scale = Vector3.ONE * 1.22
+	body_root.add_child(Factory.loft("LionBody", color, [
+		Vector3(0.0, 1.05, 1.26), Vector3(0.0, 1.08, 0.62), Vector3(0.0, 1.12, -0.10),
+		Vector3(0.0, 1.27, -0.76), Vector3(0.0, 1.56, -1.13), Vector3(0.0, 1.73, -1.52),
+		Vector3(0.0, 1.61, -1.97), Vector3(0.0, 1.50, -2.28)
+	], [
+		Vector2(0.37, 0.36), Vector2(0.62, 0.46), Vector2(0.64, 0.48), Vector2(0.57, 0.58),
+		Vector2(0.42, 0.42), Vector2(0.47, 0.39), Vector2(0.30, 0.22), Vector2(0.16, 0.12)
+	], 9))
+	body_root.add_child(Factory.sphere("LionMane", accent, Vector3(1.10, 1.18, 0.68), Vector3(0.0, 1.72, -1.35), 10, 7))
+	body_root.add_child(Factory.sphere("LionFace", color.lightened(0.06), Vector3(0.62, 0.59, 0.50), Vector3(0.0, 1.76, -1.86), 9, 6))
+	body_root.add_child(Factory.sphere("LionMuzzle", Color("#ddbd83"), Vector3(0.46, 0.27, 0.28), Vector3(0.0, 1.58, -2.23), 8, 5))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("LionEar", accent.darkened(0.10), Vector3(0.25, 0.28, 0.17), Vector3(side * 0.43, 2.43, -1.54), 7, 4))
+	_add_eye_pair(1.96, -2.18, 0.24, 0.09)
+	body_root.add_child(Factory.sphere("LionNose", Color("#251e1b"), Vector3(0.20, 0.14, 0.13), Vector3(0.0, 1.58, -2.49), 7, 4))
+	body_root.add_child(Factory.loft("LionTail", color.darkened(0.06), [
+		Vector3(0.0, 1.12, 1.17), Vector3(0.16, 1.26, 1.78), Vector3(0.35, 1.51, 2.38), Vector3(0.30, 1.76, 2.88)
+	], [Vector2(0.12, 0.12), Vector2(0.13, 0.12), Vector2(0.10, 0.09), Vector2(0.055, 0.05)], 8))
+	body_root.add_child(Factory.sphere("TailTuft", accent, Vector3(0.23, 0.25, 0.40), Vector3(0.30, 1.76, 3.02), 8, 5))
+	_add_legs(color.darkened(0.10), 0.42, 0.94, 0.57, 0.78, accent.darkened(0.18))
+
+
 func _build_feline(is_tiger: bool) -> void:
 	var color := Catalog.get_color(species_id)
 	var accent := Color.from_string(str(data["accent"]), Color.BEIGE)
@@ -499,6 +910,38 @@ func _build_bison() -> void:
 	_add_eye_pair(1.95, -1.78, 0.30, 0.09)
 	body_root.add_child(Factory.sphere("Nose", Color("#26221f"), Vector3(0.31, 0.20, 0.16), Vector3(0.0, 1.67, -2.25), 8, 4))
 	_add_legs(color.darkened(0.16), 0.58, 1.02, 0.68, 0.76, Color("#28231f"))
+
+
+func _build_elephant() -> void:
+	var color := Catalog.get_color(species_id)
+	var ivory := Color.from_string(str(data["accent"]), Color("#d9d0b6"))
+	body_root.scale = Vector3.ONE * 1.48
+	body_root.add_child(Factory.loft("ElephantBody", color, [
+		Vector3(0.0, 1.48, 1.42), Vector3(0.0, 1.56, 0.78), Vector3(0.0, 1.68, 0.02),
+		Vector3(0.0, 1.82, -0.70), Vector3(0.0, 2.02, -1.16), Vector3(0.0, 2.08, -1.65),
+		Vector3(0.0, 1.92, -2.10)
+	], [
+		Vector2(0.52, 0.54), Vector2(0.92, 0.77), Vector2(0.98, 0.82), Vector2(0.90, 0.88),
+		Vector2(0.68, 0.68), Vector2(0.58, 0.54), Vector2(0.38, 0.30)
+	], 10))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("GreatEar", color.darkened(0.08), Vector3(0.16, 0.94, 0.88), Vector3(side * 0.62, 2.05, -1.55), 9, 6))
+		body_root.add_child(Factory.sphere("EarInner", color.lightened(0.07), Vector3(0.10, 0.70, 0.62), Vector3(side * 0.69, 2.02, -1.60), 8, 5))
+		var tusk := Factory.cone("Tusk", ivory, 0.12, 0.92, Vector3(side * 0.30, 1.62, -2.36), 8)
+		tusk.rotation.x = -PI * 0.50
+		body_root.add_child(tusk)
+	_add_eye_pair(2.22, -2.02, 0.34, 0.075)
+	body_root.add_child(Factory.loft("Trunk", color.lightened(0.02), [
+		Vector3(0.0, 1.92, -2.06), Vector3(0.0, 1.55, -2.34), Vector3(0.0, 1.05, -2.45),
+		Vector3(0.0, 0.57, -2.39), Vector3(0.0, 0.34, -2.62)
+	], [Vector2(0.25, 0.22), Vector2(0.23, 0.20), Vector2(0.19, 0.17), Vector2(0.15, 0.13), Vector2(0.09, 0.08)], 9))
+	for side in [-1.0, 1.0]:
+		body_root.add_child(Factory.sphere("TrunkNostril", Color("#343837"), Vector3(0.045, 0.035, 0.045), Vector3(side * 0.055, 0.34, -2.70), 6, 3))
+	body_root.add_child(Factory.loft("ElephantTail", color.darkened(0.08), [
+		Vector3(0.0, 1.56, 1.32), Vector3(0.04, 1.25, 1.80), Vector3(0.08, 0.92, 2.12)
+	], [Vector2(0.09, 0.09), Vector2(0.07, 0.07), Vector2(0.035, 0.035)], 7))
+	body_root.add_child(Factory.sphere("TailBrush", Color("#3f4442"), Vector3(0.16, 0.24, 0.16), Vector3(0.08, 0.82, 2.20), 7, 4))
+	_add_legs(color.darkened(0.08), 0.72, 1.25, 0.76, 0.88, Color("#4d514f"))
 
 
 func _build_crocodile() -> void:
@@ -631,6 +1074,33 @@ func _add_legs(color: Color, radius: float, length: float, spread_x: float, spre
 				leg_stride_scales.append(1.0 if z_sign < 0.0 else 0.92)
 
 
+func _add_primate_limbs(color: Color, arm_length: float, leg_length: float, shoulder_x: float, hip_x: float, heavy: bool) -> void:
+	for side in [-1.0, 1.0]:
+		var arm_pivot := Node3D.new()
+		arm_pivot.name = "PrimateArmPivot"
+		arm_pivot.position = Vector3(side * shoulder_x, 1.92 if heavy else 1.58, -0.12)
+		body_root.add_child(arm_pivot)
+		var elbow := Vector3(side * 0.13, -arm_length * 0.50, -0.12)
+		var knuckle := Vector3(side * 0.08, -arm_length, -0.34)
+		arm_pivot.add_child(Factory.loft("LongArm", color, [Vector3.ZERO, elbow, knuckle], [Vector2(0.28, 0.28), Vector2(0.24, 0.22), Vector2(0.18, 0.16)], 7))
+		arm_pivot.add_child(Factory.sphere("Knuckle", color.darkened(0.22), Vector3(0.32 if heavy else 0.24, 0.18, 0.34), knuckle + Vector3(0.0, -0.03, -0.08), 7, 4))
+		leg_pivots.append(arm_pivot)
+		leg_phases.append(0.0 if side < 0.0 else PI)
+		leg_stride_scales.append(0.86 if heavy else 1.0)
+
+		var leg_pivot := Node3D.new()
+		leg_pivot.name = "PrimateLegPivot"
+		leg_pivot.position = Vector3(side * hip_x, 0.98 if heavy else 0.82, 0.30)
+		body_root.add_child(leg_pivot)
+		var knee := Vector3(side * 0.08, -leg_length * 0.50, 0.14)
+		var foot := Vector3(side * 0.03, -leg_length, -0.12)
+		leg_pivot.add_child(Factory.loft("PrimateLeg", color.darkened(0.05), [Vector3.ZERO, knee, foot], [Vector2(0.26, 0.25), Vector2(0.22, 0.20), Vector2(0.16, 0.14)], 7))
+		leg_pivot.add_child(Factory.sphere("PrimateFoot", color.darkened(0.24), Vector3(0.25, 0.14, 0.38), foot + Vector3(0.0, -0.02, -0.12), 7, 4))
+		leg_pivots.append(leg_pivot)
+		leg_phases.append(PI if side < 0.0 else 0.0)
+		leg_stride_scales.append(0.74 if heavy else 0.88)
+
+
 func _physics_process(delta: float) -> void:
 	if dead:
 		return
@@ -644,7 +1114,7 @@ func _physics_process(delta: float) -> void:
 		_update_ai(delta)
 	_apply_movement(delta)
 	_try_attack()
-	_update_visual_motion(delta)
+	_update_visual_lod(delta)
 	_update_health_bar_visibility(delta)
 
 
@@ -657,6 +1127,22 @@ func _update_timers(delta: float) -> void:
 	spawn_protection = maxf(spawn_protection - delta, 0.0)
 	rage_timer = maxf(rage_timer - delta, 0.0)
 	rage_cooldown_timer = maxf(rage_cooldown_timer - delta, 0.0)
+	quill_guard_timer = maxf(quill_guard_timer - delta, 0.0)
+	shell_guard_timer = maxf(shell_guard_timer - delta, 0.0)
+	forage_speed_timer = maxf(forage_speed_timer - delta, 0.0)
+	obstacle_break_timer = maxf(obstacle_break_timer - delta, 0.0)
+	flight_ground_timer = maxf(flight_ground_timer - delta, 0.0)
+	flight_dive_timer = maxf(flight_dive_timer - delta, 0.0)
+	burst_exhaustion_timer = maxf(burst_exhaustion_timer - delta, 0.0)
+	var canopy_was_active := canopy_timer > 0.0
+	canopy_timer = maxf(canopy_timer - delta, 0.0)
+	if Catalog.has_trait(species_id, "flying"):
+		flight_target_height = 0.58 if flight_ground_timer > 0.0 or flight_dive_timer > 0.0 else float(data.get("flight_height", 4.2))
+	elif Catalog.has_trait(species_id, "canopy_mover"):
+		flight_target_height = 3.35 if canopy_timer > 0.0 else 0.45
+		if canopy_was_active and canopy_timer <= 0.0 and game.world != null and game.world.has_method("nearest_legal_landing"):
+			landing_target_position = game.world.nearest_legal_landing(global_position, 0.52)
+	calm_timer = maxf(calm_timer - delta, 0.0)
 	alert_cooldown = maxf(alert_cooldown - delta, 0.0)
 	state_commit_timer = maxf(state_commit_timer - delta, 0.0)
 	starvation_warning_timer = maxf(starvation_warning_timer - delta, 0.0)
@@ -728,9 +1214,22 @@ func _update_player_intent() -> void:
 	desired_direction = game.input_to_world(input_vector)
 	wants_sprint = game.is_sprint_pressed() and input_vector.length() > 0.15
 	attack_intent = game.is_attack_pressed()
+	if game.has_method("on_player_action"):
+		if input_vector.length() > 0.15:
+			game.on_player_action("move")
+		if wants_sprint:
+			game.on_player_action("sprint")
+		if attack_intent:
+			game.on_player_action("attack")
+	if Catalog.has_trait(species_id, "flying") and attack_intent:
+		_request_landing(1.15)
 	if game.consume_skill_request():
-		use_skill(_nearest_living_actor(7.0))
+		if game.has_method("on_player_action"):
+			game.on_player_action("skill")
+		use_skill(_nearest_living_actor(_skill_engage_range()))
 	if game.consume_interact_request():
+		if game.has_method("on_player_action"):
+			game.on_player_action("eat")
 		try_consume_nearby()
 	if species_id == "rabbit" and alert_cooldown <= 0.0:
 		for other in game.get_living_actors():
@@ -738,6 +1237,54 @@ func _update_player_intent() -> void:
 				game.show_hint("警觉：附近的天敌盯上了你")
 				alert_cooldown = 5.0
 				break
+
+
+func is_airborne() -> bool:
+	return (Catalog.has_trait(species_id, "flying") or Catalog.has_trait(species_id, "canopy_mover")) and global_position.y > 1.30
+
+
+func is_in_canopy() -> bool:
+	return Catalog.has_trait(species_id, "canopy_mover") and canopy_timer > 0.0 and global_position.y > 1.30
+
+
+func movement_domain_label() -> String:
+	if is_in_canopy():
+		return "树冠层"
+	if Catalog.has_trait(species_id, "flying"):
+		return "低空接敌" if global_position.y < 1.30 else "巡航空域"
+	return "地面"
+
+
+func _try_enter_canopy(duration: float) -> bool:
+	if not Catalog.has_trait(species_id, "canopy_mover") or game.world == null:
+		return false
+	if game.world.region_id_at(global_position) != "forest" or not game.world.has_method("nearest_climbable_tree"):
+		return false
+	var tree_position: Vector3 = game.world.nearest_climbable_tree(global_position, 4.6)
+	if tree_position.x == INF:
+		return false
+	var away := Vector3(global_position.x - tree_position.x, 0.0, global_position.z - tree_position.z)
+	if away.length() < 0.1:
+		away = Vector3.RIGHT if actor_id % 2 == 0 else Vector3.LEFT
+	canopy_anchor = tree_position + away.normalized() * 1.05
+	landing_target_position = Vector3(canopy_anchor.x, 0.45, canopy_anchor.z)
+	canopy_timer = maxf(canopy_timer, duration)
+	flight_target_height = 3.35
+	hidden_timer = maxf(hidden_timer, duration * 0.55)
+	collision_mask = 0
+	return true
+
+
+func _request_landing(duration: float) -> void:
+	if not Catalog.has_trait(species_id, "flying"):
+		return
+	flight_ground_timer = maxf(flight_ground_timer, duration)
+	flight_target_height = 0.58
+	var radius := 0.40 + int(data["size"]) * 0.09
+	if game.world != null and game.world.has_method("nearest_legal_landing"):
+		landing_target_position = game.world.nearest_legal_landing(global_position, radius)
+	else:
+		landing_target_position = Vector3(global_position.x, 0.45, global_position.z)
 
 
 func _update_ai(delta: float) -> void:
@@ -753,21 +1300,34 @@ func _update_ai(delta: float) -> void:
 				var evade_side := Vector3(-away.z, 0.0, away.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 				desired_direction = (away + evade_side * 0.26).normalized()
 				wants_sprint = stamina > max_stamina * 0.16
-				var flee_skill_range := 4.0 if species_id == "rabbit" else (5.5 if species_id in ["bison", "rhino"] else 3.4)
-				if skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and global_position.distance_to(ai_target.global_position) < flee_skill_range and species_id in ["rabbit", "deer", "boar", "bison", "moose", "rhino", "hippo"]:
+				var flee_skill_range := _skill_engage_range()
+				var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
+				if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and global_position.distance_to(ai_target.global_position) < flee_skill_range:
 					use_skill(ai_target)
 			else:
 				ai_state = "wander"
 		"hunt":
 			if is_instance_valid(ai_target) and not ai_target.dead:
+				if Catalog.has_trait(species_id, "territorial") and territory_radius > 0.0 and not _collapse_competition_active():
+					var target_from_territory := ai_target.global_position.distance_to(territory_center)
+					if target_from_territory > territory_radius * 1.35 and hunger < 72.0:
+						ai_state = "territory_return"
+						ai_target = null
+						return
 				var lead_time := clampf(global_position.distance_to(ai_target.global_position) * 0.035, 0.12, 0.55)
 				var predicted_target := ai_target.global_position + Vector3(ai_target.velocity.x, 0.0, ai_target.velocity.z) * lead_time
 				var to_target := predicted_target - global_position
 				desired_direction = Vector3(to_target.x, 0.0, to_target.z).normalized()
 				var distance := global_position.distance_to(ai_target.global_position)
-				if species_id in ["wolf", "fox", "lynx", "tiger"] and distance > float(data["attack_range"]) * 1.35:
+				var planar_distance := Vector2(global_position.x - ai_target.global_position.x, global_position.z - ai_target.global_position.z).length()
+				if Catalog.has_trait(species_id, "flying"):
+					if planar_distance < 4.8:
+						_request_landing(1.25)
+					else:
+						flight_ground_timer = 0.0
+				if Catalog.has_trait(species_id, "flanker") and distance > float(data["attack_range"]) * 1.35:
 					var flank := Vector3(-desired_direction.z, 0.0, desired_direction.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
-					desired_direction = (desired_direction + flank * (0.32 if species_id == "wolf" else 0.20)).normalized()
+					desired_direction = (desired_direction + flank * (0.32 if Catalog.has_trait(species_id, "pack_hunter") else 0.20)).normalized()
 				elif distance < float(data["attack_range"]) * 0.72:
 					desired_direction = Vector3.ZERO
 				wants_sprint = distance > float(data["attack_range"]) * 0.9 and stamina > max_stamina * 0.28
@@ -780,6 +1340,10 @@ func _update_ai(delta: float) -> void:
 			if is_instance_valid(resource_target) and (not resource_target is FoodPatch or resource_target.active):
 				var to_food := resource_target.global_position - global_position
 				desired_direction = Vector3(to_food.x, 0.0, to_food.z).normalized()
+				if Catalog.has_trait(species_id, "flying") and Vector2(to_food.x, to_food.z).length() < 5.5:
+					_request_landing(3.2)
+				if species_id == "raccoon" and to_food.length() < 4.2 and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]):
+					use_skill(_nearest_living_actor(5.0))
 				if to_food.length() < 2.0:
 					desired_direction = Vector3.ZERO
 					try_consume_resource(resource_target)
@@ -789,6 +1353,13 @@ func _update_ai(delta: float) -> void:
 			desired_direction = Vector3.ZERO
 			if stamina > max_stamina * 0.72:
 				ai_state = "wander"
+		"territory_return":
+			var home_offset := territory_center - global_position
+			desired_direction = Vector3(home_offset.x, 0.0, home_offset.z).normalized()
+			wants_sprint = home_offset.length() > territory_radius * 0.85 and stamina > max_stamina * 0.32
+			if home_offset.length() < maxf(2.0, territory_radius * 0.22):
+				ai_state = "wander"
+				desired_direction = Vector3.ZERO
 		_:
 			if wander_timer <= 0.0:
 				wander_timer = 1.4 + fmod(float(actor_id) * 0.51 + Time.get_ticks_msec() * 0.001, 2.8)
@@ -803,12 +1374,21 @@ func _think() -> void:
 	for other in game.get_living_actors():
 		if other == self or other.dead:
 			continue
+		if is_airborne() and not Catalog.has_trait(other.species_id, "flying"):
+			continue
 		if Catalog.considers_prey(other.species_id, species_id):
 			var distance := global_position.distance_to(other.global_position)
 			var stronger: bool = other.health / other.max_health > 0.25 or int(other.data["size"]) >= int(data["size"])
 			if distance < threat_distance and stronger:
 				nearest_threat = other
 				threat_distance = distance
+	# The final habitat contest overrides ordinary fear and retaliation. Without
+	# this priority, wounded same-species survivors can keep fleeing from one
+	# another forever after they become the only remaining group.
+	var collapse_competitor := _best_collapse_competitor()
+	if is_instance_valid(collapse_competitor):
+		_switch_state("hunt", collapse_competitor)
+		return
 	var flee_distance := 10.0 + int(data["size"]) * 1.5
 	if species_id == "rabbit":
 		flee_distance += 4.0
@@ -819,13 +1399,37 @@ func _think() -> void:
 	if state_commit_timer > 0.0 and ai_state != "wander":
 		return
 
-	if is_instance_valid(nearest_threat) and threat_distance < flee_distance and (health < max_health * 0.72 or float(data["courage"]) < 0.4):
+	var flee_health_threshold := 0.38 if Catalog.has_trait(species_id, "brave_vs_large") else 0.72
+	if is_instance_valid(nearest_threat) and threat_distance < flee_distance and (health < max_health * flee_health_threshold or float(data["courage"]) < 0.4):
 		_switch_state("flee", nearest_threat)
 		return
 
 	if stamina < max_stamina * 0.20:
 		_switch_state("rest", null)
 		return
+
+	if calm_timer > 0.0 and hunger < 70.0:
+		if hunger > 42.0:
+			var calm_resource := _best_food_resource()
+			if is_instance_valid(calm_resource):
+				ai_state = "food"
+				resource_target = calm_resource
+				return
+		ai_state = "wander"
+		ai_target = null
+		return
+
+	if Catalog.has_trait(species_id, "territorial") and territory_radius > 0.0:
+		var home_distance := global_position.distance_to(territory_center)
+		if home_distance > territory_radius * 1.18:
+			ai_state = "territory_return"
+			ai_target = null
+			return
+		if hunger < 68.0:
+			var intruder := _best_territory_intruder()
+			if is_instance_valid(intruder):
+				_switch_state("hunt", intruder)
+				return
 
 	if hunger > 42.0:
 		var resource := _best_food_resource()
@@ -852,6 +1456,51 @@ func _think() -> void:
 	ai_state = "wander"
 
 
+func _best_collapse_competitor() -> EcoActor:
+	if game.world == null or not game.world.collapse_active:
+		return null
+	if game.world.collapse_radius > game.world.world_size * 0.34:
+		return null
+	var nearest_other_species: EcoActor
+	var nearest_same_species: EcoActor
+	# Once the habitat has fully converged, every survivor must be able to find a
+	# competitor. Limiting this search to melee-scale distances could leave two
+	# animals wandering on opposite sides of the final circle indefinitely.
+	var other_distance := INF
+	var same_distance := INF
+	for other in game.get_living_actors():
+		if other == self or other.dead or other.spawn_protection > 0.0:
+			continue
+		var distance := global_position.distance_to(other.global_position)
+		if other.species_id != species_id and distance < other_distance:
+			nearest_other_species = other
+			other_distance = distance
+		elif other.species_id == species_id and distance < same_distance:
+			nearest_same_species = other
+			same_distance = distance
+	return nearest_other_species if is_instance_valid(nearest_other_species) else nearest_same_species
+
+
+func _collapse_competition_active() -> bool:
+	return game.world != null and game.world.collapse_active and game.world.collapse_radius <= game.world.world_size * 0.34
+
+
+func _best_territory_intruder() -> EcoActor:
+	var closest: EcoActor
+	var closest_distance: float = territory_radius * 0.76
+	for other in game.get_living_actors():
+		if other == self or other.dead or other.spawn_protection > 0.0 or other.species_id == species_id:
+			continue
+		var distance_from_home: float = other.global_position.distance_to(territory_center)
+		if distance_from_home >= closest_distance:
+			continue
+		if int(other.data["size"]) > int(data["size"]) + 1 and health < max_health * 0.78:
+			continue
+		closest = other
+		closest_distance = distance_from_home
+	return closest
+
+
 func _switch_state(new_state: String, target: EcoActor) -> void:
 	if ai_state != new_state:
 		state_commit_timer = 1.4
@@ -866,20 +1515,38 @@ func _skill_engage_range() -> float:
 		"snake": return 2.1
 		"bear": return 3.4
 		"boar": return 5.8
+		"raccoon": return 4.8
+		"porcupine": return 3.8
 		"lynx": return 5.9
+		"capybara": return 8.5
+		"otter": return 5.8
+		"goat": return 5.8
+		"wolverine": return 5.5
 		"bison": return 6.0
+		"zebra": return 5.4
+		"elephant": return 5.8
 		"crocodile": return 2.9
 		"tiger": return 6.5
+		"monkey": return 8.8
+		"owl": return 8.8
 		"moose": return 3.8
+		"turtle": return 4.2
+		"cheetah": return 8.8
 		"rhino": return 7.2
+		"gorilla": return 4.5
+		"eagle": return 10.2
 		"hippo": return 3.8
+		"hyena": return 5.5
+		"lion": return 6.3
 		_: return 5.2
 
 
 func _best_food_resource() -> Node3D:
 	var corpse: Node3D
 	if Catalog.can_eat_corpse(species_id):
-		var corpse_range := 34.0 * (1.4 if species_id == "fox" else (1.22 if species_id == "crocodile" else 1.0))
+		var corpse_range := 34.0
+		if Catalog.has_trait(species_id, "scavenger"):
+			corpse_range *= 1.55 if species_id == "raccoon" else 1.36
 		corpse = game.nearest_corpse(global_position, corpse_range)
 	if is_instance_valid(corpse):
 		return corpse
@@ -897,11 +1564,15 @@ func _best_prey() -> EcoActor:
 	for other in game.get_living_actors():
 		if other == self or other.dead or other.spawn_protection > 0.0 or not Catalog.considers_prey(species_id, other.species_id):
 			continue
+		if other.is_airborne() and not Catalog.has_trait(species_id, "flying"):
+			continue
 		var distance := global_position.distance_to(other.global_position)
 		var detect_range := 27.0 * (0.6 if other.is_stealthed() else 1.0)
+		if game.world != null and game.world.has_method("perception_multiplier"):
+			detect_range *= game.world.perception_multiplier(species_id)
 		if other.scent_mark_timer > 0.0:
 			detect_range *= 1.65
-		if species_id in ["fox", "lynx", "tiger"] and other.health / other.max_health < 0.30:
+		if Catalog.has_trait(species_id, "finisher") and other.health / other.max_health < 0.30:
 			detect_range *= 1.6
 		if distance > detect_range:
 			continue
@@ -918,8 +1589,25 @@ func _best_prey() -> EcoActor:
 
 func _apply_movement(delta: float) -> void:
 	var flat_direction := Vector3(desired_direction.x, 0.0, desired_direction.z).normalized()
-	if not is_player and game.world != null and flat_direction.length() > 0.1:
-		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, 0.52 + int(data["size"]) * 0.09, actor_id)
+	var is_flying := Catalog.has_trait(species_id, "flying")
+	var canopy_height_active := Catalog.has_trait(species_id, "canopy_mover") and (canopy_timer > 0.0 or global_position.y > 0.58)
+	var uses_height_domain := is_flying or canopy_height_active
+	if uses_height_domain and flight_target_height < 1.0:
+		var landing_offset := landing_target_position - global_position
+		var landing_flat := Vector3(landing_offset.x, 0.0, landing_offset.z)
+		if landing_flat.length() > 0.55:
+			flat_direction = (flat_direction * 0.42 + landing_flat.normalized() * 0.92).normalized()
+	if not is_player and game.world != null and game.world.collapse_active:
+		var center_distance := Vector2(global_position.x, global_position.z).length()
+		if center_distance > game.world.collapse_radius:
+			var toward_center := Vector3(-global_position.x, 0.0, -global_position.z).normalized()
+			flat_direction = (flat_direction + toward_center * 1.25).normalized()
+	if not is_player and game.world != null and flat_direction.length() > 0.1 and (not uses_height_domain or global_position.y < 1.35):
+		var steering_radius := 0.52 + int(data["size"]) * 0.09
+		if Catalog.has_trait(species_id, "climber"):
+			steering_radius *= 0.80
+		var look_ahead_scale := 1.72 if species_id == "cheetah" else 1.0
+		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale)
 	if avoid_timer > 0.0 and not is_player:
 		avoid_timer -= delta
 		flat_direction = (flat_direction + avoid_direction * 1.3).normalized()
@@ -945,9 +1633,26 @@ func _apply_movement(delta: float) -> void:
 			flat_direction = smoothed_move_direction
 		else:
 			smoothed_move_direction = smoothed_move_direction.lerp(Vector3.ZERO, 1.0 - exp(-delta * 10.0))
+	if shell_guard_timer > 0.0:
+		flat_direction = Vector3.ZERO
+		wants_sprint = false
+	var water_depth: float = game.world.water_depth_at(global_position) if game.world != null and game.world.has_method("water_depth_at") else 0.0
+	var in_wetland: bool = water_depth > 0.01
 	var speed := float(data["speed"])
+	if game.world != null and game.world.has_method("movement_multiplier"):
+		speed *= game.world.movement_multiplier(species_id, global_position)
+	if not uses_height_domain and in_wetland and Catalog.has_trait(species_id, "wetland_swimmer"):
+		speed *= float(data.get("wetland_speed", 1.0))
+	elif not uses_height_domain and water_depth > 0.45:
+		speed *= 0.68 if not Catalog.has_trait(species_id, "giant") else 0.84
+	elif not uses_height_domain and in_wetland:
+		speed *= 0.90
+	if forage_speed_timer > 0.0:
+		speed *= 1.16
 	if slow_timer > 0.0:
 		speed *= slow_multiplier
+	if species_id == "cheetah" and burst_exhaustion_timer > 0.0 and dash_timer <= 0.0:
+		speed *= 0.70
 	var sprinting := wants_sprint and stamina > 0.0 and flat_direction.length() > 0.1
 	if sprinting and flat_direction.dot(previous_flat_direction) > 0.9:
 		straight_run_timer += delta
@@ -957,8 +1662,14 @@ func _apply_movement(delta: float) -> void:
 	if sprinting:
 		speed *= float(data["sprint"])
 		var sprint_cost := 8.5 + int(data["size"]) * 1.7
-		if species_id in ["deer", "bison", "rhino"] and straight_run_timer > 2.0:
+		if Catalog.has_trait(species_id, "straight_runner") and straight_run_timer > 2.0:
 			sprint_cost *= 0.82
+		if not uses_height_domain and in_wetland and Catalog.has_trait(species_id, "wetland_swimmer"):
+			sprint_cost *= 0.70
+		elif not uses_height_domain and water_depth > 0.45:
+			sprint_cost *= 1.25
+		if is_flying and game.world != null and game.world.has_method("flight_stamina_multiplier"):
+			sprint_cost *= game.world.flight_stamina_multiplier()
 		stamina = maxf(stamina - sprint_cost * delta, 0.0)
 	else:
 		var hunger_factor := 1.0 if hunger < 70.0 else (0.85 if hunger < 90.0 else 0.65)
@@ -966,21 +1677,34 @@ func _apply_movement(delta: float) -> void:
 	if dash_timer > 0.0:
 		dash_timer -= delta
 		flat_direction = dash_direction
-		speed = float(data["speed"]) * 2.25
+		var dash_factor := 2.85 if species_id == "cheetah" else (2.55 if is_flying else 2.25)
+		var environment_factor: float = game.world.movement_multiplier(species_id, global_position) if game.world != null and game.world.has_method("movement_multiplier") else 1.0
+		speed = float(data["speed"]) * dash_factor * environment_factor * (float(data.get("wetland_speed", 1.0)) if in_wetland and not is_flying else 1.0)
 	velocity.x = move_toward(velocity.x, flat_direction.x * speed, delta * speed * 8.0)
 	velocity.z = move_toward(velocity.z, flat_direction.z * speed, delta * speed * 8.0)
-	if not is_on_floor():
+	if uses_height_domain:
+		var vertical_offset := flight_target_height - global_position.y
+		velocity.y = move_toward(velocity.y, clampf(vertical_offset * 3.8, -6.4, 6.4), delta * 18.0)
+		collision_mask = 0 if global_position.y > 1.30 or flight_target_height > 1.30 else 2
+	elif not is_on_floor():
 		velocity.y -= 18.0 * delta
 	else:
 		velocity.y = -0.8
 	move_and_slide()
 	var wall_normal := Vector3.ZERO
-	if not is_player:
+	if not is_player or Catalog.has_trait(species_id, "obstacle_breaker"):
 		for collision_index in range(get_slide_collision_count()):
 			var candidate_normal := get_slide_collision(collision_index).get_normal()
 			if absf(candidate_normal.y) < 0.55:
 				wall_normal = candidate_normal
 				break
+	if wall_normal.length() > 0.1 and Catalog.has_trait(species_id, "obstacle_breaker") and obstacle_break_timer <= 0.0 and game.world != null and game.world.has_method("flatten_light_obstacles_near"):
+		var break_origin := global_position + flat_direction * 1.25
+		var flattened: int = game.world.flatten_light_obstacles_near(break_origin, 1.8, 1)
+		if flattened > 0:
+			obstacle_break_timer = 3.5
+			if is_player:
+				game.show_hint("巨体推倒了挡路的小树，新的通路已经打开")
 	if wall_normal.length() > 0.1 and not is_player:
 		wander_direction = wander_direction.rotated(Vector3.UP, 1.3 + actor_id * 0.07)
 		wander_timer = 0.9
@@ -992,6 +1716,12 @@ func _apply_movement(delta: float) -> void:
 			avoid_timer = 0.5
 	if game.world != null:
 		global_position = game.world.clamp_position(global_position)
+	if uses_height_domain:
+		var maximum_height := float(data.get("flight_height", 4.2)) + 0.65 if is_flying else 3.75
+		global_position.y = clampf(global_position.y, 0.42, maximum_height)
+		if is_instance_valid(pending_food_resource) and global_position.y < 0.92 and global_position.distance_to(pending_food_resource.global_position) <= 2.6:
+			try_consume_resource(pending_food_resource)
+			pending_food_resource = null
 	if flat_direction.length() > 0.12:
 		var target_angle := atan2(-flat_direction.x, -flat_direction.z)
 		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-delta * (7.0 if int(data["size"]) < 4 else 4.2)))
@@ -1004,6 +1734,15 @@ func _apply_movement(delta: float) -> void:
 func _try_attack() -> void:
 	if not attack_intent or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
 		return
+	if is_airborne():
+		_request_landing(1.15)
+		return
+	if calm_timer > 0.0 and hunger < 70.0:
+		attack_intent = false
+		return
+	if shell_guard_timer > 0.0:
+		attack_intent = false
+		return
 	var target := ai_target if not is_player else _nearest_living_actor(float(data["attack_range"]) + 0.9)
 	if not is_instance_valid(target) or target.dead:
 		return
@@ -1013,17 +1752,19 @@ func _try_attack() -> void:
 	attack_timer = float(data["attack_interval"])
 	spawn_protection = 0.0
 	var attack_cost := float(data["attack_cost"])
-	if species_id == "wolf":
+	if Catalog.has_trait(species_id, "pack_hunter"):
 		var nearby_pack := 0
 		for other in game.get_living_actors():
-			if other != self and other.species_id == "wolf" and global_position.distance_to(other.global_position) < 12.0:
+			if other != self and other.species_id == species_id and global_position.distance_to(other.global_position) < 12.0:
 				nearby_pack += 1
 		attack_cost *= 1.0 - mini(nearby_pack, 3) * 0.06
 	stamina -= attack_cost
 	var damage := float(data["attack"])
 	if not is_player:
 		damage *= game.get_ai_damage_multiplier()
-	if species_id in ["fox", "lynx"] and target.health / target.max_health < 0.30:
+	if Catalog.has_trait(species_id, "finisher") and target.health / target.max_health < 0.30:
+		damage *= 1.12
+	if Catalog.has_trait(species_id, "brave_vs_large") and int(target.data["size"]) > int(data["size"]):
 		damage *= 1.12
 	if rage_timer > 0.0:
 		damage *= 1.1
@@ -1136,6 +1877,49 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.8)
 				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.20)
 				used = true
+		"raccoon":
+			var stolen_resource := _best_food_resource()
+			if is_instance_valid(stolen_resource) and global_position.distance_to(stolen_resource.global_position) < 4.6:
+				var stolen_amount: float = stolen_resource.consume(24.0)
+				if stolen_amount > 0.0:
+					var nutrition: float = stolen_resource.get_nutrition_multiplier() if stolen_resource is FoodPatch else 1.0
+					hunger = maxf(hunger - stolen_amount * 0.95 * nutrition, 0.0)
+					health = minf(health + stolen_amount * 0.10 * nutrition, max_health)
+					health_changed.emit(health, max_health)
+					_update_health_bar()
+					resource_target = null
+					used = true
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 4.8:
+				target.apply_slow(0.86, 1.2)
+				affected_count += 1
+				used = true
+			if used:
+				var escape_direction := desired_direction
+				if is_instance_valid(target):
+					escape_direction = global_position - target.global_position
+				if escape_direction.length() < 0.1:
+					escape_direction = -transform.basis.z
+				dash_direction = Vector3(escape_direction.x, 0.0, escape_direction.z).normalized()
+				dash_timer = 0.42
+				hidden_timer = 0.75
+				forage_speed_timer = 3.2
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.7)
+				SkillVFX.radial_burst(effect_parent, global_position, effect_color, 2.0, 9, 0.13, 0.36)
+		"porcupine":
+			quill_guard_timer = 4.5
+			used = true
+			for other in game.get_living_actors():
+				if other == self or other.dead:
+					continue
+				var quill_distance := global_position.distance_to(other.global_position)
+				if quill_distance < 3.4:
+					other.take_damage(_skill_damage(0.62), self)
+					other.apply_knockback((other.global_position - global_position).normalized(), 6.4)
+					affected_count += 1
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.55, 3.5, 0.42)
+			SkillVFX.radial_burst(effect_parent, global_position, effect_color.lightened(0.15), 3.2, 16, 0.16, 0.50, 0.24)
+			if effect_parent != null:
+				SkillVFX.status_aura(self, effect_color, 4.5, 0.78)
 		"lynx":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 6.0:
 				dash_direction = (target.global_position - global_position).normalized()
@@ -1145,6 +1929,57 @@ func use_skill(target: EcoActor = null) -> bool:
 				target.apply_slow(0.72, 2.8)
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.1)
 				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.10)
+				used = true
+		"capybara":
+			used = true
+			stamina = minf(max_stamina, stamina + 12.0)
+			for other in game.get_living_actors():
+				if other == self or other.dead or global_position.distance_to(other.global_position) > 8.5:
+					continue
+				if other.hunger < 70.0:
+					other.apply_calm(self, 4.2)
+					affected_count += 1
+				if other.species_id == "capybara":
+					other.stamina = minf(other.max_stamina, other.stamina + 18.0)
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.65, 4.5, 0.52)
+			SkillVFX.ring(effect_parent, global_position, effect_color.lightened(0.22), 0.82, 8.2, 0.72, 0.10)
+			SkillVFX.radial_burst(effect_parent, global_position, effect_color, 3.3, 12, 0.16, 0.42, 0.22)
+			if effect_parent != null:
+				SkillVFX.status_aura(self, effect_color, 4.2, 0.92)
+		"otter":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.9:
+				var otter_in_wetland: bool = game.world != null and game.world.has_method("water_depth_at") and game.world.water_depth_at(global_position) > 0.01
+				dash_direction = (target.global_position - global_position).normalized()
+				dash_timer = 0.56 if otter_in_wetland else 0.36
+				target.take_damage(_skill_damage(1.26), self)
+				target.apply_slow(0.70 if otter_in_wetland else 0.78, 2.8)
+				if otter_in_wetland:
+					stamina = minf(max_stamina, stamina + 13.0)
+					hidden_timer = 0.55
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.8 if otter_in_wetland else 3.8)
+				SkillVFX.ring(effect_parent, target.global_position, effect_color, 0.36, 2.6, 0.36)
+				SkillVFX.radial_burst(effect_parent, target.global_position, effect_color.lightened(0.16), 2.3, 12, 0.12, 0.38, 0.14)
+				used = true
+		"goat":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.9:
+				dash_direction = (target.global_position - global_position).normalized()
+				dash_timer = 0.38
+				target.take_damage(_skill_damage(1.34), self)
+				target.apply_knockback(dash_direction, 8.8)
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.2)
+				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.18)
+				used = true
+		"wolverine":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.6:
+				dash_direction = (target.global_position - global_position).normalized()
+				dash_timer = 0.34
+				var wolverine_factor := 1.72 if int(target.data["size"]) > int(data["size"]) else 1.42
+				target.take_damage(_skill_damage(wolverine_factor), self)
+				target.apply_slow(0.82, 2.0)
+				stamina = minf(max_stamina, stamina + 12.0)
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.0)
+				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.26)
+				SkillVFX.radial_burst(effect_parent, target.global_position, effect_color, 1.8, 8, 0.13, 0.33)
 				used = true
 		"bison":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 6.1:
@@ -1159,6 +1994,53 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.15), 4.8, 10)
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.6)
 				used = true
+		"elephant":
+			for other in game.get_living_actors():
+				if other == self or other.dead:
+					continue
+				var elephant_distance := global_position.distance_to(other.global_position)
+				if elephant_distance < 5.8:
+					var stomp_factor := lerpf(1.15, 0.72, clampf(elephant_distance / 5.8, 0.0, 1.0))
+					other.take_damage(_skill_damage(stomp_factor), self)
+					other.apply_knockback((other.global_position - global_position).normalized(), 14.0)
+					affected_count += 1
+					used = true
+				elif elephant_distance < 9.0 and int(other.data["size"]) < int(data["size"]):
+					other.apply_panic(self, 3.2)
+					affected_count += 1
+					used = true
+			if game.world != null and game.world.has_method("flatten_light_obstacles_near"):
+				var broken_trees: int = game.world.flatten_light_obstacles_near(global_position, 5.6, 3)
+				affected_count += broken_trees
+				used = used or broken_trees > 0
+			if used:
+				SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.26), 7.2, 16)
+				SkillVFX.ring(effect_parent, global_position, effect_color, 0.85, 5.8, 0.52)
+				SkillVFX.ring(effect_parent, global_position, effect_color.lightened(0.14), 0.92, 9.0, 0.72, 0.10)
+				SkillVFX.radial_burst(effect_parent, global_position, effect_color, 5.8, 16, 0.24, 0.55, 0.18)
+		"zebra":
+			var zebra_direction := desired_direction
+			if is_instance_valid(target):
+				zebra_direction = global_position - target.global_position
+			if zebra_direction.length() < 0.1:
+				zebra_direction = -transform.basis.z
+			dash_direction = Vector3(zebra_direction.x, 0.0, zebra_direction.z).normalized()
+			dash_timer = 0.52
+			hidden_timer = 0.72
+			used = true
+			for other in game.get_living_actors():
+				if other == self or other.dead or other.is_player or other.species_id != "zebra":
+					continue
+				if other.global_position.distance_to(global_position) > 10.0:
+					continue
+				other.ai_state = "flee"
+				other.ai_target = target
+				other.wander_direction = dash_direction
+				other.stamina = minf(other.max_stamina, other.stamina + 10.0)
+				other.state_commit_timer = maxf(other.state_commit_timer, 2.4)
+				affected_count += 1
+			SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 5.0)
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.65, 4.5, 0.40)
 		"crocodile":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 3.0:
 				var roll_direction := (target.global_position - global_position).normalized()
@@ -1181,6 +2063,33 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.52)
 				SkillVFX.radial_burst(effect_parent, target.global_position, effect_color, 2.8, 12, 0.17, 0.42)
 				used = true
+		"monkey":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 8.9:
+				_spawn_skill_projectile(target, _skill_damage(1.28), effect_color)
+				target.apply_scent_mark(5.0, self, effect_color)
+				SkillVFX.radial_burst(effect_parent, global_position + Vector3.UP * 1.25, effect_color, 1.4, 8, 0.10, 0.28)
+				used = true
+			var entered_canopy := _try_enter_canopy(4.8)
+			if entered_canopy:
+				SkillVFX.ring(effect_parent, global_position, effect_color, 0.42, 2.8, 0.34)
+				SkillVFX.radial_burst(effect_parent, global_position + Vector3.UP * 2.2, effect_color.lightened(0.16), 2.0, 10, 0.11, 0.36)
+				used = true
+		"owl":
+			if is_instance_valid(target):
+				var owl_planar_distance := Vector2(global_position.x - target.global_position.x, global_position.z - target.global_position.z).length()
+				if owl_planar_distance < 8.9:
+					dash_direction = Vector3(target.global_position.x - global_position.x, 0.0, target.global_position.z - global_position.z).normalized()
+					dash_timer = 0.46
+					flight_dive_timer = 0.48
+					flight_target_height = 0.72
+					var night_bonus := 1.72 if game.world != null and game.world.time_phase == "night" else 1.42
+					_resolve_flight_strike(target, _skill_damage(night_bonus), 0.74, 2.6, 0.0, dash_direction, 0.16)
+					hidden_timer = 0.82
+					SkillVFX.ring(effect_parent, target.global_position, effect_color.lightened(0.18), 0.38, 1.9, 0.22)
+					SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 6.4)
+					SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.34)
+					SkillVFX.radial_burst(effect_parent, target.global_position, effect_color, 2.3, 10, 0.14, 0.34)
+					used = true
 		"moose":
 			for other in game.get_living_actors():
 				if other == self or other.dead:
@@ -1194,6 +2103,29 @@ func use_skill(target: EcoActor = null) -> bool:
 			if used:
 				SkillVFX.ring(effect_parent, global_position, effect_color, 0.65, 4.0, 0.46)
 				SkillVFX.radial_burst(effect_parent, global_position, effect_color, 3.7, 14, 0.20, 0.48)
+		"turtle":
+			shell_guard_timer = 2.8 if _collapse_competition_active() else 5.0
+			stamina = minf(max_stamina, stamina + 8.0)
+			attack_intent = false
+			used = true
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.55, 2.5, 0.44)
+			SkillVFX.ring(effect_parent, global_position, effect_color.darkened(0.16), 0.62, 3.7, 0.60, 0.10)
+			if effect_parent != null:
+				SkillVFX.status_aura(self, effect_color, shell_guard_timer, 0.86)
+		"cheetah":
+			if is_instance_valid(target):
+				var cheetah_planar_distance := Vector2(global_position.x - target.global_position.x, global_position.z - target.global_position.z).length()
+				if cheetah_planar_distance < 8.9:
+					dash_direction = Vector3(target.global_position.x - global_position.x, 0.0, target.global_position.z - global_position.z).normalized()
+					var clear_grassland: bool = game.world != null and game.world.weather_id == "clear" and game.world.region_id_at(global_position) == "grassland"
+					dash_timer = 0.76 if clear_grassland else 0.58
+					burst_exhaustion_timer = 3.2
+					target.take_damage(_skill_damage(1.70 if clear_grassland else 1.52), self)
+					target.apply_slow(0.76, 1.8)
+					SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 7.4 if clear_grassland else 5.8)
+					SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.46)
+					SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.20), 5.2, 10)
+					used = true
 		"rhino":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 7.3:
 				dash_direction = (target.global_position - global_position).normalized()
@@ -1204,6 +2136,41 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 6.0)
 				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.62)
 				used = true
+		"gorilla":
+			territory_center = global_position
+			territory_radius = maxf(territory_radius, 15.4)
+			used = true
+			for other in game.get_living_actors():
+				if other == self or other.dead:
+					continue
+				var gorilla_distance := global_position.distance_to(other.global_position)
+				if gorilla_distance < 4.5:
+					other.take_damage(_skill_damage(1.42), self)
+					other.apply_knockback((other.global_position - global_position).normalized(), 10.8)
+					affected_count += 1
+				elif gorilla_distance < 8.2 and int(other.data["size"]) < int(data["size"]):
+					other.apply_panic(self, 3.0)
+					affected_count += 1
+			SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.28), 5.7, 14)
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.78, 4.8, 0.46)
+			SkillVFX.ring(effect_parent, global_position, effect_color.lightened(0.12), 0.85, 8.0, 0.64, 0.10)
+		"eagle":
+			if is_instance_valid(target):
+				var eagle_planar_distance := Vector2(global_position.x - target.global_position.x, global_position.z - target.global_position.z).length()
+				if eagle_planar_distance < 10.3:
+					dash_direction = Vector3(target.global_position.x - global_position.x, 0.0, target.global_position.z - global_position.z).normalized()
+					dash_timer = 0.54
+					flight_dive_timer = 0.52
+					flight_target_height = 0.76
+					var distance_bonus := lerpf(1.48, 1.90, clampf(eagle_planar_distance / 10.3, 0.0, 1.0))
+					if game.world != null and game.world.time_phase == "night":
+						distance_bonus *= 0.88
+					_resolve_flight_strike(target, _skill_damage(distance_bonus), 1.0, 0.0, 6.8, dash_direction, 0.20)
+					SkillVFX.ring(effect_parent, target.global_position, effect_color.lightened(0.18), 0.42, 2.2, 0.26)
+					SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 8.2)
+					SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.58)
+					SkillVFX.radial_burst(effect_parent, target.global_position, effect_color, 2.8, 12, 0.17, 0.42)
+					used = true
 		"hippo":
 			for other in game.get_living_actors():
 				if other == self or other.dead:
@@ -1221,6 +2188,34 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.22), 4.8, 12)
 				SkillVFX.ring(effect_parent, global_position, effect_color, 0.70, 4.0, 0.42)
 				SkillVFX.ring(effect_parent, global_position, effect_color.lightened(0.12), 0.78, 6.4, 0.58, 0.10)
+		"hyena":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.6:
+				dash_direction = (target.global_position - global_position).normalized()
+				dash_timer = 0.32
+				target.take_damage(_skill_damage(1.34), self)
+				target.apply_scent_mark(6.5, self, effect_color)
+				affected_count = _rally_pack(target, 19.0, "hyena")
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 4.0)
+				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.22)
+				SkillVFX.ring(effect_parent, global_position, effect_color, 0.72, 5.6, 0.48)
+				used = true
+		"lion":
+			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 6.4:
+				dash_direction = (target.global_position - global_position).normalized()
+				dash_timer = 0.40
+				target.take_damage(_skill_damage(1.52), self)
+				target.apply_scent_mark(7.5, self, effect_color)
+				affected_count = _rally_pack(target, 21.0, "lion")
+				for other in game.get_living_actors():
+					if other == self or other == target or other.dead:
+						continue
+					if target.global_position.distance_to(other.global_position) < 6.5 and int(other.data["size"]) < int(data["size"]):
+						other.apply_panic(self, 2.7)
+						affected_count += 1
+				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 5.2)
+				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.48)
+				SkillVFX.ring(effect_parent, global_position, effect_color, 0.82, 6.8, 0.58)
+				used = true
 	if used:
 		spawn_protection = 0.0
 		stamina -= float(data["skill_cost"])
@@ -1245,11 +2240,27 @@ func _skill_effect_parent() -> Node:
 	return root if is_instance_valid(root) else get_parent()
 
 
+func _resolve_flight_strike(target: EcoActor, damage_value: float, slow_value: float, slow_duration: float, knockback_strength: float, strike_direction: Vector3, warning_time: float) -> void:
+	await get_tree().create_timer(warning_time).timeout
+	if dead or not is_instance_valid(target) or target.dead:
+		return
+	var planar_distance := Vector2(global_position.x - target.global_position.x, global_position.z - target.global_position.z).length()
+	if planar_distance > 12.0:
+		return
+	target.take_damage(damage_value, self)
+	if slow_duration > 0.0 and slow_value < 1.0:
+		target.apply_slow(slow_value, slow_duration)
+	if knockback_strength > 0.0:
+		target.apply_knockback(strike_direction, knockback_strength)
+
+
 func _should_show_skill_vfx() -> bool:
 	if not is_instance_valid(game) or game.get("batch_mode"):
 		return false
 	var game_player := game.get("player") as EcoActor
-	return is_player or not is_instance_valid(game_player) or global_position.distance_to(game_player.global_position) <= 36.0
+	var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
+	var visible_distance := 24.0 if quality == "low" else (48.0 if quality == "high" else 36.0)
+	return is_player or not is_instance_valid(game_player) or global_position.distance_to(game_player.global_position) <= visible_distance
 
 
 func _skill_damage(attack_factor: float) -> float:
@@ -1257,6 +2268,17 @@ func _skill_damage(attack_factor: float) -> float:
 	if not is_player:
 		result *= game.get_ai_damage_multiplier()
 	return result
+
+
+func _spawn_skill_projectile(target: EcoActor, damage_value: float, color_value: Color) -> void:
+	if not is_instance_valid(target):
+		return
+	var projectile := ProjectileScript.new()
+	var projectile_parent := game.get("game_root") as Node if is_instance_valid(game) else null
+	if not is_instance_valid(projectile_parent):
+		projectile_parent = get_parent()
+	projectile_parent.add_child(projectile)
+	projectile.setup(self, target, global_position, damage_value, color_value)
 
 
 func _broadcast_scent(target: EcoActor, radius: float, max_responders: int) -> int:
@@ -1282,12 +2304,13 @@ func _broadcast_scent(target: EcoActor, radius: float, max_responders: int) -> i
 	return responders
 
 
-func _rally_pack(target: EcoActor, radius: float) -> int:
+func _rally_pack(target: EcoActor, radius: float, pack_species: String = "") -> int:
 	if not is_instance_valid(target):
 		return 0
+	var pack_id := species_id if pack_species == "" else pack_species
 	var rallied := 0
 	for other in game.get_living_actors():
-		if other == self or other.dead or other.is_player or other.species_id != "wolf":
+		if other == self or other.dead or other.is_player or other.species_id != pack_id:
 			continue
 		if other.global_position.distance_to(global_position) > radius:
 			continue
@@ -1315,6 +2338,12 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			ai_target = source
 			ai_state = "hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 else "flee"
 	var final_damage := maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
+	if shell_guard_timer > 0.0:
+		final_damage *= 0.42 if _collapse_competition_active() else 0.24
+		final_damage = maxf(final_damage, 1.0)
+	if Catalog.has_trait(species_id, "giant") and is_instance_valid(source):
+		if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
+			final_damage *= 1.32
 	health -= final_damage
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
 		rage_timer = 4.0
@@ -1330,9 +2359,14 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	_play_hit_pulse()
 	if health <= 0.0:
 		die(source)
+	elif species_id == "porcupine" and is_instance_valid(source) and not source.dead and source.species_id != "porcupine" and global_position.distance_to(source.global_position) < 2.8:
+		var reflection_factor := 0.48 if quill_guard_timer > 0.0 else 0.22
+		source.take_damage(maxf(final_damage * reflection_factor, 3.0), self)
 
 
 func apply_poison(dps: float, duration: float, source: EcoActor) -> void:
+	if Catalog.has_trait(species_id, "giant"):
+		dps *= 1.22
 	if duration > poison_timer or dps > poison_dps:
 		poison_dps = dps
 		poison_timer = duration
@@ -1363,6 +2397,17 @@ func apply_panic(source: EcoActor, duration: float) -> void:
 	state_commit_timer = maxf(state_commit_timer, duration)
 
 
+func apply_calm(source: EcoActor, duration: float) -> void:
+	if dead or hunger >= 70.0:
+		return
+	calm_timer = maxf(calm_timer, duration)
+	if not is_player:
+		ai_target = null
+		attack_intent = false
+		ai_state = "wander"
+		state_commit_timer = 0.0
+
+
 func register_ecology_influence(source: EcoActor, duration: float) -> void:
 	if not is_instance_valid(source) or source == self:
 		return
@@ -1372,15 +2417,31 @@ func register_ecology_influence(source: EcoActor, duration: float) -> void:
 
 
 func apply_knockback(direction: Vector3, strength: float) -> void:
-	if species_id == "boar" and health / max_health < 0.50:
+	if species_id == "turtle" and shell_guard_timer > 0.0:
+		strength *= 0.08
+	elif species_id == "turtle":
+		strength *= 0.60
+	elif species_id == "boar" and health / max_health < 0.50:
 		strength *= 0.46
+	elif species_id == "porcupine" and quill_guard_timer > 0.0:
+		strength *= 0.58
 	elif species_id in ["rhino", "hippo"]:
 		strength *= 0.62
+	elif species_id == "elephant":
+		strength *= 0.42
 	velocity += Vector3(direction.x, 0.15, direction.z).normalized() * strength
 
 
 func try_consume_nearby() -> bool:
 	var resource := _best_food_resource()
+	if Catalog.has_trait(species_id, "flying") and is_instance_valid(resource):
+		var planar_distance := Vector2(global_position.x - resource.global_position.x, global_position.z - resource.global_position.z).length()
+		if planar_distance <= 4.8 and global_position.y > 0.92:
+			pending_food_resource = resource
+			_request_landing(3.2)
+			if is_player:
+				game.show_hint("正在下降到安全落点，落地后会自动进食")
+			return true
 	if not is_instance_valid(resource) or global_position.distance_to(resource.global_position) > 3.0:
 		if is_player:
 			game.show_hint("附近没有适合你的食物")
@@ -1396,13 +2457,18 @@ func try_consume_resource(resource: Node3D) -> bool:
 		return false
 	if resource is FoodPatch and not resource.can_be_eaten_by(species_id):
 		return false
-	var eaten: float = resource.consume(14.0)
+	var bite_size := 22.0 if Catalog.has_trait(species_id, "giant") else 14.0
+	var eaten: float = resource.consume(bite_size)
 	if eaten <= 0.0:
 		return false
 	eat_timer = 1.0
 	var nutrition_multiplier: float = resource.get_nutrition_multiplier() if resource is FoodPatch else 1.0
-	hunger = maxf(hunger - eaten * 0.85 * nutrition_multiplier, 0.0)
-	health = minf(health + eaten * ((0.28 if is_corpse else 0.12) * nutrition_multiplier), max_health)
+	var satiety_efficiency := 0.55 if Catalog.has_trait(species_id, "giant") else 0.85
+	var healing_efficiency := 0.08 if Catalog.has_trait(species_id, "giant") else (0.28 if is_corpse else 0.12)
+	hunger = maxf(hunger - eaten * satiety_efficiency * nutrition_multiplier, 0.0)
+	health = minf(health + eaten * healing_efficiency * nutrition_multiplier, max_health)
+	if species_id == "raccoon":
+		forage_speed_timer = 3.0
 	health_changed.emit(health, max_health)
 	_update_health_bar()
 	if game.has_method("play_sfx_near"):
@@ -1483,6 +2549,43 @@ func _nearest_living_actor(max_distance: float) -> EcoActor:
 	return nearest
 
 
+func _update_visual_lod(delta: float) -> void:
+	if game.get("batch_mode"):
+		return
+	visual_lod_elapsed += delta
+	var update_interval := 0.0
+	var game_player := game.get("player") as EcoActor
+	if not is_player and is_instance_valid(game_player):
+		var player_distance := global_position.distance_to(game_player.global_position)
+		var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
+		if quality == "low":
+			if player_distance > 42.0:
+				update_interval = 0.32
+			elif player_distance > 28.0:
+				update_interval = 0.18
+			elif player_distance > 18.0:
+				update_interval = 0.09
+		elif quality == "high":
+			if player_distance > 68.0:
+				update_interval = 0.18
+			elif player_distance > 48.0:
+				update_interval = 0.10
+			elif player_distance > 32.0:
+				update_interval = 0.05
+		else:
+			if player_distance > 56.0:
+				update_interval = 0.24
+			elif player_distance > 36.0:
+				update_interval = 0.12
+			elif player_distance > 24.0:
+				update_interval = 0.06
+	if update_interval > 0.0 and visual_lod_elapsed < update_interval:
+		return
+	var animation_delta := visual_lod_elapsed
+	visual_lod_elapsed = 0.0
+	_update_visual_motion(animation_delta)
+
+
 func _update_visual_motion(delta: float) -> void:
 	var flat_speed := Vector2(velocity.x, velocity.z).length()
 	move_time += delta * (2.0 + flat_speed * 0.75)
@@ -1497,6 +2600,14 @@ func _update_visual_motion(delta: float) -> void:
 			continue
 		var target_rotation := sin(move_time + leg_phases[leg_index]) * stride_amplitude * leg_stride_scales[leg_index]
 		pivot.rotation.x = lerp_angle(pivot.rotation.x, target_rotation, 1.0 - exp(-delta * 15.0))
+	for wing in wing_pivots:
+		if not is_instance_valid(wing):
+			continue
+		var side_sign := signf(wing.position.x)
+		var airborne_blend := 1.0 if is_airborne() else 0.38
+		var flap := sin(move_time * 1.65) * (0.42 + minf(flat_speed / maxf(float(data["speed"]), 0.1), 1.0) * 0.28) * airborne_blend
+		wing.rotation.z = lerp_angle(wing.rotation.z, -side_sign * flap, 1.0 - exp(-delta * 13.0))
+		wing.rotation.x = lerp_angle(wing.rotation.x, -0.10 + sin(move_time * 0.72) * 0.06, 1.0 - exp(-delta * 9.0))
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
@@ -1505,17 +2616,29 @@ func _update_visual_motion(delta: float) -> void:
 			body_root.rotation.y = lerp_angle(body_root.rotation.y, sin(move_time * 0.92) * 0.13 * gait_blend, 1.0 - exp(-delta * 8.0))
 		else:
 			body_root.rotation.y = lerp_angle(body_root.rotation.y, 0.0, 1.0 - exp(-delta * 8.0))
+		if species_id == "turtle":
+			var shell_scale := base_visual_scale * (Vector3(1.08, 0.72, 1.08) if shell_guard_timer > 0.0 else Vector3.ONE)
+			body_root.scale = body_root.scale.lerp(shell_scale, 1.0 - exp(-delta * 12.0))
 	if selection_ring != null:
 		selection_ring.rotation.y += delta * 0.35
+		selection_ring.position.y = -global_position.y + 0.08 if is_airborne() else 0.07
 
 
 func _gait_stride_amplitude() -> float:
 	match species_id:
 		"rabbit": return 0.72
-		"deer", "moose": return 0.58
-		"fox", "lynx": return 0.55
-		"wolf", "tiger": return 0.50
-		"boar": return 0.48
+		"deer", "moose", "goat", "zebra": return 0.58
+		"fox", "lynx", "raccoon": return 0.55
+		"wolf", "tiger", "hyena", "lion": return 0.50
+		"capybara": return 0.42
+		"otter": return 0.56
+		"monkey": return 0.62
+		"cheetah": return 0.68
+		"gorilla": return 0.36
+		"turtle": return 0.24
+		"elephant": return 0.28
+		"boar", "wolverine": return 0.48
+		"porcupine": return 0.40
 		"bear", "bison": return 0.38
 		"crocodile": return 0.28
 		"rhino", "hippo": return 0.32

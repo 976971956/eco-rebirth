@@ -8,9 +8,11 @@ signal start_requested
 signal retry_requested
 signal menu_requested
 signal pause_requested
+signal tutorial_skipped
 
 var game: Node
 var menu_root: Control
+var menu_start_button: Button
 var hud_root: Control
 var modal_root: Control
 var touch_root: Control
@@ -54,6 +56,10 @@ var skill_button: Button
 var eat_button: Button
 var sprint_button: Button
 var settings_from_pause: bool = false
+var tutorial_panel: PanelContainer
+var tutorial_title: Label
+var tutorial_body: Label
+var tutorial_progress_label: Label
 
 
 func setup(game_ref: Node) -> void:
@@ -160,6 +166,7 @@ func _build_menu() -> void:
 	content.add_child(spacer)
 
 	var start_button := Button.new()
+	menu_start_button = start_button
 	start_button.text = "开始轮回"
 	_style_button(start_button, true)
 	start_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -259,8 +266,8 @@ func _build_hud() -> void:
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	info_panel.position = Vector2(-306, 20)
-	info_panel.size = Vector2(286, 116)
+	info_panel.position = Vector2(-366, 20)
+	info_panel.size = Vector2(346, 142)
 	info_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.82), 14))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
@@ -271,7 +278,8 @@ func _build_hud() -> void:
 	info_box.add_child(threat_label)
 	region_label = Label.new()
 	region_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	region_label.add_theme_font_size_override("font_size", 18)
+	region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	region_label.add_theme_font_size_override("font_size", 17)
 	region_label.add_theme_color_override("font_color", Color("#cce4a6"))
 	info_box.add_child(region_label)
 	seed_label = Label.new()
@@ -330,7 +338,7 @@ func _build_hud() -> void:
 	var pause_button := Button.new()
 	pause_button.text = "Ⅱ"
 	pause_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause_button.position = Vector2(-58, 112)
+	pause_button.position = Vector2(-58, 170)
 	pause_button.size = Vector2(42, 42)
 	pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	pause_button.pressed.connect(_play_ui_sound)
@@ -338,6 +346,7 @@ func _build_hud() -> void:
 	hud_root.add_child(pause_button)
 
 	_build_intro()
+	_build_tutorial()
 	_build_touch_controls()
 
 
@@ -422,6 +431,50 @@ func _build_intro() -> void:
 	box.add_child(controls)
 
 
+func _build_tutorial() -> void:
+	tutorial_panel = PanelContainer.new()
+	tutorial_panel.name = "Tutorial"
+	tutorial_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	tutorial_panel.position = Vector2(-280, 155)
+	tutorial_panel.size = Vector2(560, 162)
+	tutorial_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	tutorial_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.95), 18, Color(0.86, 0.79, 0.39, 0.72), 2))
+	hud_root.add_child(tutorial_panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	tutorial_panel.add_child(box)
+	var header := HBoxContainer.new()
+	box.add_child(header)
+	tutorial_title = Label.new()
+	tutorial_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tutorial_title.add_theme_font_size_override("font_size", 23)
+	tutorial_title.add_theme_color_override("font_color", Color("#f4e7a7"))
+	header.add_child(tutorial_title)
+	tutorial_progress_label = Label.new()
+	tutorial_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tutorial_progress_label.add_theme_font_size_override("font_size", 17)
+	tutorial_progress_label.add_theme_color_override("font_color", Color("#bdd9b8"))
+	header.add_child(tutorial_progress_label)
+	tutorial_body = Label.new()
+	tutorial_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tutorial_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tutorial_body.add_theme_font_size_override("font_size", 18)
+	tutorial_body.add_theme_color_override("font_color", Color("#edf3df"))
+	box.add_child(tutorial_body)
+	var skip_button := Button.new()
+	skip_button.text = "跳过教学"
+	skip_button.custom_minimum_size = Vector2(132, 36)
+	skip_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	skip_button.add_theme_font_size_override("font_size", 17)
+	skip_button.add_theme_color_override("font_color", Color("#edf4de"))
+	skip_button.add_theme_stylebox_override("normal", _panel_style(Color(0.08, 0.22, 0.18, 0.94), 10, Color(0.64, 0.83, 0.52, 0.46), 1))
+	skip_button.add_theme_stylebox_override("hover", _panel_style(Color(0.12, 0.32, 0.25, 0.98), 10, Color(0.78, 0.92, 0.62, 0.72), 1))
+	skip_button.pressed.connect(_play_ui_sound)
+	skip_button.pressed.connect(func(): tutorial_skipped.emit())
+	box.add_child(skip_button)
+	tutorial_panel.hide()
+
+
 func _build_touch_controls() -> void:
 	touch_root = Control.new()
 	touch_root.name = "TouchControls"
@@ -477,9 +530,12 @@ func _build_modal_root() -> void:
 
 
 func show_menu() -> void:
+	if menu_start_button != null and game != null and game.has_method("has_campaign_progress"):
+		menu_start_button.text = "继续轮回" if game.has_campaign_progress() else "开始轮回"
 	menu_root.show()
 	hud_root.hide()
 	modal_root.hide()
+	hide_tutorial()
 	clear_enemy_health()
 	attack_held = false
 	sprint_held = false
@@ -489,12 +545,28 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	menu_root.hide()
 	hud_root.show()
 	modal_root.hide()
+	hide_tutorial()
 	clear_enemy_health()
 	var touch_available := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
 	touch_root.visible = touch_available
 	seed_label.text = "世界种子 %s" % world_seed
 	threat_label.text = "第%d关 · 世界威胁 %d" % [level, threat_level]
 	set_player(player_actor)
+
+
+func show_tutorial_step(step: int, total: int, title_text: String, body_text: String) -> void:
+	if tutorial_panel == null:
+		return
+	tutorial_title.text = title_text
+	tutorial_progress_label.text = "教学 %d / %d" % [step, total]
+	tutorial_body.text = body_text
+	tutorial_panel.modulate = Color.WHITE
+	tutorial_panel.show()
+
+
+func hide_tutorial() -> void:
+	if tutorial_panel != null:
+		tutorial_panel.hide()
 
 
 func set_player(player_actor: EcoActor) -> void:
@@ -624,6 +696,7 @@ func add_event(text_value: String, color_hex: String = "#dcebd6") -> void:
 
 
 func show_result(title_text: String, body_text: String, retry_text: String = "轮回重生", include_settings: bool = false) -> void:
+	hide_tutorial()
 	for child in modal_root.get_children():
 		child.queue_free()
 	modal_root.show()
@@ -693,13 +766,13 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-330, -260)
-	panel.size = Vector2(660, 520)
+	panel.position = Vector2(-330, -330)
+	panel.size = Vector2(660, 660)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
 	modal_root.add_child(panel)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 14)
+	box.add_theme_constant_override("separation", 9)
 	panel.add_child(box)
 
 	var title := Label.new()
@@ -710,7 +783,7 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "声音设置会自动保存，并在下次启动时继续生效。"
+	subtitle.text = "声音、画质与教学选项会自动保存。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 17)
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
@@ -747,6 +820,48 @@ func show_settings(from_pause: bool = false) -> void:
 	sfx_toggle.toggled.connect(func(enabled: bool): game.set_sfx_enabled(enabled))
 	audio_box.add_child(sfx_toggle)
 
+	var quality_panel := PanelContainer.new()
+	quality_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.01, 0.06, 0.052, 0.82), 16, Color(0.43, 0.73, 0.48, 0.35), 1))
+	quality_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(quality_panel)
+	var quality_row := HBoxContainer.new()
+	quality_row.add_theme_constant_override("separation", 18)
+	quality_panel.add_child(quality_row)
+	var quality_text_box := VBoxContainer.new()
+	quality_text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	quality_row.add_child(quality_text_box)
+	var quality_title := Label.new()
+	quality_title.text = "画质"
+	quality_title.add_theme_font_size_override("font_size", 23)
+	quality_title.add_theme_color_override("font_color", Color("#e9edcf"))
+	quality_text_box.add_child(quality_title)
+	var quality_hint := Label.new()
+	quality_hint.text = "手机卡顿时选择性能；修改后立即生效"
+	quality_hint.add_theme_font_size_override("font_size", 15)
+	quality_hint.add_theme_color_override("font_color", Color("#b8cbb5"))
+	quality_text_box.add_child(quality_hint)
+	var quality_select := OptionButton.new()
+	quality_select.custom_minimum_size = Vector2(210, 54)
+	quality_select.add_theme_font_size_override("font_size", 20)
+	quality_select.add_item("性能（低）")
+	quality_select.add_item("平衡（中）")
+	quality_select.add_item("高画质")
+	var quality_values: Array[String] = ["low", "medium", "high"]
+	quality_select.selected = maxi(quality_values.find(game.get_quality_preset()), 1)
+	quality_select.item_selected.connect(func(index: int): game.set_quality_preset(quality_values[index]))
+	quality_row.add_child(quality_select)
+
+	var tutorial_button := Button.new()
+	tutorial_button.text = "重新开启新手教学"
+	_style_button(tutorial_button, false)
+	tutorial_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tutorial_button.pressed.connect(func():
+		game.reset_tutorial_progress()
+		tutorial_button.disabled = true
+		tutorial_button.text = "已设置，下局显示教学"
+	)
+	box.add_child(tutorial_button)
+
 	var reset_button := Button.new()
 	reset_button.text = "重置游戏进度"
 	_style_button(reset_button, false)
@@ -755,7 +870,7 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(reset_button)
 
 	var reset_hint := Label.new()
-	reset_hint.text = "清除关卡、死亡次数和世界威胁；声音设置会保留。"
+	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音与画质会保留。"
 	reset_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reset_hint.add_theme_font_size_override("font_size", 16)
 	reset_hint.add_theme_color_override("font_color", Color("#d5c7a7"))

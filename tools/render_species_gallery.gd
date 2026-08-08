@@ -45,14 +45,15 @@ func _build_gallery() -> void:
 	ground.material_override = Factory.material(Color("#55754f"))
 	scene.add_child(ground)
 
-	var species_ids: Array[String] = ["boar", "lynx", "bison", "crocodile", "tiger", "moose", "rhino", "hippo"]
-	var x_positions := [-8.0, -2.7, 2.7, 8.0]
+	var species_ids: Array[String] = ["owl", "cheetah", "eagle"]
+	var x_positions := [-6.5, 0.0, 6.5]
 	for index in range(species_ids.size()):
 		var species_id := species_ids[index]
 		var actor: EcoActor = ActorScript.new()
 		actor.process_mode = Node.PROCESS_MODE_DISABLED
 		scene.add_child(actor)
-		actor.setup(game_stub, index + 1, species_id, false, Vector3(x_positions[index % 4], 0.0, 2.5 + floori(index / 4.0) * 6.3), 0)
+		actor.setup(game_stub, index + 1, species_id, false, Vector3(x_positions[index % 3], 0.0, 2.5), 0)
+		actor.position.y = 0.0
 		actor.health_bar_root.visible = false
 		var label := Label3D.new()
 		label.text = "%s\n%s" % [Catalog.display_name(species_id), str(Catalog.get_data(species_id)["skill"])]
@@ -64,20 +65,20 @@ func _build_gallery() -> void:
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
 		label.pixel_size = 0.011
-		label.position = actor.position + Vector3(0.0, 4.7 if int(actor.data["size"]) >= 4 else 3.4, 0.0)
+		label.position = actor.position + Vector3(0.0, 3.6, 0.0)
 		scene.add_child(label)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 21.0
+	camera.size = 16.5
 	camera.position = Vector3(0.0, 15.5, -22.0)
 	scene.add_child(camera)
-	camera.look_at(Vector3(0.0, 1.4, 5.5), Vector3.UP)
+	camera.look_at(Vector3(0.0, 1.6, 2.5), Vector3.UP)
 	camera.current = true
 
 	for _frame in range(8):
 		await process_frame
-	var output_path := "res://build/species_gallery.png"
+	var output_path := "res://docs/images/v10-species-models.png"
 	var image := root.get_texture().get_image()
 	var result := image.save_png(output_path)
 	if result == OK:
