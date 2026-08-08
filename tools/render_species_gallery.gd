@@ -23,40 +23,59 @@ func _build_gallery() -> void:
 
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("#b6caae")
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("#d7e0cd")
-	environment.ambient_light_energy = 0.72
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("#30484b")
+	sky_material.sky_horizon_color = Color("#a8aa83")
+	sky_material.ground_horizon_color = Color("#33493d")
+	sky_material.ground_bottom_color = Color("#0e1c17")
+	sky_material.sun_angle_max = 0.0
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	environment.background_mode = Environment.BG_SKY
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_energy = 0.52
+	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.adjustment_enabled = true
+	environment.adjustment_brightness = 0.94
+	environment.adjustment_contrast = 1.14
+	environment.adjustment_saturation = 1.08
 	environment_node.environment = environment
 	scene.add_child(environment_node)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52.0, -32.0, 0.0)
 	sun.light_color = Color("#ffe0ae")
-	sun.light_energy = 1.15
+	sun.light_energy = 0.88
 	sun.shadow_enabled = true
+	sun.shadow_opacity = 0.60
 	scene.add_child(sun)
+	var fill := DirectionalLight3D.new()
+	fill.light_color = Color("#a9d2d5")
+	fill.light_energy = 0.28
+	fill.rotation_degrees = Vector3(-58.0, 142.0, 0.0)
+	scene.add_child(fill)
 
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(32.0, 20.0)
+	plane.size = Vector2(34.0, 28.0)
 	ground.mesh = plane
-	ground.material_override = Factory.material(Color("#55754f"))
+	ground.material_override = Factory.terrain_material(Color("#425d3d"), Color("#61764a"), 12.0)
 	scene.add_child(ground)
 
-	var species_ids: Array[String] = ["owl", "cheetah", "eagle"]
-	var x_positions := [-6.5, 0.0, 6.5]
+	var species_ids: Array[String] = ["bear", "wolf", "tiger", "crocodile"]
+	var x_positions := [-7.5, -2.5, 2.5, 7.5]
 	for index in range(species_ids.size()):
 		var species_id := species_ids[index]
 		var actor: EcoActor = ActorScript.new()
 		actor.process_mode = Node.PROCESS_MODE_DISABLED
 		scene.add_child(actor)
-		actor.setup(game_stub, index + 1, species_id, false, Vector3(x_positions[index % 3], 0.0, 2.5), 0)
+		actor.setup(game_stub, index + 1, species_id, false, Vector3(x_positions[index], 0.0, 2.5), 0)
 		actor.position.y = 0.0
+		actor.rotation.y = 0.48
 		actor.health_bar_root.visible = false
 		var label := Label3D.new()
-		label.text = "%s\n%s" % [Catalog.display_name(species_id), str(Catalog.get_data(species_id)["skill"])]
+		label.text = Catalog.display_name(species_id)
 		label.font = load("res://assets/fonts/NotoSansSC-VF.ttf") as Font
 		label.font_size = 42
 		label.outline_size = 8
@@ -65,20 +84,20 @@ func _build_gallery() -> void:
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
 		label.pixel_size = 0.011
-		label.position = actor.position + Vector3(0.0, 3.6, 0.0)
+		label.position = actor.position + Vector3(0.0, 4.2 + int(Catalog.get_data(species_id)["size"]) * 0.18, 0.0)
 		scene.add_child(label)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 16.5
-	camera.position = Vector3(0.0, 15.5, -22.0)
+	camera.size = 11.5
+	camera.position = Vector3(0.0, 10.5, -18.5)
 	scene.add_child(camera)
-	camera.look_at(Vector3(0.0, 1.6, 2.5), Vector3.UP)
+	camera.look_at(Vector3(0.0, 1.5, 2.5), Vector3.UP)
 	camera.current = true
 
 	for _frame in range(8):
 		await process_frame
-	var output_path := "res://docs/images/v10-species-models.png"
+	var output_path := "res://docs/images/v16-species-v2.png"
 	var image := root.get_texture().get_image()
 	var result := image.save_png(output_path)
 	if result == OK:

@@ -3,6 +3,7 @@ extends SceneTree
 const MainScript = preload("res://scripts/main.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
+const Factory = preload("res://scripts/low_poly_factory.gd")
 
 var failures: Array[String] = []
 
@@ -14,8 +15,9 @@ func _init() -> void:
 	_validate_free_mode_contract()
 	_validate_leaderboard_contract()
 	_validate_web_audio_contract()
+	_validate_visual_kit_contract()
 	if failures.is_empty():
-		print("[release] V1.3 发布校验通过：等级排行、战斗播报、自由模式、旧存档迁移与 Web 音频正常")
+		print("[release] V1.4 发布校验通过：AI 地表、V2 程序模型、生态地图、排行播报、自由模式与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -148,6 +150,29 @@ func _validate_web_audio_contract() -> void:
 	_expect(all_finite, "背景音乐生成了非法采样")
 	_expect(peak > 0.01 and peak <= 0.82, "背景音乐音量范围异常")
 	audio.free()
+
+
+func _validate_visual_kit_contract() -> void:
+	var texture_paths := [
+		"res://assets/textures/terrain/forest_floor_ai.jpg",
+		"res://assets/textures/terrain/grassland_ai.jpg",
+		"res://assets/textures/terrain/wetland_ai.jpg",
+		"res://assets/textures/terrain/highland_ai.jpg",
+	]
+	for texture_path in texture_paths:
+		_expect(ResourceLoader.exists(texture_path), "V2 地表材质缺失：%s" % texture_path)
+	var forest_texture := load(texture_paths[0]) as Texture2D
+	_expect(forest_texture != null, "森林 AI 地表材质无法加载")
+	var terrain := Factory.terrain_material(Color("#244833"), Color("#3b603d"), 12.0, forest_texture, 5.0, 0.24)
+	_expect(terrain.shader != null, "V2 地表着色器没有创建")
+	_expect(is_equal_approx(float(terrain.get_shader_parameter("texture_strength")), 0.24), "AI 地表混合强度没有传入着色器")
+	var faceted := Factory.sphere("VisualContract", Color("#a86f43"), Vector3.ONE, Vector3.ZERO, 8, 5)
+	_expect(faceted.mesh is ArrayMesh, "V2 物种基础体没有使用逐面程序网格")
+	if faceted.mesh is ArrayMesh:
+		var arrays := (faceted.mesh as ArrayMesh).surface_get_arrays(0)
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		_expect(not colors.is_empty(), "V2 物种程序网格缺少逐面颜色")
+	faceted.free()
 
 
 func _expect(condition: bool, message: String) -> void:

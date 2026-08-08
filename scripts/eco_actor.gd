@@ -440,6 +440,8 @@ func _build_bear() -> void:
 		Vector2(0.34, 0.26), Vector2(0.17, 0.14)
 	]
 	body_root.add_child(Factory.loft("BearBody", color, body_centers, body_radii, 10))
+	body_root.add_child(Factory.sphere("BearShoulderMass", color.darkened(0.035), Vector3(1.62, 1.32, 1.28), Vector3(0.0, 1.42, -0.48), 10, 7))
+	body_root.add_child(Factory.sphere("BearRumpMass", color.lightened(0.02), Vector3(1.48, 1.14, 1.24), Vector3(0.0, 1.25, 0.55), 9, 6))
 	body_root.add_child(Factory.sphere("Chest", accent.darkened(0.12), Vector3(0.87, 0.86, 0.22), Vector3(0.0, 1.38, -1.20), 8, 5))
 	body_root.add_child(Factory.sphere("Muzzle", accent, Vector3(0.59, 0.41, 0.31), Vector3(0.0, 1.92, -1.94), 9, 5))
 	for side in [-1.0, 1.0]:
@@ -447,7 +449,7 @@ func _build_bear() -> void:
 		body_root.add_child(Factory.sphere("Brow", color.darkened(0.16), Vector3(0.22, 0.14, 0.16), Vector3(side * 0.21, 2.21, -1.77), 7, 4))
 	_add_eye_pair(2.13, -1.82, 0.22, 0.09)
 	body_root.add_child(Factory.sphere("Nose", Color("#241d18"), Vector3(0.25, 0.18, 0.18), Vector3(0.0, 1.94, -2.39), 8, 4))
-	_add_legs(color.darkened(0.10), 0.56, 0.94, 0.68, 0.70, Color("#3e2d24"))
+	_add_legs(color.darkened(0.10), 0.68, 0.76, 0.72, 0.72, Color("#3e2d24"))
 
 
 func _build_boar() -> void:
@@ -864,10 +866,13 @@ func _build_feline(is_tiger: bool) -> void:
 	], 9))
 	body_root.add_child(Factory.sphere("Muzzle", accent, Vector3(0.48, 0.29, 0.28), Vector3(0.0, 1.47, -2.05), 8, 5))
 	for side in [-1.0, 1.0]:
-		var ear := Factory.cone("TuftedEar", color.darkened(0.12), 0.24, 0.58, Vector3(side * 0.34, 2.05, -1.43), 7)
-		ear.rotation.z = side * 0.16
-		body_root.add_child(ear)
-		if not is_tiger:
+		if is_tiger:
+			body_root.add_child(Factory.sphere("TigerEar", color.darkened(0.10), Vector3(0.27, 0.30, 0.18), Vector3(side * 0.38, 2.02, -1.42), 8, 5))
+			body_root.add_child(Factory.sphere("TigerCheek", accent.lightened(0.05), Vector3(0.28, 0.35, 0.22), Vector3(side * 0.40, 1.46, -1.94), 8, 5))
+		else:
+			var ear := Factory.cone("TuftedEar", color.darkened(0.12), 0.24, 0.58, Vector3(side * 0.34, 2.05, -1.43), 7)
+			ear.rotation.z = side * 0.16
+			body_root.add_child(ear)
 			var tuft := Factory.cone("EarTuft", Color("#29231e"), 0.06, 0.32, Vector3(side * 0.39, 2.37, -1.42), 6)
 			tuft.rotation.z = side * 0.18
 			body_root.add_child(tuft)
@@ -882,8 +887,13 @@ func _build_feline(is_tiger: bool) -> void:
 	body_root.add_child(Factory.loft("CatTail", color.darkened(0.10), tail_centers, [Vector2(0.17, 0.17), Vector2(0.18, 0.17), Vector2(0.15, 0.14), Vector2(0.07, 0.07)], 8))
 	if is_tiger:
 		for stripe_index in range(5):
-			var stripe_z := -0.45 + stripe_index * 0.42
-			body_root.add_child(Factory.sphere("TigerStripe", Color("#2b211b"), Vector3(0.58, 0.055, 0.105), Vector3(0.0, 1.43, stripe_z), 7, 3))
+			var stripe_z := -0.58 + stripe_index * 0.42
+			for side in [-1.0, 1.0]:
+				var stripe := Factory.sphere("TigerStripe", Color("#2b211b"), Vector3(0.07, 0.34 - stripe_index * 0.018, 0.13), Vector3(side * 0.56, 1.37 + (stripe_index % 2) * 0.08, stripe_z), 7, 4)
+				stripe.rotation.z = side * (0.16 + stripe_index * 0.025)
+				body_root.add_child(stripe)
+		for tail_ring_index in range(3):
+			body_root.add_child(Factory.sphere("TigerTailRing", Color("#2b211b"), Vector3(0.18, 0.17, 0.12), Vector3(0.20 + tail_ring_index * 0.04, 1.42 + tail_ring_index * 0.08, 2.12 + tail_ring_index * 0.33), 7, 4))
 	else:
 		body_root.add_child(Factory.sphere("ShortTailTip", Color("#28231f"), Vector3(0.16, 0.17, 0.24), Vector3(0.18, 1.63, tail_length), 7, 4))
 	_add_legs(color.darkened(0.12), 0.36 if is_tiger else 0.30, 0.88 if is_tiger else 0.76, 0.48, 0.72, accent.darkened(0.22))
@@ -956,15 +966,25 @@ func _build_crocodile() -> void:
 		Vector2(0.08, 0.07), Vector2(0.24, 0.16), Vector2(0.50, 0.30), Vector2(0.66, 0.39),
 		Vector2(0.59, 0.36), Vector2(0.49, 0.30), Vector2(0.37, 0.22), Vector2(0.18, 0.11)
 	], 10))
-	body_root.add_child(Factory.box("LongJaw", color.lightened(0.04), Vector3(0.86, 0.30, 1.32), Vector3(0.0, 0.58, -2.48)))
-	body_root.add_child(Factory.box("JawBelly", accent.darkened(0.12), Vector3(0.77, 0.10, 1.22), Vector3(0.0, 0.40, -2.45)))
+	body_root.add_child(Factory.loft("SculptedHead", color.lightened(0.035), [
+		Vector3(0.0, 0.67, -1.42), Vector3(0.0, 0.69, -1.92), Vector3(0.0, 0.65, -2.48), Vector3(0.0, 0.58, -3.05), Vector3(0.0, 0.54, -3.38)
+	], [
+		Vector2(0.50, 0.28), Vector2(0.54, 0.27), Vector2(0.48, 0.23), Vector2(0.38, 0.17), Vector2(0.24, 0.11)
+	], 10))
+	body_root.add_child(Factory.loft("PaleLowerJaw", accent.darkened(0.10), [
+		Vector3(0.0, 0.48, -1.73), Vector3(0.0, 0.44, -2.28), Vector3(0.0, 0.42, -2.86), Vector3(0.0, 0.43, -3.30)
+	], [
+		Vector2(0.46, 0.11), Vector2(0.45, 0.10), Vector2(0.36, 0.085), Vector2(0.20, 0.06)
+	], 9))
 	for plate_index in range(7):
-		var plate := Factory.cone("BackPlate", color.darkened(0.25), 0.18, 0.38, Vector3(0.0, 1.04, 1.30 - plate_index * 0.50), 6)
-		body_root.add_child(plate)
+		for side in [-1.0, 1.0]:
+			var plate := Factory.cone("BackPlate", color.darkened(0.24), 0.14, 0.34, Vector3(side * 0.20, 1.00, 1.25 - plate_index * 0.46), 6)
+			plate.rotation.z = side * 0.12
+			body_root.add_child(plate)
 	for side in [-1.0, 1.0]:
-		body_root.add_child(Factory.sphere("EyeRidge", color.darkened(0.16), Vector3(0.22, 0.18, 0.20), Vector3(side * 0.27, 0.86, -2.65), 7, 4))
-	_add_eye_pair(0.91, -2.72, 0.28, 0.075)
-	body_root.add_child(Factory.sphere("Nose", Color("#253027"), Vector3(0.36, 0.08, 0.11), Vector3(0.0, 0.63, -3.17), 7, 3))
+		body_root.add_child(Factory.sphere("EyeRidge", color.darkened(0.16), Vector3(0.23, 0.19, 0.21), Vector3(side * 0.30, 0.89, -2.44), 8, 4))
+		body_root.add_child(Factory.sphere("Nostril", Color("#253027"), Vector3(0.075, 0.045, 0.065), Vector3(side * 0.18, 0.64, -3.34), 6, 3))
+	_add_eye_pair(0.92, -2.53, 0.29, 0.075)
 	_add_legs(color.darkened(0.15), 0.30, 0.42, 0.70, 0.83, Color("#2e392c"))
 
 
@@ -1046,9 +1066,17 @@ func _build_hippo() -> void:
 
 
 func _add_eye_pair(height: float, forward_z: float, side_x: float, size: float) -> void:
+	var iris_color := Color("#a97732")
+	match species_id:
+		"rabbit", "deer", "capybara", "goat", "zebra", "moose", "bison", "elephant", "rhino", "hippo": iris_color = Color("#6f4b2d")
+		"wolf", "fox", "lynx", "tiger", "cheetah", "lion", "hyena": iris_color = Color("#d59b3b")
+		"owl", "eagle": iris_color = Color("#e6b740")
+		"crocodile", "snake", "turtle": iris_color = Color("#b9b84a")
 	for side in [-1.0, 1.0]:
-		body_root.add_child(Factory.sphere("Eye", Color("#17201d"), Vector3(size, size, size * 0.72), Vector3(side * side_x, height, forward_z), 7, 4))
-		body_root.add_child(Factory.sphere("EyeLight", Color("#f2f5df"), Vector3(size * 0.32, size * 0.32, size * 0.20), Vector3(side * (side_x + 0.035), height + size * 0.26, forward_z - size * 0.52), 6, 3))
+		body_root.add_child(Factory.sphere("EyeSocket", Color("#101715"), Vector3(size * 1.12, size * 1.08, size * 0.72), Vector3(side * side_x, height, forward_z), 8, 4))
+		body_root.add_child(Factory.sphere("Iris", iris_color, Vector3(size * 0.58, size * 0.62, size * 0.24), Vector3(side * (side_x + 0.018), height, forward_z - size * 0.53), 7, 4))
+		body_root.add_child(Factory.sphere("Pupil", Color("#080b09"), Vector3(size * 0.25, size * 0.38, size * 0.12), Vector3(side * (side_x + 0.022), height, forward_z - size * 0.68), 6, 3))
+		body_root.add_child(Factory.sphere("EyeLight", Color("#f7f3d8"), Vector3(size * 0.22, size * 0.22, size * 0.10), Vector3(side * (side_x + 0.040), height + size * 0.28, forward_z - size * 0.72), 6, 3))
 
 
 func _add_legs(color: Color, radius: float, length: float, spread_x: float, spread_z: float, paw_color: Color = Color.TRANSPARENT) -> void:

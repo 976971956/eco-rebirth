@@ -8,10 +8,10 @@
 | `scripts/main.gd` | Game states, campaign/free mode, spawning, progression, saves, outcomes, tutorial orchestration |
 | `scripts/species_catalog.gd` | All 30 species data, unlock pools, XP rewards, growth profiles, skills, traits, diets, preferred regions, victory guides |
 | `scripts/eco_actor.gd` | Shared player/AI movement, combat, hunger, stamina, experience, levels, animation, AI execution |
-| `scripts/eco_world.gd` | Procedural four-region world, terrain access, food, day/night, weather, collapse, quality settings |
+| `scripts/eco_world.gd` | Procedural four-region world, AI-painted terrain blending, biome prop kits, terrain access, food, day/night, weather, collapse, quality settings |
 | `scripts/game_ui.gd` | Home, free-mode picker, HUD, live level leaderboard, rotating battle ticker/report, enemy health, touch controls, tutorial, settings, pause/result modals |
 | `scripts/audio_manager.gd` | Procedural adaptive music, ambient sound, SFX pool, audio persistence |
-| `scripts/low_poly_factory.gd` | Procedural animal and environment modeling |
+| `scripts/low_poly_factory.gd` | Faceted procedural animal/environment meshes plus shared terrain and animated water shaders |
 | `scripts/skill_vfx.gd` and `scripts/skill_projectile.gd` | Skill presentation and projectiles |
 | `tools/*.gd` | Deterministic validation, balance simulation, reports, and UI preview rendering |
 
@@ -27,6 +27,7 @@
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
+- Keep V2 art runtime-generated and mobile/Web safe: AI raster output is used as art direction and compressed terrain albedo, while collision and animation stay owned by Godot procedural actors.
 
 ## Document routing
 
@@ -39,6 +40,7 @@
 - Godot architecture: `docs/06_Godot技术设计.md`
 - Balance schema: `docs/08_数据字典与初始平衡.md`
 - 30-species implementation history: `docs/09_关卡物种扩展设计.md` and `docs/10_三十种动物制作蓝图.md`
+- AI art direction and runtime visual kit: `docs/12_AI美术重制方案.md`
 - Running/exporting: `BUILDING.md`
 
 ## Cross-platform UI rules
