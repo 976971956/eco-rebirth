@@ -1,0 +1,52 @@
+name: 构建并发布网页版
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出项目
+        uses: actions/checkout@v4
+
+      - name: 安装 Godot 4.7.1 与导出模板
+        uses: solarlabyrinth/action-setup-godot@v3
+        with:
+          version: 4.7.1-stable
+          export-templates: true
+
+      - name: 导出 Web 版本
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release Web build/web/index.html
+          touch build/web/.nojekyll
+          test -f build/web/index.html
+
+      - name: 上传 Pages 文件
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

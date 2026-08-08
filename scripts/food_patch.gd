@@ -1,0 +1,129 @@
+class_name FoodPatch
+extends Node3D
+
+const Factory = preload("res://scripts/low_poly_factory.gd")
+const Catalog = preload("res://scripts/species_catalog.gd")
+
+const FOOD_DATA := {
+	"grass": {"name": "嫩草", "amount": 42.0, "regrow": 13.0, "nutrition": 0.90, "diets": ["herbivore", "omnivore"]},
+	"berries": {"name": "野莓", "amount": 36.0, "regrow": 18.0, "nutrition": 1.00, "diets": ["herbivore", "omnivore"]},
+	"mushroom": {"name": "林地蘑菇", "amount": 30.0, "regrow": 22.0, "nutrition": 1.08, "diets": ["herbivore", "omnivore"]},
+	"fruit": {"name": "落果", "amount": 48.0, "regrow": 24.0, "nutrition": 1.18, "diets": ["herbivore", "omnivore"]},
+	"roots": {"name": "块根", "amount": 44.0, "regrow": 26.0, "nutrition": 1.15, "diets": ["herbivore", "omnivore"]},
+	"fish": {"name": "浅滩鱼群", "amount": 40.0, "regrow": 28.0, "nutrition": 1.28, "diets": ["carnivore", "omnivore"]},
+}
+
+var amount: float = 45.0
+var max_amount: float = 45.0
+var regrow_delay: float = 16.0
+var empty_time: float = 0.0
+var active: bool = true
+var regrow_enabled: bool = true
+var visual_root: Node3D
+var food_kind: String = "grass"
+
+
+func setup(kind: String, rng: RandomNumberGenerator) -> void:
+	food_kind = kind if FOOD_DATA.has(kind) else "grass"
+	var config: Dictionary = FOOD_DATA[food_kind]
+	max_amount = float(config["amount"])
+	amount = max_amount
+	regrow_delay = float(config["regrow"])
+	visual_root = Node3D.new()
+	visual_root.name = "Food_%s" % food_kind
+	add_child(visual_root)
+	_build_visual(rng)
+
+
+func _build_visual(rng: RandomNumberGenerator) -> void:
+	match food_kind:
+		"berries":
+			for i in range(5):
+				var angle := TAU * float(i) / 5.0
+				visual_root.add_child(Factory.sphere("BerryLeaf", Color("#43894b").lightened(rng.randf_range(-0.05, 0.08)), Vector3(0.62, 0.32, 0.45), Vector3(cos(angle) * 0.48, 0.42, sin(angle) * 0.48), 7, 4))
+			for i in range(7):
+				var berry_angle := TAU * float(i) / 7.0 + 0.3
+				visual_root.add_child(Factory.sphere("WildBerry", Color("#c9474f").lightened(rng.randf_range(-0.04, 0.10)), Vector3.ONE * 0.13, Vector3(cos(berry_angle) * 0.46, 0.60 + (i % 2) * 0.16, sin(berry_angle) * 0.46), 7, 4))
+		"mushroom":
+			for i in range(5):
+				var offset := Vector3(rng.randf_range(-0.62, 0.62), 0.0, rng.randf_range(-0.52, 0.52))
+				var height := rng.randf_range(0.34, 0.62)
+				visual_root.add_child(Factory.tapered_cylinder("Stem", Color("#e1d5b8"), 0.08, 0.065, height, offset + Vector3.UP * height * 0.5, 7))
+				visual_root.add_child(Factory.sphere("Cap", Color("#c88449").lightened(i * 0.025), Vector3(0.30, 0.12, 0.30), offset + Vector3.UP * height, 8, 4))
+		"fruit":
+			for i in range(7):
+				var angle := TAU * float(i) / 7.0
+				var fruit_color := Color("#dc9a38") if i % 2 == 0 else Color("#b94c3f")
+				visual_root.add_child(Factory.sphere("FallenFruit", fruit_color, Vector3.ONE * rng.randf_range(0.20, 0.27), Vector3(cos(angle) * rng.randf_range(0.28, 0.70), 0.22, sin(angle) * rng.randf_range(0.28, 0.70)), 8, 5))
+		"roots":
+			for i in range(5):
+				var angle := TAU * float(i) / 5.0
+				var root := Factory.sphere("Root", Color("#a76b3e").lightened(i * 0.025), Vector3(0.22, 0.16, 0.48), Vector3(cos(angle) * 0.48, 0.15, sin(angle) * 0.48), 7, 4)
+				root.rotation.y = -angle
+				visual_root.add_child(root)
+		"fish":
+			visual_root.add_child(Factory.disc("ShallowPool", Color(0.19, 0.58, 0.63, 0.72), 1.12, 0.025, Vector3(0.0, 0.025, 0.0), 12))
+			for i in range(4):
+				var fish := Factory.sphere("Fish", Color("#6e9ca3").lightened(i * 0.05), Vector3(0.36, 0.09, 0.15), Vector3((i - 1.5) * 0.38, 0.11, (-1.0 if i % 2 == 0 else 1.0) * 0.28), 7, 4)
+				fish.rotation.y = 0.35 if i % 2 == 0 else -0.45
+				visual_root.add_child(fish)
+		_:
+			for i in range(8):
+				var angle := TAU * float(i) / 8.0
+				var blade := Factory.cone("GrassBlade", Color("#76ad4d").lightened(rng.randf_range(-0.08, 0.10)), 0.13, rng.randf_range(0.48, 0.82), Vector3(cos(angle) * 0.42, 0.35, sin(angle) * 0.42), 6)
+				blade.rotation.z = rng.randf_range(-0.18, 0.18)
+				visual_root.add_child(blade)
+
+
+func can_be_eaten_by(species_id: String) -> bool:
+	var diet := str(Catalog.get_data(species_id)["diet"])
+	return diet in FOOD_DATA[food_kind]["diets"]
+
+
+func get_food_name() -> String:
+	return str(FOOD_DATA[food_kind]["name"])
+
+
+func get_nutrition_multiplier() -> float:
+	return float(FOOD_DATA[food_kind]["nutrition"])
+
+
+func consume(requested: float) -> float:
+	if not active or amount <= 0.0:
+		return 0.0
+	var taken := minf(requested, amount)
+	amount -= taken
+	_update_visual()
+	if amount <= 0.01:
+		active = false
+		empty_time = 0.0
+	return taken
+
+
+func _process(delta: float) -> void:
+	if active or not regrow_enabled:
+		return
+	empty_time += delta
+	if empty_time >= regrow_delay:
+		amount = max_amount
+		active = true
+		_update_visual()
+
+
+func boost(multiplier: float) -> void:
+	max_amount *= multiplier
+	amount = max_amount
+	active = true
+	_update_visual()
+
+
+func stop_regrow() -> void:
+	regrow_enabled = false
+
+
+func _update_visual() -> void:
+	if visual_root == null:
+		return
+	var ratio := clampf(amount / max_amount, 0.0, 1.0)
+	visual_root.visible = ratio > 0.01
+	visual_root.scale = Vector3.ONE * lerpf(0.25, 1.0, ratio)
