@@ -69,6 +69,8 @@ func _run_validation() -> void:
 				failures.append("%s 配置了未知猎物 %s" % [species_id, prey_id])
 		if Catalog.victory_guide(species_id).length() < 45:
 			failures.append("%s 缺少完整获胜攻略" % species_id)
+		if not Catalog.habitat_description(species_id).contains("主场"):
+			failures.append("%s 缺少可读的环境主场说明" % species_id)
 		var growth := Catalog.growth_profile(species_id)
 		for growth_key in ["health", "attack", "speed", "stamina", "armor", "regen"]:
 			if not growth.has(growth_key) or float(growth[growth_key]) <= 0.0:
@@ -247,6 +249,22 @@ func _run_validation() -> void:
 	var escape_cover := world_test.best_escape_cover(Vector3.ZERO, Vector3(-4.0, 0.0, 0.0), "rabbit", 10.0)
 	if escape_cover.x == INF:
 		failures.append("弱势 AI 没有找到远离威胁的草丛掩体")
+	var highland_position := Vector3(6.0, 0.45, 6.0)
+	if Catalog.habitat_affinity("goat", "highland") < 0.99:
+		failures.append("山羊没有把岩丘高地识别为第一主场")
+	if world_test.movement_multiplier("goat", highland_position) <= 1.0:
+		failures.append("山羊在高地主场没有获得移动优势")
+	if world_test.movement_multiplier("lion", highland_position) >= 1.0:
+		failures.append("不适应高地的大型狮子没有承担客场移动成本")
+	if world_test.stamina_regen_multiplier("goat", highland_position) <= 1.0 or world_test.stamina_cost_multiplier("goat", highland_position) >= 1.0:
+		failures.append("主场没有同时改善山羊的耐力恢复与移动成本")
+	if world_test.terrain_counter_strength("goat", highland_position, "lion", Vector3(9.0, 0.45, 6.0)) < WorldScript.TERRAIN_COUNTER_THRESHOLD:
+		failures.append("山羊无法在高地主场反制客场强敌")
+	if world_test.terrain_counter_strength("goat", highland_position, "eagle", Vector3(9.0, 0.45, 6.0)) > 0.0:
+		failures.append("双方都适应高地时错误产生了主场反制")
+	var escape_habitat := world_test.best_counter_habitat(Vector3(2.0, 0.45, -2.0), Vector3(4.0, 0.45, -2.0), "goat", "lion", 12.0)
+	if escape_habitat.x == INF or world_test.region_id_at(escape_habitat) != "highland":
+		failures.append("弱势 AI 没有找到可反制狮子的高地主场路线")
 	game_stub.world = world_test
 	var cover_rabbit: EcoActor = ActorScript.new()
 	cover_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
@@ -288,6 +306,39 @@ func _run_validation() -> void:
 	cover_elephant.free()
 	cover_hunter.free()
 	game_stub.actors.clear()
+	var terrain_goat: EcoActor = ActorScript.new()
+	terrain_goat.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(terrain_goat)
+	terrain_goat.setup(game_stub, 890, "goat", false, Vector3(6.0, 0.45, 6.0), 0)
+	var terrain_lion: EcoActor = ActorScript.new()
+	terrain_lion.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(terrain_lion)
+	terrain_lion.setup(game_stub, 891, "lion", false, Vector3(10.0, 0.45, 6.0), 0)
+	terrain_goat.spawn_protection = 0.0
+	terrain_lion.spawn_protection = 0.0
+	game_stub.actors = [terrain_goat, terrain_lion]
+	terrain_goat.velocity = Vector3(3.0, 0.0, 0.0)
+	terrain_goat._update_environment_state(1.20)
+	if not terrain_goat.has_terrain_momentum() or not terrain_goat.can_terrain_counter(terrain_lion):
+		failures.append("弱势物种在主场持续移动后没有蓄成地形反制")
+	var terrain_health_before := terrain_lion.health
+	terrain_goat.terrain_attack_armed = true
+	terrain_lion.take_damage(float(terrain_goat.data["attack"]), terrain_goat)
+	terrain_goat.terrain_attack_armed = false
+	if terrain_health_before - terrain_lion.health < terrain_lion.max_health * 0.04:
+		failures.append("高地主场反制没有触发对强敌的百分比逆袭伤害")
+	if terrain_lion.exposed_timer < ActorScript.TERRAIN_CREATED_EXPOSURE - 0.01:
+		failures.append("地形反制命中后没有留下可接续的追击破绽")
+	terrain_goat.opportunity_strike_timer = 0.0
+	terrain_goat.terrain_counter_cooldown = 0.0
+	terrain_goat.terrain_momentum = ActorScript.TERRAIN_MOMENTUM_REQUIRED
+	terrain_goat._switch_state("flee", terrain_lion)
+	terrain_goat._think()
+	if terrain_goat.ai_state != "hunt" or terrain_goat.ai_target != terrain_lion:
+		failures.append("弱势 AI 在主场蓄势完成后没有回头反制追兵")
+	terrain_goat.free()
+	terrain_lion.free()
+	game_stub.actors.clear()
 	var monkey_test: EcoActor = ActorScript.new()
 	monkey_test.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(monkey_test)
@@ -310,7 +361,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

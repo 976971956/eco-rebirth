@@ -18,6 +18,11 @@ const COVER_REVEAL_SECONDS := 2.20
 const COVER_CLOSE_REVEAL_DISTANCE := 4.60
 const SEARCH_MEMORY_SECONDS := 2.60
 const AMBUSH_CREATED_EXPOSURE := 1.65
+const TERRAIN_MOMENTUM_REQUIRED := 1.15
+const TERRAIN_MOMENTUM_GRACE := 0.85
+const TERRAIN_COUNTER_COOLDOWN := 3.40
+const TERRAIN_CREATED_EXPOSURE := 1.35
+const TERRAIN_AFFINITY_THRESHOLD := 0.72
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -79,6 +84,13 @@ var cover_reveal_timer: float = 0.0
 var cover_ambush_timer: float = 0.0
 var cover_hint_cooldown: float = 0.0
 var ambush_attack_armed: bool = false
+var terrain_momentum: float = 0.0
+var terrain_momentum_grace_timer: float = 0.0
+var terrain_counter_cooldown: float = 0.0
+var terrain_hint_cooldown: float = 0.0
+var terrain_attack_armed: bool = false
+var environment_region_id: String = ""
+var environment_affinity: float = 0.0
 var canopy_timer: float = 0.0
 var canopy_anchor := Vector3.ZERO
 var calm_timer: float = 0.0
@@ -103,6 +115,7 @@ var search_position := Vector3.ZERO
 var last_known_target_position := Vector3.ZERO
 var has_last_known_target_position: bool = false
 var escape_cover_position := Vector3(INF, 0.0, INF)
+var escape_habitat_position := Vector3(INF, 0.0, INF)
 var cover_visual_state: String = "open"
 
 var ai_state: String = "wander"
@@ -327,6 +340,43 @@ func tactical_cover_status_text() -> String:
 	if cover_strength >= COVER_CONCEAL_THRESHOLD and cover_reveal_timer <= 0.0:
 		return "草丛掩护 · 停下蓄势"
 	return ""
+
+
+func has_terrain_momentum() -> bool:
+	return not dead and not _collapse_competition_active() and terrain_counter_cooldown <= 0.0 and terrain_momentum >= TERRAIN_MOMENTUM_REQUIRED and environment_affinity >= TERRAIN_AFFINITY_THRESHOLD
+
+
+func can_terrain_counter(target: EcoActor) -> bool:
+	if not has_terrain_momentum() or not is_instance_valid(target) or target.dead or opportunity_strike_timer > 0.0 or game == null or game.world == null:
+		return false
+	if Catalog.opportunity_threat_gap(species_id, target.species_id) <= 0:
+		return false
+	if not game.world.has_method("terrain_counter_strength"):
+		return false
+	return game.world.terrain_counter_strength(species_id, global_position, target.species_id, target.global_position) >= TERRAIN_AFFINITY_THRESHOLD
+
+
+func tactical_terrain_status_text() -> String:
+	if environment_affinity < TERRAIN_AFFINITY_THRESHOLD or _collapse_competition_active():
+		return ""
+	var counter_name := "地形反制"
+	if game != null and game.world != null and game.world.has_method("terrain_counter_name"):
+		counter_name = game.world.terrain_counter_name(environment_region_id)
+	if has_terrain_momentum():
+		return "%s就绪 · 可反制客场强敌" % counter_name
+	if terrain_counter_cooldown > 0.0:
+		return "%s冷却 %.1fs" % [counter_name, terrain_counter_cooldown]
+	if terrain_momentum > 0.0:
+		return "%s蓄势 %d%%" % [counter_name, roundi(terrain_momentum / TERRAIN_MOMENTUM_REQUIRED * 100.0)]
+	return "主场适应 · 持续移动可蓄势"
+
+
+func environment_region_status_text() -> String:
+	if environment_affinity >= 0.99:
+		return "主场适应"
+	if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD:
+		return "熟悉地形"
+	return "客场环境"
 
 
 func _build_rabbit() -> void:
@@ -1186,6 +1236,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_update_ai(delta)
 	_apply_movement(delta)
+	_update_environment_state(delta)
 	_update_cover_state(delta)
 	_try_attack()
 	_update_visual_lod(delta)
@@ -1213,6 +1264,9 @@ func _update_timers(delta: float) -> void:
 	cover_reveal_timer = maxf(cover_reveal_timer - delta, 0.0)
 	cover_ambush_timer = maxf(cover_ambush_timer - delta, 0.0)
 	cover_hint_cooldown = maxf(cover_hint_cooldown - delta, 0.0)
+	terrain_momentum_grace_timer = maxf(terrain_momentum_grace_timer - delta, 0.0)
+	terrain_counter_cooldown = maxf(terrain_counter_cooldown - delta, 0.0)
+	terrain_hint_cooldown = maxf(terrain_hint_cooldown - delta, 0.0)
 	search_timer = maxf(search_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
@@ -1275,6 +1329,35 @@ func opportunity_status_text() -> String:
 	return ""
 
 
+func _update_environment_state(delta: float) -> void:
+	if game == null or game.world == null or not game.world.has_method("region_id_at"):
+		environment_region_id = ""
+		environment_affinity = 0.0
+		terrain_momentum = 0.0
+		return
+	environment_region_id = game.world.region_id_at(global_position)
+	environment_affinity = Catalog.habitat_affinity(species_id, environment_region_id)
+	if _collapse_competition_active() or is_airborne():
+		terrain_momentum = 0.0
+		return
+	if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD:
+		terrain_momentum_grace_timer = TERRAIN_MOMENTUM_GRACE
+		if terrain_counter_cooldown <= 0.0 and terrain_momentum < TERRAIN_MOMENTUM_REQUIRED:
+			var flat_speed := Vector2(velocity.x, velocity.z).length()
+			if flat_speed >= 0.72:
+				var newly_ready := terrain_momentum + delta >= TERRAIN_MOMENTUM_REQUIRED
+				terrain_momentum = minf(terrain_momentum + delta, TERRAIN_MOMENTUM_REQUIRED)
+				if newly_ready and is_player and terrain_hint_cooldown <= 0.0 and game.has_method("show_hint"):
+					terrain_hint_cooldown = 7.0
+					var counter_name: String = str(game.world.terrain_counter_name(environment_region_id)) if game.world.has_method("terrain_counter_name") else "地形反制"
+					game.show_hint("%s就绪：把不适应这里的强敌引入主场，用普通攻击发动逆袭" % counter_name)
+			elif flat_speed < 0.30:
+				terrain_momentum = maxf(terrain_momentum - delta * 0.32, 0.0)
+	elif terrain_momentum_grace_timer <= 0.0:
+		terrain_momentum = 0.0
+	_update_cover_visual()
+
+
 func _update_cover_state(delta: float) -> void:
 	cover_sample_timer -= delta
 	if cover_sample_timer <= 0.0:
@@ -1315,12 +1398,13 @@ func _break_cover(reveal_duration: float = COVER_REVEAL_SECONDS) -> void:
 func _update_cover_visual() -> void:
 	if not is_player or selection_ring == null:
 		return
-	var next_state := "ambush" if has_cover_ambush() else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open")
+	var next_state := "ambush" if has_cover_ambush() else ("terrain" if has_terrain_momentum() else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open"))
 	if next_state == cover_visual_state:
 		return
 	cover_visual_state = next_state
 	var tint: Color = {
 		"ambush": Color("#f1d46b"),
+		"terrain": Color("#70cfe8"),
 		"cover": Color("#65d8b2"),
 		"open": Color("#8ff0b1"),
 	}.get(next_state, Color("#8ff0b1"))
@@ -1461,6 +1545,7 @@ func _update_ai(delta: float) -> void:
 				var away := (global_position - ai_target.global_position).normalized()
 				var evade_side := Vector3(-away.z, 0.0, away.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 				var cover_offset := escape_cover_position - global_position
+				var habitat_offset := escape_habitat_position - global_position
 				if _has_escape_cover() and Vector2(cover_offset.x, cover_offset.z).length() > 1.15:
 					var toward_cover := Vector3(cover_offset.x, 0.0, cover_offset.z).normalized()
 					desired_direction = (toward_cover * 0.86 + away * 0.48 + evade_side * 0.16).normalized()
@@ -1468,6 +1553,10 @@ func _update_ai(delta: float) -> void:
 				elif _has_escape_cover():
 					desired_direction = Vector3.ZERO
 					wants_sprint = false
+				elif _has_escape_habitat() and Vector2(habitat_offset.x, habitat_offset.z).length() > 1.25:
+					var toward_habitat := Vector3(habitat_offset.x, 0.0, habitat_offset.z).normalized()
+					desired_direction = (toward_habitat * 0.92 + away * 0.42 + evade_side * 0.14).normalized()
+					wants_sprint = stamina > max_stamina * 0.20
 				else:
 					desired_direction = (away + evade_side * 0.26).normalized()
 					wants_sprint = stamina > max_stamina * 0.16
@@ -1511,7 +1600,7 @@ func _update_ai(delta: float) -> void:
 				# Weak animals normally kite a stronger target until it exposes itself.
 				# The fully collapsed habitat is the final duel, so continued kiting
 				# there would prevent the level from ever selecting one survivor.
-				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not has_cover_ambush() and not _collapse_competition_active():
+				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not has_cover_ambush() and not can_terrain_counter(ai_target) and not _collapse_competition_active():
 					var away_from_stronger := Vector3(global_position.x - ai_target.global_position.x, 0.0, global_position.z - ai_target.global_position.z).normalized()
 					var orbit_side := Vector3(-away_from_stronger.z, 0.0, away_from_stronger.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 					desired_direction = (away_from_stronger * 0.78 + orbit_side * 0.62).normalized()
@@ -1621,6 +1710,11 @@ func _think() -> void:
 	if ai_state == "flee" and is_cover_concealed() and threat_distance > COVER_CLOSE_REVEAL_DISTANCE + 1.2:
 		_switch_state("hide", null)
 		return
+	if ai_state == "flee" and is_instance_valid(nearest_threat) and can_terrain_counter(nearest_threat):
+		var terrain_counter_reach := float(data["speed"]) * 0.58 + float(data["attack_range"]) + 0.8
+		if threat_distance <= terrain_counter_reach:
+			_switch_state("hunt", nearest_threat)
+			return
 	var flee_distance := 10.0 + int(data["size"]) * 1.5
 	if species_id == "rabbit":
 		flee_distance += 4.0
@@ -1735,8 +1829,10 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 		state_commit_timer = 1.4
 	if new_state == "flee" and is_instance_valid(target) and (ai_state != "flee" or changed_target):
 		_prepare_escape_cover(target)
+		_prepare_escape_habitat(target)
 	elif new_state != "flee":
 		escape_cover_position = Vector3(INF, 0.0, INF)
+		escape_habitat_position = Vector3(INF, 0.0, INF)
 	ai_state = new_state
 	ai_target = target
 	if new_state == "hunt" and is_instance_valid(target):
@@ -1748,12 +1844,26 @@ func _has_escape_cover() -> bool:
 	return escape_cover_position.x != INF and not _collapse_competition_active()
 
 
+func _has_escape_habitat() -> bool:
+	return escape_habitat_position.x != INF and not _collapse_competition_active()
+
+
 func _prepare_escape_cover(threat: EcoActor) -> void:
 	escape_cover_position = Vector3(INF, 0.0, INF)
 	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_escape_cover") or int(data["size"]) > 3 or _collapse_competition_active():
 		return
 	var search_radius := 12.0 + float(3 - mini(int(data["size"]), 3)) * 1.8
 	escape_cover_position = game.world.best_escape_cover(global_position, threat.global_position, species_id, search_radius)
+
+
+func _prepare_escape_habitat(threat: EcoActor) -> void:
+	escape_habitat_position = Vector3(INF, 0.0, INF)
+	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_counter_habitat") or _collapse_competition_active():
+		return
+	if Catalog.opportunity_threat_gap(species_id, threat.species_id) <= 0:
+		return
+	var search_radius := 16.0 + float(4 - mini(int(data["size"]), 4)) * 1.5
+	escape_habitat_position = game.world.best_counter_habitat(global_position, threat.global_position, species_id, threat.species_id, search_radius)
 
 
 func _can_detect_actor(other: EcoActor, base_range: float = 27.0) -> bool:
@@ -1938,10 +2048,13 @@ func _apply_movement(delta: float) -> void:
 			sprint_cost *= 1.25
 		if is_flying and game.world != null and game.world.has_method("flight_stamina_multiplier"):
 			sprint_cost *= game.world.flight_stamina_multiplier()
+		if game.world != null and game.world.has_method("stamina_cost_multiplier"):
+			sprint_cost *= game.world.stamina_cost_multiplier(species_id, global_position)
 		stamina = maxf(stamina - sprint_cost * delta, 0.0)
 	else:
 		var hunger_factor := 1.0 if hunger < 70.0 else (0.85 if hunger < 90.0 else 0.65)
-		stamina = minf(stamina + float(data["regen"]) * hunger_factor * delta * (1.0 if flat_direction.length() < 0.1 else 0.70), max_stamina)
+		var environment_regen: float = float(game.world.stamina_regen_multiplier(species_id, global_position)) if game.world != null and game.world.has_method("stamina_regen_multiplier") else 1.0
+		stamina = minf(stamina + float(data["regen"]) * hunger_factor * environment_regen * delta * (1.0 if flat_direction.length() < 0.1 else 0.70), max_stamina)
 	if dash_timer > 0.0:
 		dash_timer -= delta
 		flat_direction = dash_direction
@@ -2039,8 +2152,13 @@ func _try_attack() -> void:
 	if rage_timer > 0.0:
 		damage *= 1.1
 	ambush_attack_armed = has_cover_ambush()
+	terrain_attack_armed = not ambush_attack_armed and can_terrain_counter(target)
 	target.take_damage(damage, self)
 	ambush_attack_armed = false
+	if terrain_attack_armed:
+		terrain_momentum = 0.0
+		terrain_counter_cooldown = TERRAIN_COUNTER_COOLDOWN
+	terrain_attack_armed = false
 	_break_cover()
 	if game.has_method("play_sfx_near"):
 		game.play_sfx_near("attack", global_position, is_player)
@@ -2606,10 +2724,12 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	var threat_gap := 0
 	var opportunity_strike := false
 	var ambush_strike := false
+	var terrain_strike := false
 	if is_instance_valid(source):
 		threat_gap = Catalog.opportunity_threat_gap(source.species_id, species_id)
 		ambush_strike = threat_gap > 0 and source.ambush_attack_armed
-		opportunity_strike = threat_gap > 0 and (is_opportunity_exposed() or ambush_strike) and source.opportunity_strike_timer <= 0.0
+		terrain_strike = threat_gap > 0 and source.terrain_attack_armed
+		opportunity_strike = threat_gap > 0 and (is_opportunity_exposed() or ambush_strike or terrain_strike) and source.opportunity_strike_timer <= 0.0
 	var armor := float(data["armor"])
 	if opportunity_strike:
 		armor *= OPPORTUNITY_ARMOR_FACTOR
@@ -2631,11 +2751,17 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		final_damage += opportunity_bonus
 		stamina = maxf(stamina - max_stamina * OPPORTUNITY_STAMINA_DAMAGE_RATIO, 0.0)
 		source.opportunity_strike_timer = OPPORTUNITY_COOLDOWN
-		exposed_timer = maxf(exposed_timer, AMBUSH_CREATED_EXPOSURE) if ambush_strike else 0.0
+		if ambush_strike:
+			exposed_timer = maxf(exposed_timer, AMBUSH_CREATED_EXPOSURE)
+		elif terrain_strike:
+			exposed_timer = maxf(exposed_timer, TERRAIN_CREATED_EXPOSURE)
+		else:
+			exposed_timer = 0.0
 		apply_slow(0.84, 1.25)
 		_update_exhaustion_state()
-		if ambush_strike and _should_show_skill_vfx():
-			SkillVFX.radial_burst(_skill_effect_parent(), global_position, Color("#8fe8b7"), 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
+		if (ambush_strike or terrain_strike) and _should_show_skill_vfx():
+			var counter_color := Color("#8fe8b7") if ambush_strike else Color("#70cfe8")
+			SkillVFX.radial_burst(_skill_effect_parent(), global_position, counter_color, 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
 	if shell_guard_timer > 0.0:
 		final_damage *= 0.42 if _collapse_competition_active() else 0.24
 		final_damage = maxf(final_damage, 1.0)
@@ -2644,7 +2770,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			final_damage *= 1.32
 	health -= final_damage
 	if opportunity_strike and game.has_method("on_opportunity_strike"):
-		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus, ambush_strike)
+		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus, ambush_strike, terrain_strike)
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
 		rage_timer = 4.0
 		rage_cooldown_timer = 8.0

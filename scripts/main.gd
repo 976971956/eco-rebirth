@@ -137,7 +137,8 @@ func _process(delta: float) -> void:
 			world.update_weather_focus(player.global_position)
 		var living_count := get_living_actors().size()
 		var domain_suffix: String = "" if player.movement_domain_label() == "地面" else "\n移动层：%s" % player.movement_domain_label()
-		var region_name := "%s · %s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix] if is_instance_valid(world) else "未知区域"
+		var adaptation_suffix := " · %s" % player.environment_region_status_text() if player.has_method("environment_region_status_text") else ""
+		var region_name := "%s · %s%s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix, adaptation_suffix] if is_instance_valid(world) else "未知区域"
 		ui.update_hud(player, living_count, roster_size, region_name)
 		leaderboard_refresh_remaining -= delta
 		if leaderboard_refresh_remaining <= 0.0:
@@ -765,18 +766,22 @@ func show_enemy_health(target: EcoActor) -> void:
 		ui.show_enemy_health(target)
 
 
-func on_opportunity_strike(attacker: EcoActor, target: EcoActor, threat_gap: int, bonus_damage: float, ambush_strike: bool = false) -> void:
+func on_opportunity_strike(attacker: EcoActor, target: EcoActor, threat_gap: int, bonus_damage: float, ambush_strike: bool = false, terrain_strike: bool = false) -> void:
 	if ui == null or batch_mode or not is_instance_valid(attacker) or not is_instance_valid(target):
 		return
 	if attacker == player:
 		ui.show_enemy_health(target)
-		var strike_name := "草丛伏击" if ambush_strike else "抓住破绽"
+		var strike_name := "草丛伏击" if ambush_strike else ("主场反制" if terrain_strike else "抓住破绽")
+		var event_name := "伏击逆袭" if ambush_strike else ("地形逆袭" if terrain_strike else "逆袭")
+		var event_color := "#8fe8b7" if ambush_strike else ("#70cfe8" if terrain_strike else "#f1d46b")
 		ui.show_hint("%s！无视部分护甲，额外造成 %d 伤害" % [strike_name, roundi(bonus_damage)])
-		ui.add_event("%s命中%s · 威胁差%d级" % ["伏击逆袭" if ambush_strike else "逆袭", Catalog.display_name(target.species_id), threat_gap], "#8fe8b7" if ambush_strike else "#f1d46b")
+		ui.add_event("%s命中%s · 威胁差%d级" % [event_name, Catalog.display_name(target.species_id), threat_gap], event_color)
 		if ambush_strike:
 			ui.add_battle_report("你·%s从草丛伏击%s，直接制造破绽" % [Catalog.display_name(attacker.species_id), Catalog.display_name(target.species_id)], "伏击", "#8fe8b7")
+		elif terrain_strike:
+			ui.add_battle_report("你·%s利用主场地形反制%s，制造追击破绽" % [Catalog.display_name(attacker.species_id), Catalog.display_name(target.species_id)], "地形", "#70cfe8")
 	elif target == player:
-		ui.show_hint("你遭到草丛伏击！先拉开距离" if ambush_strike else "你在破绽状态遭到逆袭！停止攻击并恢复耐力")
+		ui.show_hint("你遭到草丛伏击！先拉开距离" if ambush_strike else ("你在对方主场遭到地形反制！尽快换区" if terrain_strike else "你在破绽状态遭到逆袭！停止攻击并恢复耐力"))
 
 
 func on_player_experience_gained(amount: int, defeated_species: String, reason: String = "击杀") -> void:

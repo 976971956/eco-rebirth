@@ -5,6 +5,13 @@ const OPPORTUNITY_BASE_HEALTH_RATIO := 0.02
 const OPPORTUNITY_RATIO_PER_GAP := 0.01
 const OPPORTUNITY_MAX_GAP := 4
 
+const BIOME_DISPLAY_NAMES := {
+	"forest": "古木林地",
+	"grassland": "日照草原",
+	"wetland": "浅水湿地",
+	"highland": "岩丘高地",
+}
+
 
 const ORDER: Array[String] = [
 	"rabbit", "fox", "deer", "wolf", "snake", "bear",
@@ -1151,6 +1158,10 @@ static func display_name(species_id: String) -> String:
 	return str(DATA.get(species_id, DATA["rabbit"])["name"])
 
 
+static func body_size(species_id: String) -> int:
+	return int(DATA.get(species_id, DATA["rabbit"])["size"])
+
+
 static func get_color(species_id: String) -> Color:
 	return Color.from_string(str(DATA.get(species_id, DATA["rabbit"])["color"]), Color.WHITE)
 
@@ -1209,6 +1220,29 @@ static func preferred_regions(species_id: String) -> Array[String]:
 	for region_id in BIOME_PREFERENCES.get(species_id, ["forest", "grassland", "wetland", "highland"]):
 		regions.append(str(region_id))
 	return regions
+
+
+static func habitat_affinity(species_id: String, region_id: String) -> float:
+	# This helper runs in every actor's movement/stamina loop. Read the immutable
+	# catalog array directly instead of allocating a duplicated typed array.
+	var regions: Array = BIOME_PREFERENCES.get(species_id, ["forest", "grassland", "wetland", "highland"])
+	var region_index := regions.find(region_id)
+	if region_index < 0:
+		return 0.0
+	return 1.0 if region_index == 0 else 0.78
+
+
+static func habitat_description(species_id: String) -> String:
+	var regions: Array[String] = preferred_regions(species_id)
+	if regions.is_empty():
+		return "环境适应：无明确主场"
+	var primary_name := str(BIOME_DISPLAY_NAMES.get(regions[0], regions[0]))
+	if regions.size() == 1:
+		return "环境适应：%s（主场）" % primary_name
+	var familiar_names: Array[String] = []
+	for index in range(1, regions.size()):
+		familiar_names.append(str(BIOME_DISPLAY_NAMES.get(regions[index], regions[index])))
+	return "环境适应：%s（主场） · %s（熟悉）" % [primary_name, " / ".join(familiar_names)]
 
 
 static func has_trait(species_id: String, trait_id: String) -> bool:

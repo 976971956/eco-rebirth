@@ -23,8 +23,9 @@ func _init() -> void:
 	_validate_adaptive_ui_contract()
 	_validate_opportunity_contract()
 	_validate_cover_ambush_contract()
+	_validate_terrain_counter_contract()
 	if failures.is_empty():
-		print("[release] V1.7 发布校验通过：草丛伏击、视野搜索、生态逆袭、移动安全区、安全轮回与 Web 音频正常")
+		print("[release] V1.8 发布校验通过：主场反制、AI 环境选路、草丛伏击、生态逆袭、移动安全区与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -261,6 +262,23 @@ func _validate_cover_ambush_contract() -> void:
 	_expect(actor_source.contains("ambush_attack_armed"), "草丛首击没有连接逆袭结算")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("伏击就绪") and ui_source.contains("伏击可逆袭"), "HUD 没有完整显示草丛伏击状态")
+
+
+func _validate_terrain_counter_contract() -> void:
+	var world := WorldScript.new()
+	var highland := Vector3(6.0, 0.45, 6.0)
+	_expect(Catalog.habitat_affinity("goat", "highland") >= 0.99, "物种目录没有识别第一主场")
+	_expect(world.movement_multiplier("goat", highland) > 1.0, "主场没有提供移动优势")
+	_expect(world.stamina_regen_multiplier("goat", highland) > 1.0, "主场没有提供耐力恢复优势")
+	_expect(world.terrain_counter_strength("goat", highland, "lion", Vector3(9.0, 0.45, 6.0)) >= WorldScript.TERRAIN_COUNTER_THRESHOLD, "弱势物种无法在主场反制客场强敌")
+	_expect(world.terrain_counter_strength("goat", highland, "eagle", Vector3(9.0, 0.45, 6.0)) == 0.0, "共同适应区域错误产生了地形反制")
+	world.free()
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("terrain_attack_armed"), "主场蓄势没有连接普通攻击逆袭结算")
+	_expect(actor_source.contains("best_counter_habitat"), "AI 逃跑没有寻找可反制追兵的主场")
+	_expect(actor_source.contains("can_terrain_counter(nearest_threat)"), "AI 主场蓄势后没有回头反击逻辑")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("地形可逆袭") and ui_source.contains("环境反制"), "HUD 和物种简报没有解释环境反制")
 
 
 func _expect(condition: bool, message: String) -> void:

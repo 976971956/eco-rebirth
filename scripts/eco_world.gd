@@ -12,6 +12,7 @@ const HIGHLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/highland_
 const COLLAPSE_MIN_RADIUS_RATIO := 0.22
 const COLLAPSE_SHRINK_SECONDS := 90.0
 const MIN_PASSAGE_GAP := 3.4
+const TERRAIN_COUNTER_THRESHOLD := 0.72
 
 const REGION_NAMES := {
 	"forest": "古木林地",
@@ -826,6 +827,18 @@ func condition_summary() -> String:
 
 func movement_multiplier(species_id: String, pos: Vector3) -> float:
 	var multiplier := 1.0
+	var region_id := region_id_at(pos)
+	var affinity := Catalog.habitat_affinity(species_id, region_id)
+	if affinity >= 0.99:
+		multiplier *= 1.08
+	elif affinity >= TERRAIN_COUNTER_THRESHOLD:
+		multiplier *= 1.045
+	var size_level := Catalog.body_size(species_id)
+	if affinity < TERRAIN_COUNTER_THRESHOLD:
+		if region_id == "forest" and size_level >= 4:
+			multiplier *= 0.93
+		elif region_id == "highland" and not Catalog.has_trait(species_id, "climber"):
+			multiplier *= 0.92 if size_level >= 4 else 0.96
 	if Catalog.has_trait(species_id, "flying"):
 		if weather_id == "storm":
 			multiplier *= 0.76
@@ -847,6 +860,121 @@ func movement_multiplier(species_id: String, pos: Vector3) -> float:
 		elif weather_id == "fog":
 			multiplier *= 0.88
 	return multiplier
+
+
+func stamina_regen_multiplier(species_id: String, pos: Vector3) -> float:
+	var region_id := region_id_at(pos)
+	var affinity := Catalog.habitat_affinity(species_id, region_id)
+	var multiplier := 1.0
+	if affinity >= 0.99:
+		multiplier *= 1.14
+	elif affinity >= TERRAIN_COUNTER_THRESHOLD:
+		multiplier *= 1.08
+	if region_id == "wetland" and Catalog.has_trait(species_id, "wetland_swimmer") and weather_id in ["rain", "storm"]:
+		multiplier *= 1.08
+	elif region_id == "forest" and weather_id == "fog" and Catalog.has_trait(species_id, "ambusher"):
+		multiplier *= 1.06
+	return multiplier
+
+
+func stamina_cost_multiplier(species_id: String, pos: Vector3) -> float:
+	var region_id := region_id_at(pos)
+	var affinity := Catalog.habitat_affinity(species_id, region_id)
+	var multiplier := 1.0
+	if affinity >= 0.99:
+		multiplier *= 0.88
+	elif affinity >= TERRAIN_COUNTER_THRESHOLD:
+		multiplier *= 0.94
+	if region_id == "highland" and Catalog.has_trait(species_id, "climber"):
+		multiplier *= 0.94
+	elif region_id == "grassland" and Catalog.has_trait(species_id, "straight_runner"):
+		multiplier *= 0.94
+	return multiplier
+
+
+func terrain_counter_strength(attacker_id: String, attacker_pos: Vector3, target_id: String, target_pos: Vector3) -> float:
+	var region_id := region_id_at(attacker_pos)
+	if region_id_at(target_pos) != region_id:
+		return 0.0
+	var attacker_affinity := Catalog.habitat_affinity(attacker_id, region_id)
+	var target_affinity := Catalog.habitat_affinity(target_id, region_id)
+	if attacker_affinity < TERRAIN_COUNTER_THRESHOLD or target_affinity >= TERRAIN_COUNTER_THRESHOLD:
+		return 0.0
+	var strength := attacker_affinity
+	if region_id == "wetland" and Catalog.has_trait(attacker_id, "wetland_swimmer") and not Catalog.has_trait(target_id, "wetland_swimmer"):
+		strength += 0.16
+	elif region_id == "highland" and Catalog.has_trait(attacker_id, "climber") and not Catalog.has_trait(target_id, "climber"):
+		strength += 0.12
+	elif region_id == "forest" and Catalog.has_trait(attacker_id, "ambusher"):
+		strength += 0.10
+	elif region_id == "grassland" and Catalog.has_trait(attacker_id, "straight_runner") and not Catalog.has_trait(target_id, "straight_runner"):
+		strength += 0.10
+	if weather_id == "fog" and Catalog.has_trait(attacker_id, "ambusher"):
+		strength += 0.08
+	elif weather_id in ["rain", "storm"] and Catalog.has_trait(attacker_id, "wetland_swimmer"):
+		strength += 0.08
+	return clampf(strength, 0.0, 1.0)
+
+
+func terrain_counter_name(region_id: String) -> String:
+	return str({
+		"forest": "密林周旋",
+		"grassland": "旷野游斗",
+		"wetland": "浅滩牵制",
+		"highland": "岩径反制",
+	}.get(region_id, "地形反制"))
+
+
+func best_counter_habitat(origin: Vector3, threat_position: Vector3, species_id: String, target_species_id: String, max_distance: float = 18.0) -> Vector3:
+	var current_region := region_id_at(origin)
+	if Catalog.habitat_affinity(species_id, current_region) >= TERRAIN_COUNTER_THRESHOLD and Catalog.habitat_affinity(target_species_id, current_region) < TERRAIN_COUNTER_THRESHOLD:
+		return Vector3(INF, 0.0, INF)
+	var best := Vector3(INF, 0.0, INF)
+	var best_score := -INF
+	var current_threat_distance := Vector2(origin.x - threat_position.x, origin.z - threat_position.z).length()
+	for region_id in Catalog.preferred_regions(species_id):
+		if Catalog.habitat_affinity(target_species_id, region_id) >= TERRAIN_COUNTER_THRESHOLD:
+			continue
+		var candidate := _nearest_point_in_region(origin, region_id, 2.6)
+		var route_distance := Vector2(candidate.x - origin.x, candidate.z - origin.z).length()
+		if route_distance > max_distance:
+			continue
+		candidate = _nearest_clear_point_in_region(candidate, region_id, 0.55)
+		if candidate.x == INF:
+			continue
+		if collapse_active and Vector2(candidate.x, candidate.z).length() > collapse_radius - 1.8:
+			continue
+		var threat_distance := Vector2(candidate.x - threat_position.x, candidate.z - threat_position.z).length()
+		var safety_gain := threat_distance - current_threat_distance
+		var affinity := Catalog.habitat_affinity(species_id, region_id)
+		var score := affinity * 7.0 + safety_gain * 0.20 - route_distance * 0.24
+		if score > best_score:
+			best_score = score
+			best = candidate
+	return best
+
+
+func _nearest_point_in_region(origin: Vector3, region_id: String, margin: float) -> Vector3:
+	var edge := maxf(world_size * 0.5 - 2.2, margin + 0.5)
+	var wants_west := region_id in ["forest", "wetland"]
+	var wants_north := region_id in ["forest", "grassland"]
+	var target_x := minf(origin.x, -margin) if wants_west else maxf(origin.x, margin)
+	var target_z := minf(origin.z, -margin) if wants_north else maxf(origin.z, margin)
+	return Vector3(clampf(target_x, -edge, edge), 0.45, clampf(target_z, -edge, edge))
+
+
+func _nearest_clear_point_in_region(origin: Vector3, region_id: String, actor_radius: float) -> Vector3:
+	if region_id_at(origin) == region_id and is_landing_clear(origin, actor_radius):
+		return origin
+	for ring_index in range(1, 5):
+		var radius := float(ring_index) * 1.35
+		for direction_index in range(12):
+			var angle := TAU * float(direction_index) / 12.0
+			var candidate := clamp_position(origin + Vector3(cos(angle), 0.0, sin(angle)) * radius)
+			candidate.y = 0.45
+			if region_id_at(candidate) == region_id and is_landing_clear(candidate, actor_radius):
+				return candidate
+	return Vector3(INF, 0.0, INF)
 
 
 func perception_multiplier(species_id: String) -> float:

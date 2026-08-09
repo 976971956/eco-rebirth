@@ -907,10 +907,10 @@ func show_species_intro(species_id: String) -> void:
 	var data := Catalog.get_data(species_id)
 	var touch_layout := _uses_touch_layout()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：趁更强敌人耐力不足或技能后摇时攻击\n草丛伏击：小中型物种在草丛停留蓄势，首击可直接制造强敌破绽"
-	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
+	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击"
+	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
-		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
+		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
 	]
 	intro_panel.modulate = Color.WHITE
 	intro_panel.move_to_front()
@@ -969,9 +969,15 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	elif player_actor.has_cover_ambush():
 		tactical_status = "伏击就绪 · 首击可逆袭强敌"
 		tactical_color = Color("#8fe8b7")
+	elif player_actor.has_terrain_momentum():
+		tactical_status = player_actor.tactical_terrain_status_text()
+		tactical_color = Color("#70cfe8")
 	elif player_actor.tactical_cover_status_text() != "":
 		tactical_status = player_actor.tactical_cover_status_text()
 		tactical_color = Color("#73d4c0")
+	elif player_actor.tactical_terrain_status_text() != "":
+		tactical_status = player_actor.tactical_terrain_status_text()
+		tactical_color = Color("#8fc9d8")
 	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [
 		float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]),
 		"\n%s" % tactical_status if tactical_status != "" else "",
@@ -1174,24 +1180,29 @@ func _refresh_enemy_health() -> void:
 	var player_actor := game.get("player") as EcoActor if game != null else null
 	var threat_gap := Catalog.opportunity_threat_gap(player_actor.species_id, enemy_target.species_id) if is_instance_valid(player_actor) else 0
 	var can_ambush_strike := is_instance_valid(player_actor) and threat_gap > 0 and player_actor.has_cover_ambush()
-	var can_opportunity_strike := threat_gap > 0 and (enemy_target.is_opportunity_exposed() or can_ambush_strike)
+	var can_terrain_strike := is_instance_valid(player_actor) and threat_gap > 0 and player_actor.can_terrain_counter(enemy_target)
+	var can_opportunity_strike := threat_gap > 0 and (enemy_target.is_opportunity_exposed() or can_ambush_strike or can_terrain_strike)
 	if enemy_target.is_opportunity_exposed():
 		status_parts.append(("可逆袭 · " if can_opportunity_strike else "") + enemy_target.opportunity_status_text())
 	elif can_ambush_strike:
 		status_parts.append("伏击可逆袭")
+	elif can_terrain_strike:
+		status_parts.append("地形可逆袭")
+	var terrain_highlight := can_terrain_strike and not enemy_target.is_opportunity_exposed() and not can_ambush_strike
+	var opportunity_color := Color("#70cfe8") if terrain_highlight else Color("#ffe078")
 	enemy_name_label.text = "Lv.%d %s" % [enemy_target.level, target_data["name"]]
 	enemy_status_label.text = " / ".join(status_parts) if not status_parts.is_empty() else "状态稳定"
-	enemy_name_label.add_theme_color_override("font_color", Color("#ffe078") if can_opportunity_strike else Color("#fff0df"))
-	enemy_status_label.add_theme_color_override("font_color", Color("#ffe078") if can_opportunity_strike else Color("#edc7b4"))
+	enemy_name_label.add_theme_color_override("font_color", opportunity_color if can_opportunity_strike else Color("#fff0df"))
+	enemy_status_label.add_theme_color_override("font_color", opportunity_color if can_opportunity_strike else Color("#edc7b4"))
 	enemy_panel.add_theme_stylebox_override("panel", _panel_style(
-		Color(0.14, 0.10, 0.025, 0.76) if can_opportunity_strike else HUD_ENEMY_BACKGROUND,
+		(Color(0.025, 0.11, 0.15, 0.78) if terrain_highlight else Color(0.14, 0.10, 0.025, 0.76)) if can_opportunity_strike else HUD_ENEMY_BACKGROUND,
 		14,
-		Color(1.0, 0.80, 0.24, 0.86) if can_opportunity_strike else Color(0.95, 0.38, 0.32, 0.70),
+		opportunity_color if can_opportunity_strike else Color(0.95, 0.38, 0.32, 0.70),
 		2
 	))
 	enemy_hp_bar.max_value = maxf(enemy_target.max_health, 1.0)
 	enemy_hp_bar.value = maxf(enemy_target.health, 0.0)
-	enemy_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#e8b93f") if can_opportunity_strike else Color("#d6534f")))
+	enemy_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#58bcd8") if terrain_highlight else (Color("#e8b93f") if can_opportunity_strike else Color("#d6534f"))))
 	enemy_hp_value_label.text = "%d / %d" % [ceili(maxf(enemy_target.health, 0.0)), ceili(enemy_target.max_health)]
 
 
@@ -1391,9 +1402,9 @@ func _free_level_description(level: int) -> String:
 
 func _free_species_description(species_id: String) -> String:
 	var data := Catalog.get_data(species_id)
-	return "%s · %s\n生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动：%s — %s\n\n获胜思路：%s" % [
+	return "%s · %s\n生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n被动：%s — %s\n主动：%s — %s\n\n获胜思路：%s" % [
 		data["name"], data["subtitle"], int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
-		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id),
+		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id),
 	]
 
 
