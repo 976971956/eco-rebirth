@@ -37,7 +37,12 @@ func setup() -> void:
 	_build_music_player()
 	_build_effects()
 	_build_sfx_pool()
-	if "--batch-sim" in " ".join(OS.get_cmdline_user_args()):
+	var user_args := OS.get_cmdline_user_args()
+	var headless_autoplay := "--autoplay" in user_args and DisplayServer.get_name() == "headless"
+	if "--batch-sim" in " ".join(user_args) or headless_autoplay:
+		# Simulation and fixed-frame CI runs have no audible output. Leaving the
+		# live generator running until their forced engine quit produces a false
+		# ObjectDB leak warning even though gameplay cleanup is healthy.
 		music_enabled = false
 		sfx_enabled = false
 		set_process(false)

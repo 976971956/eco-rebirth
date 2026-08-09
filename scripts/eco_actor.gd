@@ -2575,12 +2575,15 @@ func die(killer: EcoActor) -> void:
 		killer.kills += 1
 	died.emit(self, killer)
 	var tween := create_tween()
-	tween.set_parallel(true)
 	tween.tween_property(visual_root, "scale", Vector3(1.2, 0.12, 1.2), 0.35)
-	await get_tree().create_timer(0.38).timeout
-	visible = false
-	await get_tree().create_timer(1.0).timeout
-	queue_free()
+	# Player death pauses the tree when the result panel appears. An awaited
+	# SceneTreeTimer here would remain suspended on a dead actor, and Web builds
+	# could later dispatch its stale continuation as a null WASM function. Finish
+	# the short death animation before the result delay and queue the actor safely.
+	tween.tween_callback(func() -> void:
+		visible = false
+		queue_free()
+	)
 
 
 func _nearest_living_actor(max_distance: float) -> EcoActor:

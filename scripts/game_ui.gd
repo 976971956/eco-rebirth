@@ -61,6 +61,7 @@ var battle_ticker_button: Button
 var battle_reports: Array[Dictionary] = []
 var battle_ticker_index: int = -1
 var battle_ticker_elapsed: float = 0.0
+var intro_tween: Tween
 var event_feed: RichTextLabel
 var event_lines: Array[String] = []
 var attack_button: Button
@@ -615,6 +616,9 @@ func _build_modal_root() -> void:
 
 
 func show_menu() -> void:
+	_cancel_intro_tween()
+	if intro_panel != null:
+		intro_panel.hide()
 	if menu_start_button != null and game != null:
 		menu_start_button.text = game.menu_start_text() if game.has_method("menu_start_text") else ("继续轮回" if game.has_campaign_progress() else "开始轮回")
 	menu_root.show()
@@ -693,6 +697,7 @@ func set_player(player_actor: EcoActor) -> void:
 
 
 func show_species_intro(species_id: String) -> void:
+	_cancel_intro_tween()
 	var data := Catalog.get_data(species_id)
 	var touch_layout := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
@@ -704,10 +709,16 @@ func show_species_intro(species_id: String) -> void:
 	intro_panel.modulate = Color.WHITE
 	intro_panel.move_to_front()
 	intro_panel.show()
-	var tween := create_tween()
-	tween.tween_interval(8.0)
-	tween.tween_property(intro_panel, "modulate", Color(1, 1, 1, 0), 0.6)
-	tween.tween_callback(intro_panel.hide)
+	intro_tween = create_tween()
+	intro_tween.tween_interval(8.0)
+	intro_tween.tween_property(intro_panel, "modulate", Color(1, 1, 1, 0), 0.6)
+	intro_tween.tween_callback(intro_panel.hide)
+
+
+func _cancel_intro_tween() -> void:
+	if intro_tween != null and intro_tween.is_valid():
+		intro_tween.kill()
+	intro_tween = null
 
 
 func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域") -> void:

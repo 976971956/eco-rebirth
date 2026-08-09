@@ -14,10 +14,12 @@ func _init() -> void:
 	_validate_tutorial_contract()
 	_validate_free_mode_contract()
 	_validate_leaderboard_contract()
+	_validate_world_transition_contract()
+	_validate_death_lifecycle_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
 	if failures.is_empty():
-		print("[release] V1.4 发布校验通过：AI 地表、V2 程序模型、生态地图、排行播报、自由模式与 Web 音频正常")
+		print("[release] V1.4 发布校验通过：安全轮回、AI 地表、V2 程序模型、生态地图、排行播报、自由模式与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -128,6 +130,23 @@ func _validate_leaderboard_contract() -> void:
 		_expect(int(ranked[index].get("actor_id", -1)) == expected_ids[index], "等级榜未按等级、经验、击杀、生命和稳定 ID 排序")
 		_expect(int(ranked[index].get("rank", 0)) == index + 1, "等级榜名次不连续")
 	_expect(bool(ranked[4].get("is_player", false)), "玩家当前名次未保留")
+
+
+func _validate_world_transition_contract() -> void:
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("_start_new_world.call_deferred(free_mode)"), "按钮触发的轮回切场没有脱离输入回调")
+	_expect(main_source.contains("game_root.queue_free()"), "旧世界必须延迟销毁，避免 Web 输入回调访问已释放对象")
+	_expect(not main_source.contains("game_root.free()"), "旧世界仍在使用会破坏 Web 回调的同步销毁")
+
+
+func _validate_death_lifecycle_contract() -> void:
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	var die_start := actor_source.find("func die(killer: EcoActor) -> void:")
+	var next_method := actor_source.find("\nfunc ", die_start + 1)
+	var die_source := actor_source.substr(die_start, next_method - die_start)
+	_expect(die_start >= 0 and next_method > die_start, "无法读取动物死亡生命周期")
+	_expect(not die_source.contains("await "), "动物死亡仍会留下跨结算暂停的等待协程")
+	_expect(die_source.contains("tween.tween_callback"), "动物死亡动画结束后没有安排安全销毁")
 
 
 func _validate_web_audio_contract() -> void:

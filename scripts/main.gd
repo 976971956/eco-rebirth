@@ -159,14 +159,14 @@ func _notification(what: int) -> void:
 
 
 func _on_start_requested() -> void:
-	_start_new_world(false)
+	_queue_world_start(false)
 
 
 func _on_free_mode_requested(level: int, species_id: String) -> void:
 	selected_free_level = clampi(level, 1, LEVEL_CONFIG.size())
 	selected_free_species = species_id if Catalog.ORDER.has(species_id) else "rabbit"
 	_save_progress()
-	_start_new_world(true)
+	_queue_world_start(true)
 
 
 func _on_retry_requested() -> void:
@@ -178,11 +178,18 @@ func _on_retry_requested() -> void:
 			audio.set_context("game")
 		return
 	get_tree().paused = false
-	_start_new_world(run_uses_free_mode)
+	_queue_world_start(run_uses_free_mode)
 
 
 func _on_menu_requested() -> void:
 	get_tree().paused = false
+	if state == "loading":
+		return
+	state = "loading"
+	_return_to_menu.call_deferred()
+
+
+func _return_to_menu() -> void:
 	state = "menu"
 	tutorial_active = false
 	_clear_game_root()
@@ -191,6 +198,17 @@ func _on_menu_requested() -> void:
 	ui.show_menu()
 	if audio != null:
 		audio.set_context("menu")
+
+
+func _queue_world_start(free_mode: bool) -> void:
+	# UI buttons are driven by browser/native input callbacks. Destroying and
+	# rebuilding the complete 3D world inside that callback can leave WebAssembly
+	# dispatching into objects that have already been freed. Defer the transition
+	# and reject double taps while the new world is being assembled.
+	if state == "loading":
+		return
+	state = "loading"
+	_start_new_world.call_deferred(free_mode)
 
 
 func _on_battle_report_opened() -> void:
@@ -320,7 +338,12 @@ func _clear_game_root() -> void:
 	actors.clear()
 	corpses.clear()
 	if is_instance_valid(game_root):
-		game_root.free()
+		# queue_free() lets active input, tween and timer callbacks finish before
+		# the old generation disappears. Disable it immediately so it cannot run
+		# one more ecology tick after the arrays above are repopulated.
+		game_root.process_mode = Node.PROCESS_MODE_DISABLED
+		game_root.visible = false
+		game_root.queue_free()
 	game_root = null
 
 
