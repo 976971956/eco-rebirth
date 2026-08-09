@@ -21,6 +21,8 @@ var active: bool = true
 var regrow_enabled: bool = true
 var visual_root: Node3D
 var food_kind: String = "grass"
+var ecology_hotspot: bool = false
+var ecology_event_id: int = -1
 
 
 func setup(kind: String, rng: RandomNumberGenerator) -> void:
@@ -114,6 +116,18 @@ func boost(multiplier: float) -> void:
 	max_amount *= multiplier
 	amount = max_amount
 	active = true
+	_update_visual()
+
+
+func mark_ecology_hotspot(event_id: int) -> void:
+	ecology_hotspot = true
+	ecology_event_id = event_id
+
+
+func retire_hotspot() -> void:
+	regrow_enabled = false
+	active = false
+	amount = 0.0
 	_update_visual()
 
 

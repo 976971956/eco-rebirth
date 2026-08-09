@@ -72,6 +72,7 @@ var enemy_visible_until_msec: int = 0
 var threat_label: Label
 var seed_label: Label
 var region_label: Label
+var ecology_event_label: Label
 var skill_label: Label
 var skill_hint_label: Label
 var skill_bar: ProgressBar
@@ -467,6 +468,12 @@ func _build_hud() -> void:
 	region_label.add_theme_font_size_override("font_size", _font_size(17, 19))
 	region_label.add_theme_color_override("font_color", Color("#cce4a6"))
 	info_box.add_child(region_label)
+	ecology_event_label = Label.new()
+	ecology_event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ecology_event_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	ecology_event_label.add_theme_font_size_override("font_size", _font_size(15, 17))
+	ecology_event_label.add_theme_color_override("font_color", Color("#f0cf78"))
+	info_box.add_child(ecology_event_label)
 	seed_label = Label.new()
 	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	seed_label.add_theme_font_size_override("font_size", _font_size(15, 18))
@@ -844,6 +851,7 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	touch_root.visible = touch_available
 	event_feed.visible = not touch_available
 	seed_label.text = "世界种子 %s" % world_seed
+	ecology_event_label.text = "生态热点 · 正在等待迁徙信号"
 	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
 	_reset_live_information()
 	set_player(player_actor)
@@ -927,7 +935,7 @@ func _cancel_intro_tween() -> void:
 	intro_tween = null
 
 
-func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域") -> void:
+func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域", ecology_event_status: String = "") -> void:
 	if not hud_root.visible or not is_instance_valid(player_actor):
 		return
 	hp_bar.value = maxf(player_actor.health, 0.0)
@@ -945,6 +953,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	xp_value_label.text = ("最高等级" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
 	remaining_label.text = "存活个体　%d / %d" % [remaining, total]
 	region_label.text = "当前位置 · %s" % current_region
+	ecology_event_label.text = ecology_event_status
 	var cooldown := float(player_actor.data["skill_cooldown"])
 	var cooldown_remaining := player_actor.skill_timer
 	skill_bar.max_value = cooldown

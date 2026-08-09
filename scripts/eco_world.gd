@@ -1,6 +1,9 @@
 class_name EcoWorld
 extends Node3D
 
+signal ecology_event_started(event: Dictionary)
+signal ecology_event_ended(event: Dictionary)
+
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const FoodPatchScript = preload("res://scripts/food_patch.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
@@ -13,6 +16,15 @@ const COLLAPSE_MIN_RADIUS_RATIO := 0.22
 const COLLAPSE_SHRINK_SECONDS := 90.0
 const MIN_PASSAGE_GAP := 3.4
 const TERRAIN_COUNTER_THRESHOLD := 0.72
+const ECOLOGY_EVENT_FIRST_BASE := 34.0
+const ECOLOGY_EVENT_REPEAT_BASE := 72.0
+const ECOLOGY_EVENT_ORDER: Array[String] = ["fruit_fall", "grass_flush", "fish_run", "root_bloom"]
+const ECOLOGY_EVENT_PROFILES := {
+	"fruit_fall": {"unlock": 1, "title": "落果潮", "region": "forest", "foods": ["fruit", "berries", "fruit"], "color": "#e6a84f", "description": "成熟果实集中坠落，草食与杂食动物正在向林地迁徙"},
+	"grass_flush": {"unlock": 2, "title": "新草繁盛", "region": "grassland", "foods": ["grass", "grass", "fruit"], "color": "#a6d86f", "description": "雨露催生新草，开阔草原将形成短时争食热点"},
+	"fish_run": {"unlock": 3, "title": "鱼群洄游", "region": "wetland", "foods": ["fish", "fish", "fish"], "color": "#62cfd1", "description": "浅滩鱼群聚集，肉食与杂食动物会循水声前来"},
+	"root_bloom": {"unlock": 4, "title": "块根出土", "region": "highland", "foods": ["roots", "roots", "mushroom"], "color": "#d3b56d", "description": "岩丘土层松动，高能块根在山地集中出现"},
+}
 
 const REGION_NAMES := {
 	"forest": "古木林地",
@@ -31,6 +43,7 @@ var quality_preset: String = "medium"
 var collapse_active: bool = false
 var collapse_radius: float = INF
 var rng := RandomNumberGenerator.new()
+var event_rng := RandomNumberGenerator.new()
 var obstacles: Array[Vector3] = []
 var obstacle_radii: Array[float] = []
 var obstacle_visuals: Array[Node3D] = []
@@ -39,6 +52,12 @@ var obstacle_kinds: Array[String] = []
 var cover_positions: Array[Vector3] = []
 var cover_radii: Array[float] = []
 var food_patches: Array[Node] = []
+var active_ecology_event: Dictionary = {}
+var active_event_patches: Array[Node] = []
+var active_event_visual: Node3D
+var ecology_event_timer: float = 0.0
+var ecology_event_sequence: int = 0
+var last_ecology_event_id: String = ""
 var decoration_root: Node3D
 var obstacle_root: Node3D
 var environment_resource: Environment
@@ -52,6 +71,7 @@ var lightning_flash_timer: float = 0.0
 
 func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enable_visual_effects: bool = true, forced_weather: String = "", forced_time_phase: String = "", quality_value: String = "medium") -> void:
 	rng.seed = seed_value
+	event_rng.seed = seed_value ^ 0x5EED771
 	world_size = size_value
 	campaign_level = level_value
 	visual_effects_enabled = enable_visual_effects
@@ -76,6 +96,7 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	_build_biome_props()
 	_build_food()
 	_build_visible_border()
+	ecology_event_timer = ecology_event_first_delay(campaign_level, event_rng.randf())
 
 
 func _select_world_conditions() -> void:
@@ -720,6 +741,8 @@ func _build_visible_border() -> void:
 
 func trigger_collapse() -> void:
 	collapse_active = true
+	if not active_ecology_event.is_empty():
+		_end_ecology_event("栖息地压力终止了外围资源信号")
 	collapse_radius = world_size * 0.47
 	var center_radius := world_size * 0.18
 	for patch in food_patches:
@@ -733,11 +756,202 @@ func trigger_collapse() -> void:
 
 func _process(delta: float) -> void:
 	_process_weather(delta)
+	_process_ecology_events(delta)
 	if collapse_active:
 		var min_radius := world_size * COLLAPSE_MIN_RADIUS_RATIO
 		if collapse_radius > min_radius:
 			var shrink_rate := (world_size * 0.47 - min_radius) / COLLAPSE_SHRINK_SECONDS
 			collapse_radius = maxf(collapse_radius - shrink_rate * delta, min_radius)
+
+
+static func ecology_event_ids_for_level(level: int) -> Array[String]:
+	var result: Array[String] = []
+	for event_id in ECOLOGY_EVENT_ORDER:
+		if int(ECOLOGY_EVENT_PROFILES[event_id]["unlock"]) <= clampi(level, 1, 10):
+			result.append(event_id)
+	return result
+
+
+static func ecology_event_first_delay(level: int, random_unit: float) -> float:
+	return ECOLOGY_EVENT_FIRST_BASE + float(clampi(level, 1, 10)) * 1.5 + clampf(random_unit, 0.0, 1.0) * 12.0
+
+
+static func ecology_event_repeat_delay(level: int, random_unit: float) -> float:
+	return ECOLOGY_EVENT_REPEAT_BASE - float(clampi(level, 1, 10) - 1) * 1.5 + clampf(random_unit, 0.0, 1.0) * 18.0
+
+
+static func compass_direction(origin: Vector3, target: Vector3) -> String:
+	var delta := Vector2(target.x - origin.x, target.z - origin.z)
+	if delta.length_squared() < 0.01:
+		return "附近"
+	var east_west := "东" if delta.x >= 0.0 else "西"
+	var north_south := "南" if delta.y >= 0.0 else "北"
+	if absf(delta.x) <= absf(delta.y) * 0.42:
+		return north_south
+	if absf(delta.y) <= absf(delta.x) * 0.42:
+		return east_west
+	return east_west + north_south
+
+
+func _process_ecology_events(delta: float) -> void:
+	if collapse_active:
+		return
+	if not active_ecology_event.is_empty():
+		var remaining := maxf(float(active_ecology_event.get("remaining", 0.0)) - delta, 0.0)
+		active_ecology_event["remaining"] = remaining
+		if is_instance_valid(active_event_visual):
+			var pulse := 1.0 + sin(float(Time.get_ticks_msec()) * 0.0032) * 0.045
+			active_event_visual.scale = Vector3(pulse, 1.0, pulse)
+		if remaining <= 0.0:
+			_end_ecology_event("资源潮已经平息")
+		return
+	ecology_event_timer = maxf(ecology_event_timer - delta, 0.0)
+	if ecology_event_timer <= 0.0:
+		start_ecology_event()
+
+
+func start_ecology_event(forced_event_id: String = "") -> Dictionary:
+	if collapse_active or not active_ecology_event.is_empty():
+		return {}
+	var available := ecology_event_ids_for_level(campaign_level)
+	if available.is_empty():
+		return {}
+	var event_id := forced_event_id if available.has(forced_event_id) else available[event_rng.randi_range(0, available.size() - 1)]
+	if available.size() > 1 and event_id == last_ecology_event_id:
+		event_id = available[(available.find(event_id) + 1 + event_rng.randi_range(0, available.size() - 2)) % available.size()]
+	var profile: Dictionary = ECOLOGY_EVENT_PROFILES[event_id]
+	var region_id := str(profile["region"])
+	var center := ecology_event_position(region_id)
+	if center.x == INF:
+		ecology_event_timer = 8.0
+		return {}
+	ecology_event_sequence += 1
+	last_ecology_event_id = event_id
+	var duration := 42.0 + float(clampi(campaign_level, 1, 10)) * 0.8
+	var radius := 6.5 + float(clampi(campaign_level, 1, 10)) * 0.18
+	active_ecology_event = {
+		"sequence": ecology_event_sequence,
+		"id": event_id,
+		"title": str(profile["title"]),
+		"region": region_id,
+		"region_name": str(REGION_NAMES[region_id]),
+		"description": str(profile["description"]),
+		"color": str(profile["color"]),
+		"position": center,
+		"radius": radius,
+		"duration": duration,
+		"remaining": duration,
+	}
+	_build_ecology_event_food(profile, center)
+	_build_ecology_event_visual(center, str(profile["title"]), Color.from_string(str(profile["color"]), Color("#e6c66f")), radius)
+	ecology_event_started.emit(active_ecology_event.duplicate(true))
+	return active_ecology_event.duplicate(true)
+
+
+func _build_ecology_event_food(profile: Dictionary, center: Vector3) -> void:
+	var foods: Array = profile["foods"]
+	var patch_count := 3 + int(floor(float(clampi(campaign_level, 1, 10) - 1) / 3.0))
+	var region_id := str(profile["region"])
+	for index in range(patch_count):
+		var angle := TAU * float(index) / float(patch_count) + event_rng.randf_range(-0.22, 0.22)
+		var distance := event_rng.randf_range(1.8, 4.8)
+		var candidate := center + Vector3(cos(angle), 0.0, sin(angle)) * distance
+		candidate = _nearest_clear_point_in_region(candidate, region_id, 0.62)
+		if candidate.x == INF:
+			continue
+		var patch := FoodPatchScript.new()
+		patch.position = candidate
+		patch.setup(str(foods[index % foods.size()]), event_rng)
+		patch.mark_ecology_hotspot(ecology_event_sequence)
+		patch.boost(1.22 + float(campaign_level) * 0.018)
+		add_child(patch)
+		food_patches.append(patch)
+		active_event_patches.append(patch)
+
+
+func _build_ecology_event_visual(center: Vector3, title: String, color: Color, radius: float) -> void:
+	active_event_visual = Node3D.new()
+	active_event_visual.name = "EcologyHotspot_%d" % ecology_event_sequence
+	active_event_visual.position = Vector3(center.x, 0.0, center.z)
+	add_child(active_event_visual)
+	var ground_ring := MeshInstance3D.new()
+	ground_ring.name = "HotspotRing"
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.90
+	ring_mesh.outer_radius = 1.0
+	ring_mesh.rings = 20
+	ring_mesh.ring_segments = 6
+	ground_ring.mesh = ring_mesh
+	ground_ring.position = Vector3(0.0, 0.08, 0.0)
+	ground_ring.scale = Vector3(radius, 0.22, radius)
+	ground_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring_material := Factory.material(Color(color, 0.68), 0.72, color.darkened(0.18))
+	ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ground_ring.material_override = ring_material
+	active_event_visual.add_child(ground_ring)
+	for index in range(8):
+		var angle := TAU * float(index) / 8.0
+		var marker := Factory.cone("ScentMarker", Color(color, 0.72), 0.16, 0.62, Vector3(cos(angle) * radius * 0.86, 0.36, sin(angle) * radius * 0.86), 6)
+		marker.rotation.z = sin(angle) * 0.32
+		marker.rotation.x = cos(angle) * 0.32
+		active_event_visual.add_child(marker)
+	var title_label := Label3D.new()
+	title_label.text = title
+	title_label.position = Vector3(0.0, 2.4, 0.0)
+	title_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	title_label.font_size = 34
+	title_label.outline_size = 8
+	title_label.modulate = color.lightened(0.18)
+	title_label.outline_modulate = Color(0.02, 0.08, 0.06, 0.92)
+	active_event_visual.add_child(title_label)
+
+
+func _end_ecology_event(reason: String) -> void:
+	if active_ecology_event.is_empty():
+		return
+	var ended_event := active_ecology_event.duplicate(true)
+	ended_event["end_reason"] = reason
+	for patch in active_event_patches:
+		if not is_instance_valid(patch):
+			continue
+		patch.retire_hotspot()
+		patch.queue_free()
+	active_event_patches.clear()
+	food_patches = food_patches.filter(func(patch: Node) -> bool: return is_instance_valid(patch) and not patch.is_queued_for_deletion())
+	if is_instance_valid(active_event_visual):
+		active_event_visual.queue_free()
+	active_event_visual = null
+	active_ecology_event.clear()
+	ecology_event_timer = ecology_event_repeat_delay(campaign_level, event_rng.randf())
+	ecology_event_ended.emit(ended_event)
+
+
+func ecology_event_position(region_id: String) -> Vector3:
+	var x_sign := -1.0 if region_id in ["forest", "wetland"] else 1.0
+	var z_sign := -1.0 if region_id in ["forest", "grassland"] else 1.0
+	var base := Vector3(x_sign * world_size * 0.24, 0.45, z_sign * world_size * 0.24)
+	base += Vector3(event_rng.randf_range(-world_size * 0.07, world_size * 0.07), 0.0, event_rng.randf_range(-world_size * 0.07, world_size * 0.07))
+	return _nearest_clear_point_in_region(base, region_id, 0.72)
+
+
+func get_active_ecology_event() -> Dictionary:
+	return active_ecology_event.duplicate(true)
+
+
+func ecology_event_attraction_radius() -> float:
+	return world_size * 0.72
+
+
+func ecology_event_status(origin: Vector3) -> String:
+	if collapse_active:
+		return "生态热点 · 收束期已停止"
+	if active_ecology_event.is_empty():
+		return "生态热点 · 下一次信号 %ds" % ceili(ecology_event_timer)
+	var target: Vector3 = active_ecology_event["position"]
+	var distance := roundi(Vector2(target.x - origin.x, target.z - origin.z).length())
+	return "生态热点 · %s · %s %dm · %ds" % [
+		str(active_ecology_event["title"]), compass_direction(origin, target), distance, ceili(float(active_ecology_event["remaining"])),
+	]
 
 
 func _process_weather(delta: float) -> void:

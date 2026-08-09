@@ -26,8 +26,9 @@ func _init() -> void:
 	_validate_terrain_counter_contract()
 	_validate_ecology_leverage_contract()
 	_validate_counterplay_mastery_contract()
+	_validate_ecology_hotspot_contract()
 	if failures.is_empty():
-		print("[release] V1.10 发布校验通过：战术连携、生态掌控、防刷经验、AI 第三方选路与三端规则正常")
+		print("[release] V1.11 发布校验通过：生态热点、真实资源迁徙、战术连携、移动 HUD 与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -313,6 +314,40 @@ func _validate_counterplay_mastery_contract() -> void:
 	_expect(main_source.contains("战术行动：%d"), "结算页没有展示战术行动数")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("反制组合：%s") and ui_source.contains("counterplay_chain_status_text"), "物种简报与 HUD 没有解释战术连携")
+
+
+func _validate_ecology_hotspot_contract() -> void:
+	_expect(WorldScript.ecology_event_ids_for_level(1) == ["fruit_fall"], "第一关应只教学落果潮")
+	_expect(WorldScript.ecology_event_ids_for_level(3) == ["fruit_fall", "grass_flush", "fish_run"], "第三关没有按顺序解锁鱼群洄游")
+	_expect(WorldScript.ecology_event_ids_for_level(10).size() == 4, "第十关没有开放全部四种生态热点")
+	_expect(WorldScript.ecology_event_first_delay(1, 0.0) >= 35.0, "首个热点过早打断出生观察期")
+	_expect(WorldScript.ecology_event_repeat_delay(10, 0.0) < WorldScript.ecology_event_repeat_delay(1, 0.0), "高关卡热点节奏没有加快")
+	_expect(WorldScript.compass_direction(Vector3.ZERO, Vector3(8.0, 0.0, -8.0)) == "东北", "热点方向提示没有正确识别东北")
+	var world := WorldScript.new()
+	root.add_child(world)
+	world.world_size = 100.0
+	world.campaign_level = 10
+	world.event_rng.seed = 1110
+	var event: Dictionary = world.start_ecology_event("fish_run")
+	_expect(not event.is_empty() and str(event.get("title", "")) == "鱼群洄游", "无法确定性启动鱼群生态热点")
+	_expect(world.active_event_patches.size() == 6, "第十关生态热点应生成 6 个真实食物点")
+	for patch in world.active_event_patches:
+		_expect(is_instance_valid(patch) and bool(patch.ecology_hotspot) and patch is FoodPatch, "生态热点生成了非食物装饰或缺少热点标记")
+	var main := MainScript.new()
+	main.world = world
+	var event_position: Vector3 = event.get("position", Vector3.ZERO)
+	var migrant_food := main.nearest_food(event_position + Vector3(30.0, 0.0, 0.0), 8.0, "crocodile")
+	_expect(is_instance_valid(migrant_food) and bool(migrant_food.ecology_hotspot), "远处 AI 无法循生态信号迁徙到真实可食资源")
+	_expect(world.ecology_event_status(event_position + Vector3(20.0, 0.0, 20.0)).contains("鱼群洄游"), "HUD 热点状态缺少标题、方向或距离")
+	world.trigger_collapse()
+	_expect(world.get_active_ecology_event().is_empty(), "栖息地收束后生态热点仍在继续刷新")
+	main.world = null
+	main.free()
+	world.free()
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("player_hotspots_visited") and main_source.contains("_update_player_ecology_hotspot"), "主流程没有记录玩家抵达生态热点")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("ecology_event_label") and ui_source.contains("生态热点 · 正在等待迁徙信号"), "移动 HUD 没有持续显示生态热点状态")
 
 
 func _expect(condition: bool, message: String) -> void:
