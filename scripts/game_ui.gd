@@ -25,6 +25,12 @@ const TOUCH_EAT_OFFSET := Vector2(-306.0, -224.0)
 const TOUCH_EAT_SIZE := Vector2(112.0, 96.0)
 const TOUCH_SPRINT_OFFSET := Vector2(-306.0, -116.0)
 const TOUCH_SPRINT_SIZE := Vector2(112.0, 96.0)
+const HUD_STATUS_BACKGROUND := Color(0.018, 0.09, 0.075, 0.62)
+const HUD_INFO_BACKGROUND := Color(0.018, 0.09, 0.075, 0.54)
+const HUD_LEADERBOARD_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
+const HUD_SKILL_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
+const HUD_TICKER_BACKGROUND := Color(0.055, 0.13, 0.095, 0.64)
+const HUD_ENEMY_BACKGROUND := Color(0.13, 0.035, 0.035, 0.70)
 
 var game: Node
 var menu_root: Control
@@ -355,7 +361,7 @@ func _build_hud() -> void:
 	var status_panel := PanelContainer.new()
 	status_panel.position = Vector2(16, 16) if touch_layout else Vector2(20, 20)
 	status_panel.custom_minimum_size = Vector2(360, 270) if touch_layout else Vector2(400, 252)
-	status_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 16, Color(0.48, 0.80, 0.53, 0.40), 1))
+	status_panel.add_theme_stylebox_override("panel", _panel_style(HUD_STATUS_BACKGROUND, 16, Color(0.48, 0.80, 0.53, 0.48), 1))
 	hud_root.add_child(status_panel)
 	var status_box := VBoxContainer.new()
 	status_box.add_theme_constant_override("separation", 6)
@@ -400,9 +406,9 @@ func _build_hud() -> void:
 	battle_ticker_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	battle_ticker_button.add_theme_font_size_override("font_size", _font_size(16, 19))
 	battle_ticker_button.add_theme_color_override("font_color", Color("#f3e5b5"))
-	battle_ticker_button.add_theme_stylebox_override("normal", _panel_style(Color(0.055, 0.13, 0.095, 0.92), 13, Color(0.74, 0.78, 0.40, 0.52), 1))
-	battle_ticker_button.add_theme_stylebox_override("hover", _panel_style(Color(0.085, 0.22, 0.15, 0.97), 13, Color(0.92, 0.88, 0.50, 0.80), 2))
-	battle_ticker_button.add_theme_stylebox_override("pressed", _panel_style(Color(0.04, 0.10, 0.075, 0.98), 13, Color("#f2df7a"), 2))
+	battle_ticker_button.add_theme_stylebox_override("normal", _panel_style(HUD_TICKER_BACKGROUND, 13, Color(0.74, 0.78, 0.40, 0.60), 1))
+	battle_ticker_button.add_theme_stylebox_override("hover", _panel_style(Color(0.085, 0.22, 0.15, 0.78), 13, Color(0.92, 0.88, 0.50, 0.84), 2))
+	battle_ticker_button.add_theme_stylebox_override("pressed", _panel_style(Color(0.04, 0.10, 0.075, 0.84), 13, Color("#f2df7a"), 2))
 	battle_ticker_button.pressed.connect(_play_ui_sound)
 	battle_ticker_button.pressed.connect(show_battle_report)
 	hud_root.add_child(battle_ticker_button)
@@ -413,7 +419,7 @@ func _build_hud() -> void:
 	enemy_panel.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
 	enemy_panel.size = Vector2(320, 84) if touch_layout else Vector2(440, 78)
 	enemy_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	enemy_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.13, 0.035, 0.035, 0.92), 14, Color(0.95, 0.38, 0.32, 0.60), 2))
+	enemy_panel.add_theme_stylebox_override("panel", _panel_style(HUD_ENEMY_BACKGROUND, 14, Color(0.95, 0.38, 0.32, 0.70), 2))
 	hud_root.add_child(enemy_panel)
 	var enemy_box := VBoxContainer.new()
 	enemy_box.add_theme_constant_override("separation", 6)
@@ -440,7 +446,7 @@ func _build_hud() -> void:
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	info_panel.position = Vector2(-390, 16) if touch_layout else Vector2(-420, 20)
 	info_panel.size = Vector2(320, 148) if touch_layout else Vector2(350, 142)
-	info_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.82), 14))
+	info_panel.add_theme_stylebox_override("panel", _panel_style(HUD_INFO_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.32), 1))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
 	info_panel.add_child(info_box)
@@ -466,7 +472,7 @@ func _build_hud() -> void:
 	leaderboard_panel.position = Vector2(-390, 172) if touch_layout else Vector2(-420, 170)
 	leaderboard_panel.size = Vector2(320, 194) if touch_layout else Vector2(350, 188)
 	leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 14, Color(0.48, 0.80, 0.53, 0.36), 1))
+	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(HUD_LEADERBOARD_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.44), 1))
 	hud_root.add_child(leaderboard_panel)
 	var leaderboard_box := VBoxContainer.new()
 	leaderboard_box.add_theme_constant_override("separation", 4)
@@ -491,7 +497,7 @@ func _build_hud() -> void:
 	skill_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	skill_panel.position = Vector2(-170, -118) if touch_layout else Vector2(-215, -120)
 	skill_panel.size = Vector2(340, 100) if touch_layout else Vector2(430, 98)
-	skill_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.85), 14))
+	skill_panel.add_theme_stylebox_override("panel", _panel_style(HUD_SKILL_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.36), 1))
 	hud_root.add_child(skill_panel)
 	var skill_box := VBoxContainer.new()
 	skill_panel.add_child(skill_box)
@@ -541,6 +547,9 @@ func _build_hud() -> void:
 	pause_button.size = Vector2(56, 56)
 	pause_button.add_theme_font_size_override("font_size", _font_size(18, 24))
 	pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	pause_button.add_theme_stylebox_override("normal", _panel_style(Color(0.02, 0.10, 0.085, 0.54), 14, Color(0.62, 0.93, 0.64, 0.46), 1))
+	pause_button.add_theme_stylebox_override("hover", _panel_style(Color(0.04, 0.18, 0.13, 0.76), 14, Color(0.72, 1.0, 0.78, 0.78), 2))
+	pause_button.add_theme_stylebox_override("pressed", _panel_style(Color(0.02, 0.09, 0.07, 0.84), 14, Color("#b8f4b7"), 2))
 	pause_button.pressed.connect(_play_ui_sound)
 	pause_button.pressed.connect(func(): pause_requested.emit())
 	hud_root.add_child(pause_button)
@@ -556,7 +565,7 @@ func _make_bar(fill_color: Color, maximum: float) -> ProgressBar:
 	bar.value = maximum
 	bar.show_percentage = false
 	bar.custom_minimum_size = Vector2(160, 18) if _uses_touch_layout() else Vector2(190, 15)
-	bar.add_theme_stylebox_override("background", _bar_style(Color(0.0, 0.0, 0.0, 0.42)))
+	bar.add_theme_stylebox_override("background", _bar_style(Color(0.0, 0.0, 0.0, 0.30)))
 	bar.add_theme_stylebox_override("fill", _bar_style(fill_color))
 	return bar
 

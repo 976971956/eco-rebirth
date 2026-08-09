@@ -197,6 +197,13 @@ func _validate_visual_kit_contract() -> void:
 
 
 func _validate_adaptive_ui_contract() -> void:
+	var hud_backgrounds := [
+		UIScript.HUD_STATUS_BACKGROUND, UIScript.HUD_INFO_BACKGROUND,
+		UIScript.HUD_LEADERBOARD_BACKGROUND, UIScript.HUD_SKILL_BACKGROUND,
+		UIScript.HUD_TICKER_BACKGROUND, UIScript.HUD_ENEMY_BACKGROUND,
+	]
+	for background_color in hud_backgrounds:
+		_expect(background_color.a >= 0.50 and background_color.a <= 0.72, "HUD 状态面板透明度超出清晰且不挡视线的范围")
 	var margins := UIScript.safe_margins_from_rect(Vector2(1280, 720), Vector2i(2532, 1170), Rect2i(177, 0, 2178, 1116))
 	_expect(margins.x > 89.0 and margins.x < 90.0, "iOS 左侧安全区没有正确换算到逻辑坐标")
 	_expect(margins.z > 89.0 and margins.z < 90.0, "iOS 右侧安全区没有正确换算到逻辑坐标")
