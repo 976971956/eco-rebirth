@@ -23,6 +23,10 @@ const TERRAIN_MOMENTUM_GRACE := 0.85
 const TERRAIN_COUNTER_COOLDOWN := 3.40
 const TERRAIN_CREATED_EXPOSURE := 1.35
 const TERRAIN_AFFINITY_THRESHOLD := 0.72
+const ECOLOGY_LEVERAGE_RADIUS := 10.5
+const ECOLOGY_LEVERAGE_COOLDOWN := 9.0
+const ECOLOGY_LEVERAGE_COMMIT := 4.8
+const ECOLOGY_LEVERAGE_INFLUENCE := 12.0
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -61,6 +65,7 @@ var hidden_timer: float = 0.0
 var panic_timer: float = 0.0
 var ecology_influence_source: EcoActor
 var ecology_influence_timer: float = 0.0
+var ecology_influence_reason: String = "生态助攻"
 var last_attacker: EcoActor
 var rage_timer: float = 0.0
 var rage_cooldown_timer: float = 0.0
@@ -91,6 +96,9 @@ var terrain_hint_cooldown: float = 0.0
 var terrain_attack_armed: bool = false
 var environment_region_id: String = ""
 var environment_affinity: float = 0.0
+var ecology_leverage_cooldown: float = 0.0
+var escape_intervention_actor: EcoActor
+var escape_intervention_position := Vector3(INF, 0.0, INF)
 var canopy_timer: float = 0.0
 var canopy_anchor := Vector3.ZERO
 var calm_timer: float = 0.0
@@ -377,6 +385,85 @@ func environment_region_status_text() -> String:
 	if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD:
 		return "熟悉地形"
 	return "客场环境"
+
+
+func ecology_leverage_candidate(threat: EcoActor, max_distance: float = ECOLOGY_LEVERAGE_RADIUS) -> EcoActor:
+	if dead or game == null or ecology_leverage_cooldown > 0.0 or _collapse_competition_active() or not is_instance_valid(threat) or threat.dead:
+		return null
+	if Catalog.opportunity_threat_gap(species_id, threat.species_id) <= 0:
+		return null
+	if threat.is_airborne():
+		return null
+	var threat_presence := _ecology_combat_presence(threat)
+	var best: EcoActor
+	var best_score := -INF
+	for candidate in game.get_living_actors():
+		if candidate == self or candidate == threat or candidate.dead or candidate.is_player or candidate.spawn_protection > 0.0:
+			continue
+		if candidate.species_id == threat.species_id or candidate.is_airborne():
+			continue
+		if candidate.ai_target == self or (candidate.ai_state in ["hunt", "flee"] and candidate.ai_target != threat and candidate.state_commit_timer > 0.0):
+			continue
+		var candidate_distance := global_position.distance_to(candidate.global_position)
+		if candidate_distance > max_distance or threat.global_position.distance_to(candidate.global_position) > max_distance + 3.0:
+			continue
+		if candidate.health / candidate.max_health < 0.42 or candidate.stamina / candidate.max_stamina < 0.24:
+			continue
+		var candidate_presence := _ecology_combat_presence(candidate)
+		if candidate_presence < threat_presence * 0.72:
+			continue
+		var willing_to_intervene := float(candidate.data["aggression"]) >= 0.48 or Catalog.has_trait(candidate.species_id, "territorial") or Catalog.has_trait(candidate.species_id, "brave_vs_large") or int(candidate.data["size"]) >= int(threat.data["size"])
+		if not willing_to_intervene:
+			continue
+		var score := candidate_presence * 0.72 - candidate_distance * 0.12
+		if Catalog.has_trait(candidate.species_id, "territorial"):
+			score += 0.70
+		if Catalog.considers_prey(candidate.species_id, threat.species_id):
+			score += 0.38
+		score -= float(candidate.actor_id) * 0.0001
+		if score > best_score:
+			best_score = score
+			best = candidate
+	return best
+
+
+func can_ecology_leverage(threat: EcoActor) -> bool:
+	return is_instance_valid(ecology_leverage_candidate(threat))
+
+
+func ecology_leverage_status_text(threat: EcoActor = null) -> String:
+	var active_threat := threat if is_instance_valid(threat) else _active_stronger_pursuer()
+	if not is_instance_valid(active_threat):
+		return ""
+	if ecology_leverage_cooldown > 0.0:
+		return "生态借力冷却 %.1fs" % ecology_leverage_cooldown
+	var responder := ecology_leverage_candidate(active_threat)
+	if not is_instance_valid(responder):
+		return ""
+	return "生态借力就绪 · 引向%s" % Catalog.display_name(responder.species_id)
+
+
+func _active_stronger_pursuer() -> EcoActor:
+	if is_instance_valid(last_attacker) and not last_attacker.dead and global_position.distance_to(last_attacker.global_position) <= 22.0 and Catalog.opportunity_threat_gap(species_id, last_attacker.species_id) > 0:
+		return last_attacker
+	var closest: EcoActor
+	var closest_distance := INF
+	for other in game.get_living_actors():
+		if other == self or other.dead or other.ai_state != "hunt" or other.ai_target != self:
+			continue
+		if Catalog.opportunity_threat_gap(species_id, other.species_id) <= 0:
+			continue
+		var distance := global_position.distance_to(other.global_position)
+		if distance < closest_distance:
+			closest = other
+			closest_distance = distance
+	return closest
+
+
+func _ecology_combat_presence(actor: EcoActor) -> float:
+	if not is_instance_valid(actor):
+		return 0.0
+	return float(Catalog.combat_tier(actor.species_id)) + float(int(actor.data["size"])) * 0.42 + actor.health / actor.max_health * 0.75 + actor.stamina / actor.max_stamina * 0.28
 
 
 func _build_rabbit() -> void:
@@ -1267,6 +1354,7 @@ func _update_timers(delta: float) -> void:
 	terrain_momentum_grace_timer = maxf(terrain_momentum_grace_timer - delta, 0.0)
 	terrain_counter_cooldown = maxf(terrain_counter_cooldown - delta, 0.0)
 	terrain_hint_cooldown = maxf(terrain_hint_cooldown - delta, 0.0)
+	ecology_leverage_cooldown = maxf(ecology_leverage_cooldown - delta, 0.0)
 	search_timer = maxf(search_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
@@ -1288,6 +1376,7 @@ func _update_timers(delta: float) -> void:
 		ecology_influence_timer = maxf(ecology_influence_timer - delta, 0.0)
 		if ecology_influence_timer <= 0.0:
 			ecology_influence_source = null
+			ecology_influence_reason = "生态助攻"
 	if slow_timer > 0.0:
 		slow_timer = maxf(slow_timer - delta, 0.0)
 		if slow_timer <= 0.0:
@@ -1398,13 +1487,14 @@ func _break_cover(reveal_duration: float = COVER_REVEAL_SECONDS) -> void:
 func _update_cover_visual() -> void:
 	if not is_player or selection_ring == null:
 		return
-	var next_state := "ambush" if has_cover_ambush() else ("terrain" if has_terrain_momentum() else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open"))
+	var next_state := "ambush" if has_cover_ambush() else ("terrain" if has_terrain_momentum() else ("ecology" if ecology_leverage_status_text() != "" and ecology_leverage_cooldown <= 0.0 else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open")))
 	if next_state == cover_visual_state:
 		return
 	cover_visual_state = next_state
 	var tint: Color = {
 		"ambush": Color("#f1d46b"),
 		"terrain": Color("#70cfe8"),
+		"ecology": Color("#d7a2f2"),
 		"cover": Color("#65d8b2"),
 		"open": Color("#8ff0b1"),
 	}.get(next_state, Color("#8ff0b1"))
@@ -1546,7 +1636,16 @@ func _update_ai(delta: float) -> void:
 				var evade_side := Vector3(-away.z, 0.0, away.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 				var cover_offset := escape_cover_position - global_position
 				var habitat_offset := escape_habitat_position - global_position
-				if _has_escape_cover() and Vector2(cover_offset.x, cover_offset.z).length() > 1.15:
+				var intervention_offset := escape_intervention_position - global_position
+				var seek_intervention := _has_escape_intervention(ai_target) and health / max_health > 0.38 and stamina / max_stamina > 0.20
+				if seek_intervention and Vector2(intervention_offset.x, intervention_offset.z).length() > 1.45:
+					var toward_intervention := Vector3(intervention_offset.x, 0.0, intervention_offset.z).normalized()
+					desired_direction = (toward_intervention * 0.94 + away * 0.34 + evade_side * 0.14).normalized()
+					wants_sprint = stamina > max_stamina * 0.24
+				elif seek_intervention:
+					desired_direction = (away * 0.58 + evade_side * 0.72).normalized()
+					wants_sprint = false
+				elif _has_escape_cover() and Vector2(cover_offset.x, cover_offset.z).length() > 1.15:
 					var toward_cover := Vector3(cover_offset.x, 0.0, cover_offset.z).normalized()
 					desired_direction = (toward_cover * 0.86 + away * 0.48 + evade_side * 0.16).normalized()
 					wants_sprint = stamina > max_stamina * 0.16
@@ -1828,9 +1927,12 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 	if ai_state != new_state:
 		state_commit_timer = 1.4
 	if new_state == "flee" and is_instance_valid(target) and (ai_state != "flee" or changed_target):
+		_prepare_escape_intervention(target)
 		_prepare_escape_cover(target)
 		_prepare_escape_habitat(target)
 	elif new_state != "flee":
+		escape_intervention_actor = null
+		escape_intervention_position = Vector3(INF, 0.0, INF)
 		escape_cover_position = Vector3(INF, 0.0, INF)
 		escape_habitat_position = Vector3(INF, 0.0, INF)
 	ai_state = new_state
@@ -1846,6 +1948,25 @@ func _has_escape_cover() -> bool:
 
 func _has_escape_habitat() -> bool:
 	return escape_habitat_position.x != INF and not _collapse_competition_active()
+
+
+func _has_escape_intervention(threat: EcoActor) -> bool:
+	return is_instance_valid(escape_intervention_actor) and not escape_intervention_actor.dead and escape_intervention_actor != threat and escape_intervention_position.x != INF and ecology_leverage_cooldown <= 0.0 and not _collapse_competition_active()
+
+
+func _prepare_escape_intervention(threat: EcoActor) -> void:
+	escape_intervention_actor = null
+	escape_intervention_position = Vector3(INF, 0.0, INF)
+	if not is_instance_valid(threat) or _collapse_competition_active():
+		return
+	var responder := ecology_leverage_candidate(threat, ECOLOGY_LEVERAGE_RADIUS + 4.0)
+	if not is_instance_valid(responder):
+		return
+	escape_intervention_actor = responder
+	var away_from_threat := Vector3(responder.global_position.x - threat.global_position.x, 0.0, responder.global_position.z - threat.global_position.z).normalized()
+	if away_from_threat.length() < 0.1:
+		away_from_threat = Vector3.RIGHT if actor_id % 2 == 0 else Vector3.LEFT
+	escape_intervention_position = responder.global_position + away_from_threat * 2.2
 
 
 func _prepare_escape_cover(threat: EcoActor) -> void:
@@ -2769,6 +2890,8 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
 			final_damage *= 1.32
 	health -= final_damage
+	if health > 0.0 and is_instance_valid(source):
+		_trigger_ecology_intervention(source)
 	if opportunity_strike and game.has_method("on_opportunity_strike"):
 		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus, ambush_strike, terrain_strike)
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
@@ -2834,12 +2957,40 @@ func apply_calm(source: EcoActor, duration: float) -> void:
 		state_commit_timer = 0.0
 
 
-func register_ecology_influence(source: EcoActor, duration: float) -> void:
+func register_ecology_influence(source: EcoActor, duration: float, reason: String = "生态助攻") -> void:
 	if not is_instance_valid(source) or source == self:
+		return
+	if ecology_influence_source == source:
+		ecology_influence_timer = maxf(ecology_influence_timer, duration)
+		if reason != "生态助攻":
+			ecology_influence_reason = reason
 		return
 	if source.is_player or not is_instance_valid(ecology_influence_source) or ecology_influence_timer <= 0.0:
 		ecology_influence_source = source
 		ecology_influence_timer = maxf(ecology_influence_timer, duration)
+		ecology_influence_reason = reason
+
+
+func _trigger_ecology_intervention(threat: EcoActor) -> EcoActor:
+	var responder := ecology_leverage_candidate(threat)
+	if not is_instance_valid(responder):
+		return null
+	ecology_leverage_cooldown = ECOLOGY_LEVERAGE_COOLDOWN
+	escape_intervention_actor = null
+	escape_intervention_position = Vector3(INF, 0.0, INF)
+	threat.register_ecology_influence(self, ECOLOGY_LEVERAGE_INFLUENCE, "生态借力")
+	responder._switch_state("hunt", threat)
+	responder.state_commit_timer = maxf(responder.state_commit_timer, ECOLOGY_LEVERAGE_COMMIT)
+	responder.last_known_target_position = threat.global_position
+	responder.has_last_known_target_position = true
+	if responder._should_show_skill_vfx():
+		var leverage_color := Color("#d7a2f2")
+		SkillVFX.radial_burst(responder._skill_effect_parent(), responder.global_position, leverage_color, 2.5, 10, 0.14, 0.42)
+		SkillVFX.ring(responder._skill_effect_parent(), threat.global_position, leverage_color.darkened(0.12), 0.56, 2.8, 0.44)
+	if game.has_method("on_ecology_intervention"):
+		game.on_ecology_intervention(self, threat, responder)
+	_update_cover_visual()
+	return responder
 
 
 func apply_knockback(direction: Vector3, strength: float) -> void:

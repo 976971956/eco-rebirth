@@ -126,6 +126,24 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var terrain_counter_result := root.get_texture().get_image().save_png("res://docs/images/v20-terrain-counter.png")
+	ui.species_label.text = "Lv.2 雪兔 · 灵巧逃生者"
+	ui.region_label.text = "当前位置 · 开阔草原 · 白昼 · 晴朗 · 熟悉地形"
+	ui.combat_stats_label.text = "攻击 7.4　速度 7.79　护甲 0.8\n生态借力就绪 · 引向披甲犀牛"
+	ui.combat_stats_label.add_theme_color_override("font_color", Color("#d7a2f2"))
+	ui.enemy_name_label.text = "Lv.2 非洲巨象"
+	ui.enemy_status_label.text = "可生态借力 · 引向披甲犀牛"
+	ui.enemy_name_label.add_theme_color_override("font_color", Color("#d7a2f2"))
+	ui.enemy_status_label.add_theme_color_override("font_color", Color("#d7a2f2"))
+	ui.enemy_hp_bar.max_value = 540.0
+	ui.enemy_hp_bar.value = 506.0
+	ui.enemy_hp_value_label.text = "506 / 540"
+	ui.enemy_hp_bar.add_theme_stylebox_override("fill", ui._bar_style(Color("#b77bd6")))
+	ui.enemy_panel.add_theme_stylebox_override("panel", ui._panel_style(Color(0.12, 0.055, 0.16, 0.78), 14, Color("#d7a2f2"), 2))
+	ui.enemy_panel.show()
+	ui.show_hint("生态借力就绪：把巨象引向披甲犀牛，诱使它们互相消耗")
+	for _frame in range(5):
+		await process_frame
+	var ecology_leverage_result := root.get_texture().get_image().save_png("res://docs/images/v21-ecology-leverage.png")
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
@@ -165,7 +183,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

@@ -430,10 +430,11 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 		killer.gain_experience(reward, actor.species_id)
 	elif not is_instance_valid(killer):
 		pass
-	if is_instance_valid(player) and not player.dead and killer != player and is_instance_valid(actor.ecology_influence_source) and actor.ecology_influence_source == player:
+	var influence_source: EcoActor = actor.ecology_influence_source if is_instance_valid(actor.ecology_influence_source) else null
+	if is_instance_valid(influence_source) and not influence_source.dead and influence_source != killer:
 		var assist_reward := maxi(int(round(Catalog.experience_reward(actor.species_id, actor.level) * 0.45)), 1)
-		player.assists += 1
-		player.gain_experience(assist_reward, actor.species_id, "生态助攻")
+		influence_source.assists += 1
+		influence_source.gain_experience(assist_reward, actor.species_id, actor.ecology_influence_reason)
 
 	if batch_mode:
 		batch_deaths.append({"victim": actor.species_id, "killer": (killer.species_id if is_instance_valid(killer) else "")})
@@ -782,6 +783,23 @@ func on_opportunity_strike(attacker: EcoActor, target: EcoActor, threat_gap: int
 			ui.add_battle_report("你·%s利用主场地形反制%s，制造追击破绽" % [Catalog.display_name(attacker.species_id), Catalog.display_name(target.species_id)], "地形", "#70cfe8")
 	elif target == player:
 		ui.show_hint("你遭到草丛伏击！先拉开距离" if ambush_strike else ("你在对方主场遭到地形反制！尽快换区" if terrain_strike else "你在破绽状态遭到逆袭！停止攻击并恢复耐力"))
+
+
+func on_ecology_intervention(bait: EcoActor, aggressor: EcoActor, responder: EcoActor) -> void:
+	if ui == null or batch_mode or not is_instance_valid(bait) or not is_instance_valid(aggressor) or not is_instance_valid(responder):
+		return
+	var bait_name := Catalog.display_name(bait.species_id)
+	var aggressor_name := Catalog.display_name(aggressor.species_id)
+	var responder_name := Catalog.display_name(responder.species_id)
+	if bait == player:
+		ui.show_hint("生态借力成功：%s已被%s接战，趁机脱离或等待助攻" % [aggressor_name, responder_name])
+		ui.add_event("引导%s与%s发生冲突" % [aggressor_name, responder_name], "#d7a2f2")
+		ui.add_battle_report("你·%s借势引战，%s转而迎击%s" % [bait_name, responder_name, aggressor_name], "借力", "#d7a2f2")
+	elif aggressor == player:
+		ui.show_hint("你的攻击惊动了%s，它正在介入战斗" % responder_name)
+		ui.add_battle_report("你·%s追击%s时惊动%s，第三方冲突形成" % [aggressor_name, bait_name, responder_name], "借力", "#d7a2f2")
+	elif is_instance_valid(player) and player.global_position.distance_to(bait.global_position) <= 28.0:
+		ui.add_battle_report("%s把%s引向%s，附近形成第三方冲突" % [bait_name, aggressor_name, responder_name], "借力", "#c49be0")
 
 
 func on_player_experience_gained(amount: int, defeated_species: String, reason: String = "击杀") -> void:

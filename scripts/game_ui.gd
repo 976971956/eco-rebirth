@@ -907,7 +907,7 @@ func show_species_intro(species_id: String) -> void:
 	var data := Catalog.get_data(species_id)
 	var touch_layout := _uses_touch_layout()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击"
+	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n生态借力：紫色提示出现时，把追兵引向可介入的第三方"
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
 		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
@@ -960,6 +960,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	var tactical_status := ""
 	var tactical_color := Color("#b9d9bd")
+	var ecology_status := player_actor.ecology_leverage_status_text()
 	if player_actor.exhausted:
 		tactical_status = "力竭破绽"
 		tactical_color = Color("#f1d46b")
@@ -972,6 +973,9 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	elif player_actor.has_terrain_momentum():
 		tactical_status = player_actor.tactical_terrain_status_text()
 		tactical_color = Color("#70cfe8")
+	elif ecology_status != "":
+		tactical_status = ecology_status
+		tactical_color = Color("#d7a2f2")
 	elif player_actor.tactical_cover_status_text() != "":
 		tactical_status = player_actor.tactical_cover_status_text()
 		tactical_color = Color("#73d4c0")
@@ -1166,21 +1170,25 @@ func _refresh_enemy_health() -> void:
 	if not is_instance_valid(enemy_target):
 		return
 	var target_data := Catalog.get_data(enemy_target.species_id)
+	var player_actor := game.get("player") as EcoActor if game != null else null
 	var status_parts: Array[String] = []
 	if enemy_target.poison_timer > 0.0:
 		status_parts.append("中毒 %.1fs" % enemy_target.poison_timer)
 	if enemy_target.scent_mark_timer > 0.0:
 		status_parts.append("血味 %.1fs" % enemy_target.scent_mark_timer)
+	if is_instance_valid(player_actor) and enemy_target.ecology_influence_source == player_actor and enemy_target.ecology_influence_timer > 0.0:
+		status_parts.append("%s %.1fs" % [enemy_target.ecology_influence_reason, enemy_target.ecology_influence_timer])
 	if enemy_target.slow_timer > 0.0:
 		status_parts.append("减速")
 	if enemy_target.panic_timer > 0.0:
 		status_parts.append("受惊")
 	if enemy_target.is_cover_concealed():
 		status_parts.append("草丛隐蔽")
-	var player_actor := game.get("player") as EcoActor if game != null else null
 	var threat_gap := Catalog.opportunity_threat_gap(player_actor.species_id, enemy_target.species_id) if is_instance_valid(player_actor) else 0
 	var can_ambush_strike := is_instance_valid(player_actor) and threat_gap > 0 and player_actor.has_cover_ambush()
 	var can_terrain_strike := is_instance_valid(player_actor) and threat_gap > 0 and player_actor.can_terrain_counter(enemy_target)
+	var leverage_responder := player_actor.ecology_leverage_candidate(enemy_target) if is_instance_valid(player_actor) and threat_gap > 0 else null
+	var can_ecology_leverage := is_instance_valid(leverage_responder)
 	var can_opportunity_strike := threat_gap > 0 and (enemy_target.is_opportunity_exposed() or can_ambush_strike or can_terrain_strike)
 	if enemy_target.is_opportunity_exposed():
 		status_parts.append(("可逆袭 · " if can_opportunity_strike else "") + enemy_target.opportunity_status_text())
@@ -1188,21 +1196,25 @@ func _refresh_enemy_health() -> void:
 		status_parts.append("伏击可逆袭")
 	elif can_terrain_strike:
 		status_parts.append("地形可逆袭")
+	elif can_ecology_leverage:
+		status_parts.append("可生态借力 · 引向%s" % Catalog.display_name(leverage_responder.species_id))
 	var terrain_highlight := can_terrain_strike and not enemy_target.is_opportunity_exposed() and not can_ambush_strike
-	var opportunity_color := Color("#70cfe8") if terrain_highlight else Color("#ffe078")
+	var ecology_highlight := can_ecology_leverage and not can_opportunity_strike
+	var opportunity_color := Color("#d7a2f2") if ecology_highlight else (Color("#70cfe8") if terrain_highlight else Color("#ffe078"))
+	var highlighted := can_opportunity_strike or ecology_highlight
 	enemy_name_label.text = "Lv.%d %s" % [enemy_target.level, target_data["name"]]
 	enemy_status_label.text = " / ".join(status_parts) if not status_parts.is_empty() else "状态稳定"
-	enemy_name_label.add_theme_color_override("font_color", opportunity_color if can_opportunity_strike else Color("#fff0df"))
-	enemy_status_label.add_theme_color_override("font_color", opportunity_color if can_opportunity_strike else Color("#edc7b4"))
+	enemy_name_label.add_theme_color_override("font_color", opportunity_color if highlighted else Color("#fff0df"))
+	enemy_status_label.add_theme_color_override("font_color", opportunity_color if highlighted else Color("#edc7b4"))
 	enemy_panel.add_theme_stylebox_override("panel", _panel_style(
-		(Color(0.025, 0.11, 0.15, 0.78) if terrain_highlight else Color(0.14, 0.10, 0.025, 0.76)) if can_opportunity_strike else HUD_ENEMY_BACKGROUND,
+		(Color(0.12, 0.055, 0.16, 0.78) if ecology_highlight else (Color(0.025, 0.11, 0.15, 0.78) if terrain_highlight else Color(0.14, 0.10, 0.025, 0.76))) if highlighted else HUD_ENEMY_BACKGROUND,
 		14,
-		opportunity_color if can_opportunity_strike else Color(0.95, 0.38, 0.32, 0.70),
+		opportunity_color if highlighted else Color(0.95, 0.38, 0.32, 0.70),
 		2
 	))
 	enemy_hp_bar.max_value = maxf(enemy_target.max_health, 1.0)
 	enemy_hp_bar.value = maxf(enemy_target.health, 0.0)
-	enemy_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#58bcd8") if terrain_highlight else (Color("#e8b93f") if can_opportunity_strike else Color("#d6534f"))))
+	enemy_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#b77bd6") if ecology_highlight else (Color("#58bcd8") if terrain_highlight else (Color("#e8b93f") if can_opportunity_strike else Color("#d6534f")))))
 	enemy_hp_value_label.text = "%d / %d" % [ceili(maxf(enemy_target.health, 0.0)), ceili(enemy_target.max_health)]
 
 

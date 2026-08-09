@@ -11,6 +11,7 @@ class ValidationGame:
 	var batch_mode: bool = true
 	var player: EcoActor
 	var world: Node
+	var interventions: Array[Dictionary] = []
 
 	func get_living_actors() -> Array[EcoActor]:
 		return actors.filter(func(actor: EcoActor) -> bool: return is_instance_valid(actor) and not actor.dead)
@@ -23,6 +24,9 @@ class ValidationGame:
 
 	func show_hint(_message: String) -> void:
 		pass
+
+	func on_ecology_intervention(bait: EcoActor, aggressor: EcoActor, responder: EcoActor) -> void:
+		interventions.append({"bait": bait, "aggressor": aggressor, "responder": responder})
 
 	func nearest_corpse(_origin: Vector3, _max_distance: float) -> Node3D:
 		return null
@@ -339,6 +343,51 @@ func _run_validation() -> void:
 	terrain_goat.free()
 	terrain_lion.free()
 	game_stub.actors.clear()
+	var leverage_rabbit: EcoActor = ActorScript.new()
+	leverage_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(leverage_rabbit)
+	leverage_rabbit.setup(game_stub, 894, "rabbit", false, Vector3.ZERO, 0)
+	var leverage_elephant: EcoActor = ActorScript.new()
+	leverage_elephant.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(leverage_elephant)
+	leverage_elephant.setup(game_stub, 895, "elephant", false, Vector3(-1.5, 0.0, 0.0), 0)
+	var leverage_rhino: EcoActor = ActorScript.new()
+	leverage_rhino.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(leverage_rhino)
+	leverage_rhino.setup(game_stub, 896, "rhino", false, Vector3(6.0, 0.0, 0.0), 0)
+	var leverage_fox: EcoActor = ActorScript.new()
+	leverage_fox.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(leverage_fox)
+	leverage_fox.setup(game_stub, 897, "fox", false, Vector3(2.8, 0.0, 0.0), 0)
+	leverage_rabbit.spawn_protection = 0.0
+	leverage_elephant.spawn_protection = 0.0
+	leverage_rhino.spawn_protection = 0.0
+	leverage_fox.spawn_protection = 0.0
+	game_stub.actors = [leverage_rabbit, leverage_elephant, leverage_fox, leverage_rhino]
+	if leverage_rabbit.ecology_leverage_candidate(leverage_elephant) != leverage_rhino:
+		failures.append("弱势物种没有识别足以介入强敌的第三方")
+	leverage_rabbit.take_damage(4.0, leverage_elephant)
+	if leverage_rhino.ai_state != "hunt" or leverage_rhino.ai_target != leverage_elephant:
+		failures.append("追击者出手后没有惊动第三方转火")
+	if leverage_elephant.ecology_influence_source != leverage_rabbit or leverage_elephant.ecology_influence_reason != "生态借力":
+		failures.append("生态借力没有登记后续助攻归属")
+	if leverage_rabbit.ecology_leverage_cooldown < ActorScript.ECOLOGY_LEVERAGE_COOLDOWN - 0.01 or game_stub.interventions.size() != 1:
+		failures.append("生态借力没有进入冷却或发送唯一战况事件")
+	leverage_rabbit.ecology_leverage_cooldown = 0.0
+	leverage_rabbit.ai_state = "wander"
+	leverage_rabbit.ai_target = null
+	leverage_rhino.ai_state = "wander"
+	leverage_rhino.ai_target = null
+	leverage_rhino.state_commit_timer = 0.0
+	leverage_rabbit._switch_state("flee", leverage_elephant)
+	leverage_rabbit._update_ai(0.1)
+	if leverage_rabbit.escape_intervention_actor != leverage_rhino or leverage_rabbit.desired_direction.x <= 0.0:
+		failures.append("弱势 AI 逃跑时没有主动把追兵引向第三方")
+	leverage_rabbit.free()
+	leverage_elephant.free()
+	leverage_rhino.free()
+	leverage_fox.free()
+	game_stub.actors.clear()
 	var monkey_test: EcoActor = ActorScript.new()
 	monkey_test.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(monkey_test)
@@ -361,7 +410,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, ecological leverage/AI third-party routing, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

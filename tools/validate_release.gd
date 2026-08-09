@@ -24,8 +24,9 @@ func _init() -> void:
 	_validate_opportunity_contract()
 	_validate_cover_ambush_contract()
 	_validate_terrain_counter_contract()
+	_validate_ecology_leverage_contract()
 	if failures.is_empty():
-		print("[release] V1.8 发布校验通过：主场反制、AI 环境选路、草丛伏击、生态逆袭、移动安全区与三端规则正常")
+		print("[release] V1.9 发布校验通过：生态借力、AI 第三方选路、主场反制、草丛伏击、移动安全区与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -279,6 +280,19 @@ func _validate_terrain_counter_contract() -> void:
 	_expect(actor_source.contains("can_terrain_counter(nearest_threat)"), "AI 主场蓄势后没有回头反击逻辑")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("地形可逆袭") and ui_source.contains("环境反制"), "HUD 和物种简报没有解释环境反制")
+
+
+func _validate_ecology_leverage_contract() -> void:
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("ECOLOGY_LEVERAGE_COOLDOWN := 9.0"), "生态借力缺少防止连续引战的冷却")
+	_expect(actor_source.contains("func ecology_leverage_candidate"), "弱势物种无法评估可介入的第三方")
+	_expect(actor_source.contains("_prepare_escape_intervention(target)"), "弱势 AI 逃跑没有规划第三方引战路线")
+	_expect(actor_source.contains("threat.register_ecology_influence(self, ECOLOGY_LEVERAGE_INFLUENCE, \"生态借力\")"), "生态借力没有登记助攻归属")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("func on_ecology_intervention"), "主流程没有接收生态借力战况")
+	_expect(main_source.contains("influence_source.assists += 1"), "生态助攻仍只奖励玩家而没有统一到所有物种")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("生态借力：") and ui_source.contains("可生态借力"), "HUD 和敌方血条没有生态借力提示")
 
 
 func _expect(condition: bool, message: String) -> void:
