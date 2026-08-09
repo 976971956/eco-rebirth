@@ -4,6 +4,7 @@ const MainScript = preload("res://scripts/main.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
+const UIScript = preload("res://scripts/game_ui.gd")
 
 var failures: Array[String] = []
 
@@ -18,8 +19,9 @@ func _init() -> void:
 	_validate_death_lifecycle_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
+	_validate_adaptive_ui_contract()
 	if failures.is_empty():
-		print("[release] V1.4 发布校验通过：安全轮回、AI 地表、V2 程序模型、生态地图、排行播报、自由模式与 Web 音频正常")
+		print("[release] V1.5 发布校验通过：移动安全区、横屏守卫、触控布局、安全轮回、生态地图与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -192,6 +194,35 @@ func _validate_visual_kit_contract() -> void:
 		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
 		_expect(not colors.is_empty(), "V2 物种程序网格缺少逐面颜色")
 	faceted.free()
+
+
+func _validate_adaptive_ui_contract() -> void:
+	var margins := UIScript.safe_margins_from_rect(Vector2(1280, 720), Vector2i(2532, 1170), Rect2i(177, 0, 2178, 1116))
+	_expect(margins.x > 89.0 and margins.x < 90.0, "iOS 左侧安全区没有正确换算到逻辑坐标")
+	_expect(margins.z > 89.0 and margins.z < 90.0, "iOS 右侧安全区没有正确换算到逻辑坐标")
+	_expect(margins.w > 33.0 and margins.w < 34.0, "iOS 底部安全区没有正确换算到逻辑坐标")
+	_expect(UIScript.portrait_layout_needed(Vector2(390, 844), true), "手机竖屏没有触发旋转守卫")
+	_expect(not UIScript.portrait_layout_needed(Vector2(844, 390), true), "手机横屏被错误拦截")
+	_expect(not UIScript.portrait_layout_needed(Vector2(390, 844), false), "桌面窗口不应触发手机旋转守卫")
+	var safe_viewport := Vector2(1220, 690)
+	var touch_rects := [
+		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_ATTACK_OFFSET, UIScript.TOUCH_ATTACK_SIZE),
+		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_SKILL_OFFSET, UIScript.TOUCH_SKILL_SIZE),
+		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_EAT_OFFSET, UIScript.TOUCH_EAT_SIZE),
+		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_SPRINT_OFFSET, UIScript.TOUCH_SPRINT_SIZE),
+	]
+	for first_index in range(touch_rects.size()):
+		_expect(Rect2(Vector2.ZERO, safe_viewport).encloses(touch_rects[first_index]), "触控按钮超出安全 HUD 区域")
+		for second_index in range(first_index + 1, touch_rects.size()):
+			_expect(not touch_rects[first_index].intersects(touch_rects[second_index]), "右侧触控按钮彼此重叠")
+	var skill_panel_rect := Rect2(Vector2((safe_viewport.x - 340.0) * 0.5, safe_viewport.y - 118.0), Vector2(340, 100))
+	var intro_rect := Rect2(Vector2(safe_viewport.x * 0.5 - 400.0, 40.0), Vector2(640, 410))
+	for touch_button_rect in touch_rects:
+		_expect(not skill_panel_rect.intersects(touch_button_rect), "触控按钮仍遮挡技能状态栏")
+		_expect(not intro_rect.intersects(touch_button_rect), "物种攻略仍遮挡触控按钮")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
+	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
 
 
 func _expect(condition: bool, message: String) -> void:

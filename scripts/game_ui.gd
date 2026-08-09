@@ -12,12 +12,29 @@ signal pause_requested
 signal tutorial_skipped
 signal battle_report_opened
 signal battle_report_closed
+signal orientation_blocked_changed(blocked: bool)
+
+const MENU_MARGIN := Vector4(64.0, 54.0, 64.0, 42.0)
+const MOBILE_EDGE_PADDING := Vector4(12.0, 10.0, 12.0, 14.0)
+const TOUCH_PREVIEW_PADDING := Vector4(30.0, 12.0, 30.0, 18.0)
+const TOUCH_ATTACK_OFFSET := Vector2(-174.0, -166.0)
+const TOUCH_ATTACK_SIZE := Vector2(150.0, 150.0)
+const TOUCH_SKILL_OFFSET := Vector2(-174.0, -310.0)
+const TOUCH_SKILL_SIZE := Vector2(132.0, 132.0)
+const TOUCH_EAT_OFFSET := Vector2(-306.0, -224.0)
+const TOUCH_EAT_SIZE := Vector2(112.0, 96.0)
+const TOUCH_SPRINT_OFFSET := Vector2(-306.0, -116.0)
+const TOUCH_SPRINT_SIZE := Vector2(112.0, 96.0)
 
 var game: Node
 var menu_root: Control
+var menu_content_margin: MarginContainer
 var menu_start_button: Button
 var hud_root: Control
 var modal_root: Control
+var modal_shade: ColorRect
+var modal_safe_root: Control
+var orientation_root: Control
 var touch_root: Control
 var joystick
 var attack_held: bool = false
@@ -73,6 +90,9 @@ var tutorial_panel: PanelContainer
 var tutorial_title: Label
 var tutorial_body: Label
 var tutorial_progress_label: Label
+var orientation_blocked: bool = false
+var adaptive_poll_remaining: float = 0.0
+var last_safe_margins := Vector4(-1.0, -1.0, -1.0, -1.0)
 
 
 func setup(game_ref: Node) -> void:
@@ -81,10 +101,17 @@ func setup(game_ref: Node) -> void:
 	_build_menu()
 	_build_hud()
 	_build_modal_root()
+	_build_orientation_guard()
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	_update_adaptive_layout(true)
 	show_menu()
 
 
 func _process(delta: float) -> void:
+	adaptive_poll_remaining -= delta
+	if adaptive_poll_remaining <= 0.0:
+		adaptive_poll_remaining = 0.45
+		_update_adaptive_layout()
 	if battle_ticker_button == null or battle_reports.size() <= 1 or not hud_root.visible:
 		return
 	if game == null or str(game.get("state")) != "playing" or enemy_panel.visible:
@@ -98,6 +125,92 @@ func _process(delta: float) -> void:
 	if battle_ticker_index < first_recent_index or battle_ticker_index >= battle_reports.size():
 		battle_ticker_index = first_recent_index
 	_refresh_battle_ticker()
+
+
+static func safe_margins_from_rect(viewport_size: Vector2, window_size: Vector2i, safe_area: Rect2i) -> Vector4:
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0 or window_size.x <= 0 or window_size.y <= 0:
+		return Vector4.ZERO
+	var safe_left := clampi(safe_area.position.x, 0, window_size.x)
+	var safe_top := clampi(safe_area.position.y, 0, window_size.y)
+	var safe_right := clampi(window_size.x - safe_area.end.x, 0, window_size.x)
+	var safe_bottom := clampi(window_size.y - safe_area.end.y, 0, window_size.y)
+	return Vector4(
+		float(safe_left) * viewport_size.x / float(window_size.x),
+		float(safe_top) * viewport_size.y / float(window_size.y),
+		float(safe_right) * viewport_size.x / float(window_size.x),
+		float(safe_bottom) * viewport_size.y / float(window_size.y)
+	)
+
+
+static func portrait_layout_needed(viewport_size: Vector2, touch_layout: bool) -> bool:
+	return touch_layout and viewport_size.y > viewport_size.x
+
+
+static func touch_rect(viewport_size: Vector2, offset: Vector2, size_value: Vector2) -> Rect2:
+	return Rect2(viewport_size + offset, size_value)
+
+
+func _uses_touch_layout() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
+
+
+func _font_size(desktop_size: int, touch_size: int) -> int:
+	return touch_size if _uses_touch_layout() else desktop_size
+
+
+func _on_viewport_size_changed() -> void:
+	_update_adaptive_layout(true)
+
+
+func _display_safe_margins() -> Vector4:
+	if not _uses_touch_layout():
+		return Vector4.ZERO
+	var margins := MOBILE_EDGE_PADDING
+	if "--touch-preview" in OS.get_cmdline_user_args():
+		margins = TOUCH_PREVIEW_PADDING
+	if OS.has_feature("mobile"):
+		var window_size := DisplayServer.window_get_size()
+		var safe_area := DisplayServer.get_display_safe_area()
+		var window_position := DisplayServer.window_get_position()
+		safe_area.position -= window_position
+		var native_margins := safe_margins_from_rect(get_viewport().get_visible_rect().size, window_size, safe_area)
+		margins = Vector4(
+			maxf(margins.x, native_margins.x), maxf(margins.y, native_margins.y),
+			maxf(margins.z, native_margins.z), maxf(margins.w, native_margins.w)
+		)
+	return margins
+
+
+func _update_adaptive_layout(force: bool = false) -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var margins := _display_safe_margins()
+	if force or not margins.is_equal_approx(last_safe_margins):
+		last_safe_margins = margins
+		if menu_content_margin != null:
+			menu_content_margin.add_theme_constant_override("margin_left", roundi(MENU_MARGIN.x + margins.x))
+			menu_content_margin.add_theme_constant_override("margin_top", roundi(MENU_MARGIN.y + margins.y))
+			menu_content_margin.add_theme_constant_override("margin_right", roundi(MENU_MARGIN.z + margins.z))
+			menu_content_margin.add_theme_constant_override("margin_bottom", roundi(MENU_MARGIN.w + margins.w))
+		if hud_root != null:
+			hud_root.offset_left = margins.x
+			hud_root.offset_top = margins.y
+			hud_root.offset_right = -margins.z
+			hud_root.offset_bottom = -margins.w
+		if modal_safe_root != null:
+			modal_safe_root.offset_left = margins.x
+			modal_safe_root.offset_top = margins.y
+			modal_safe_root.offset_right = -margins.z
+			modal_safe_root.offset_bottom = -margins.w
+	var should_block := portrait_layout_needed(viewport_size, _uses_touch_layout())
+	if orientation_root != null:
+		orientation_root.visible = should_block
+	if should_block != orientation_blocked:
+		orientation_blocked = should_block
+		orientation_blocked_changed.emit(orientation_blocked)
+
+
+func is_orientation_blocked() -> bool:
+	return orientation_blocked
 
 
 func _panel_style(color: Color, radius: int = 16, border_color: Color = Color.TRANSPARENT, border_width: int = 0) -> StyleBoxFlat:
@@ -120,8 +233,8 @@ func _panel_style(color: Color, radius: int = 16, border_color: Color = Color.TR
 
 
 func _style_button(button: Button, primary: bool = true) -> void:
-	button.custom_minimum_size = Vector2(220.0, 58.0)
-	button.add_theme_font_size_override("font_size", 24)
+	button.custom_minimum_size = Vector2(220.0, 62.0 if _uses_touch_layout() else 58.0)
+	button.add_theme_font_size_override("font_size", _font_size(24, 27))
 	button.add_theme_color_override("font_color", Color("#f4fff2"))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_stylebox_override("normal", _panel_style(Color("#277452") if primary else Color(0.03, 0.12, 0.11, 0.88), 14, Color(0.57, 0.92, 0.64, 0.5), 1))
@@ -156,18 +269,18 @@ func _build_menu() -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	menu_root.add_child(shade)
 
-	var content_margin := MarginContainer.new()
-	content_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	content_margin.add_theme_constant_override("margin_left", 64)
-	content_margin.add_theme_constant_override("margin_right", 64)
-	content_margin.add_theme_constant_override("margin_top", 54)
-	content_margin.add_theme_constant_override("margin_bottom", 42)
-	menu_root.add_child(content_margin)
+	menu_content_margin = MarginContainer.new()
+	menu_content_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_content_margin.add_theme_constant_override("margin_left", int(MENU_MARGIN.x))
+	menu_content_margin.add_theme_constant_override("margin_right", int(MENU_MARGIN.z))
+	menu_content_margin.add_theme_constant_override("margin_top", int(MENU_MARGIN.y))
+	menu_content_margin.add_theme_constant_override("margin_bottom", int(MENU_MARGIN.w))
+	menu_root.add_child(menu_content_margin)
 
 	var content := VBoxContainer.new()
 	content.alignment = BoxContainer.ALIGNMENT_CENTER
 	content.add_theme_constant_override("separation", 12)
-	content_margin.add_child(content)
+	menu_content_margin.add_child(content)
 
 	var eyebrow := Label.new()
 	eyebrow.text = "SINGLE-PLAYER ECO ROGUELITE"
@@ -232,6 +345,7 @@ func _build_menu() -> void:
 
 
 func _build_hud() -> void:
+	var touch_layout := _uses_touch_layout()
 	hud_root = Control.new()
 	hud_root.name = "HUD"
 	hud_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -239,19 +353,19 @@ func _build_hud() -> void:
 	add_child(hud_root)
 
 	var status_panel := PanelContainer.new()
-	status_panel.position = Vector2(20, 20)
-	status_panel.custom_minimum_size = Vector2(400, 252)
+	status_panel.position = Vector2(16, 16) if touch_layout else Vector2(20, 20)
+	status_panel.custom_minimum_size = Vector2(360, 270) if touch_layout else Vector2(400, 252)
 	status_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 16, Color(0.48, 0.80, 0.53, 0.40), 1))
 	hud_root.add_child(status_panel)
 	var status_box := VBoxContainer.new()
 	status_box.add_theme_constant_override("separation", 6)
 	status_panel.add_child(status_box)
 	species_label = Label.new()
-	species_label.add_theme_font_size_override("font_size", 25)
+	species_label.add_theme_font_size_override("font_size", _font_size(25, 29))
 	species_label.add_theme_color_override("font_color", Color("#f4f2d3"))
 	status_box.add_child(species_label)
 	combat_stats_label = Label.new()
-	combat_stats_label.add_theme_font_size_override("font_size", 15)
+	combat_stats_label.add_theme_font_size_override("font_size", _font_size(15, 18))
 	combat_stats_label.add_theme_color_override("font_color", Color("#b9d9bd"))
 	status_box.add_child(combat_stats_label)
 	hp_bar = _make_bar(Color("#d84d4d"), 100.0)
@@ -269,22 +383,22 @@ func _build_hud() -> void:
 
 	remaining_label = Label.new()
 	remaining_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	remaining_label.add_theme_font_size_override("font_size", 30)
+	remaining_label.add_theme_font_size_override("font_size", _font_size(30, 34))
 	remaining_label.add_theme_color_override("font_color", Color("#f4f3d7"))
 	remaining_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	remaining_label.position = Vector2(-160, 20)
-	remaining_label.size = Vector2(320, 46)
+	remaining_label.position = Vector2(-150, 16) if touch_layout else Vector2(-160, 20)
+	remaining_label.size = Vector2(300, 48) if touch_layout else Vector2(320, 46)
 	hud_root.add_child(remaining_label)
 
 	battle_ticker_button = Button.new()
 	battle_ticker_button.name = "BattleTicker"
 	battle_ticker_button.text = "战报 [展开] · 等待生态事件"
 	battle_ticker_button.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	battle_ticker_button.position = Vector2(-220, 70)
-	battle_ticker_button.size = Vector2(440, 50)
+	battle_ticker_button.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
+	battle_ticker_button.size = Vector2(320, 56) if touch_layout else Vector2(440, 50)
 	battle_ticker_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	battle_ticker_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	battle_ticker_button.add_theme_font_size_override("font_size", 16)
+	battle_ticker_button.add_theme_font_size_override("font_size", _font_size(16, 19))
 	battle_ticker_button.add_theme_color_override("font_color", Color("#f3e5b5"))
 	battle_ticker_button.add_theme_stylebox_override("normal", _panel_style(Color(0.055, 0.13, 0.095, 0.92), 13, Color(0.74, 0.78, 0.40, 0.52), 1))
 	battle_ticker_button.add_theme_stylebox_override("hover", _panel_style(Color(0.085, 0.22, 0.15, 0.97), 13, Color(0.92, 0.88, 0.50, 0.80), 2))
@@ -296,8 +410,8 @@ func _build_hud() -> void:
 	enemy_panel = PanelContainer.new()
 	enemy_panel.name = "EnemyHealth"
 	enemy_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	enemy_panel.position = Vector2(-220, 70)
-	enemy_panel.size = Vector2(440, 78)
+	enemy_panel.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
+	enemy_panel.size = Vector2(320, 84) if touch_layout else Vector2(440, 78)
 	enemy_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	enemy_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.13, 0.035, 0.035, 0.92), 14, Color(0.95, 0.38, 0.32, 0.60), 2))
 	hud_root.add_child(enemy_panel)
@@ -308,12 +422,13 @@ func _build_hud() -> void:
 	enemy_box.add_child(enemy_title_row)
 	enemy_name_label = Label.new()
 	enemy_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	enemy_name_label.add_theme_font_size_override("font_size", 21)
+	enemy_name_label.add_theme_font_size_override("font_size", _font_size(21, 22))
+	enemy_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	enemy_name_label.add_theme_color_override("font_color", Color("#fff0df"))
 	enemy_title_row.add_child(enemy_name_label)
 	enemy_hp_value_label = Label.new()
 	enemy_hp_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	enemy_hp_value_label.add_theme_font_size_override("font_size", 18)
+	enemy_hp_value_label.add_theme_font_size_override("font_size", _font_size(18, 20))
 	enemy_hp_value_label.add_theme_color_override("font_color", Color("#ffd0c4"))
 	enemy_title_row.add_child(enemy_hp_value_label)
 	enemy_hp_bar = _make_bar(Color("#d6534f"), 100.0)
@@ -323,33 +438,33 @@ func _build_hud() -> void:
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	info_panel.position = Vector2(-420, 20)
-	info_panel.size = Vector2(350, 142)
+	info_panel.position = Vector2(-390, 16) if touch_layout else Vector2(-420, 20)
+	info_panel.size = Vector2(320, 148) if touch_layout else Vector2(350, 142)
 	info_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.82), 14))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
 	info_panel.add_child(info_box)
 	threat_label = Label.new()
 	threat_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	threat_label.add_theme_font_size_override("font_size", 20)
+	threat_label.add_theme_font_size_override("font_size", _font_size(20, 22))
 	info_box.add_child(threat_label)
 	region_label = Label.new()
 	region_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	region_label.add_theme_font_size_override("font_size", 17)
+	region_label.add_theme_font_size_override("font_size", _font_size(17, 19))
 	region_label.add_theme_color_override("font_color", Color("#cce4a6"))
 	info_box.add_child(region_label)
 	seed_label = Label.new()
 	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	seed_label.add_theme_font_size_override("font_size", 15)
+	seed_label.add_theme_font_size_override("font_size", _font_size(15, 18))
 	seed_label.add_theme_color_override("font_color", Color(0.75, 0.86, 0.78, 0.78))
 	info_box.add_child(seed_label)
 
 	leaderboard_panel = PanelContainer.new()
 	leaderboard_panel.name = "LevelLeaderboard"
 	leaderboard_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	leaderboard_panel.position = Vector2(-420, 170)
-	leaderboard_panel.size = Vector2(350, 188)
+	leaderboard_panel.position = Vector2(-390, 172) if touch_layout else Vector2(-420, 170)
+	leaderboard_panel.size = Vector2(320, 194) if touch_layout else Vector2(350, 188)
 	leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.88), 14, Color(0.48, 0.80, 0.53, 0.36), 1))
 	hud_root.add_child(leaderboard_panel)
@@ -359,7 +474,7 @@ func _build_hud() -> void:
 	var leaderboard_title := Label.new()
 	leaderboard_title.text = "等级排行榜"
 	leaderboard_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	leaderboard_title.add_theme_font_size_override("font_size", 21)
+	leaderboard_title.add_theme_font_size_override("font_size", _font_size(21, 23))
 	leaderboard_title.add_theme_color_override("font_color", Color("#f0e7b5"))
 	leaderboard_box.add_child(leaderboard_title)
 	leaderboard_content = RichTextLabel.new()
@@ -368,26 +483,26 @@ func _build_hud() -> void:
 	leaderboard_content.scroll_active = false
 	leaderboard_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	leaderboard_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	leaderboard_content.add_theme_font_size_override("normal_font_size", 16)
+	leaderboard_content.add_theme_font_size_override("normal_font_size", _font_size(16, 18))
 	leaderboard_content.add_theme_color_override("default_color", Color("#dcebd6"))
 	leaderboard_box.add_child(leaderboard_content)
 
 	var skill_panel := PanelContainer.new()
 	skill_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	skill_panel.position = Vector2(-215, -120)
-	skill_panel.size = Vector2(430, 98)
+	skill_panel.position = Vector2(-170, -118) if touch_layout else Vector2(-215, -120)
+	skill_panel.size = Vector2(340, 100) if touch_layout else Vector2(430, 98)
 	skill_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.85), 14))
 	hud_root.add_child(skill_panel)
 	var skill_box := VBoxContainer.new()
 	skill_panel.add_child(skill_box)
 	skill_label = Label.new()
 	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	skill_label.add_theme_font_size_override("font_size", 19)
+	skill_label.add_theme_font_size_override("font_size", _font_size(19, 22))
 	skill_box.add_child(skill_label)
 	skill_hint_label = Label.new()
 	skill_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	skill_hint_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	skill_hint_label.add_theme_font_size_override("font_size", 14)
+	skill_hint_label.add_theme_font_size_override("font_size", _font_size(14, 17))
 	skill_hint_label.add_theme_color_override("font_color", Color(0.82, 0.91, 0.84, 0.88))
 	skill_box.add_child(skill_hint_label)
 	skill_bar = _make_bar(Color("#5db98a"), 1.0)
@@ -402,7 +517,7 @@ func _build_hud() -> void:
 	event_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	event_feed.position = Vector2(20, -154)
 	event_feed.size = Vector2(380, 130)
-	event_feed.add_theme_font_size_override("normal_font_size", 17)
+	event_feed.add_theme_font_size_override("normal_font_size", _font_size(17, 19))
 	event_feed.add_theme_color_override("default_color", Color(0.93, 0.96, 0.88, 0.85))
 	hud_root.add_child(event_feed)
 
@@ -412,7 +527,7 @@ func _build_hud() -> void:
 	hint_label.set_anchors_preset(Control.PRESET_CENTER)
 	hint_label.position = Vector2(-260, 120)
 	hint_label.size = Vector2(520, 48)
-	hint_label.add_theme_font_size_override("font_size", 22)
+	hint_label.add_theme_font_size_override("font_size", _font_size(22, 25))
 	hint_label.add_theme_color_override("font_color", Color("#f6f0c9"))
 	hint_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	hint_label.add_theme_constant_override("shadow_offset_x", 2)
@@ -422,8 +537,9 @@ func _build_hud() -> void:
 	var pause_button := Button.new()
 	pause_button.text = "Ⅱ"
 	pause_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause_button.position = Vector2(-58, 20)
-	pause_button.size = Vector2(42, 42)
+	pause_button.position = Vector2(-64, 16) if touch_layout else Vector2(-68, 20)
+	pause_button.size = Vector2(56, 56)
+	pause_button.add_theme_font_size_override("font_size", _font_size(18, 24))
 	pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	pause_button.pressed.connect(_play_ui_sound)
 	pause_button.pressed.connect(func(): pause_requested.emit())
@@ -439,7 +555,7 @@ func _make_bar(fill_color: Color, maximum: float) -> ProgressBar:
 	bar.max_value = maximum
 	bar.value = maximum
 	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(190, 15)
+	bar.custom_minimum_size = Vector2(160, 18) if _uses_touch_layout() else Vector2(190, 15)
 	bar.add_theme_stylebox_override("background", _bar_style(Color(0.0, 0.0, 0.0, 0.42)))
 	bar.add_theme_stylebox_override("fill", _bar_style(fill_color))
 	return bar
@@ -460,8 +576,8 @@ func _bar_row(title: String, bar: ProgressBar, value_label: Label = null) -> HBo
 	row.add_theme_constant_override("separation", 8)
 	var label := Label.new()
 	label.text = title
-	label.custom_minimum_size.x = 52
-	label.add_theme_font_size_override("font_size", 17)
+	label.custom_minimum_size.x = 48 if _uses_touch_layout() else 52
+	label.add_theme_font_size_override("font_size", _font_size(17, 19))
 	row.add_child(label)
 	row.add_child(bar)
 	if value_label != null:
@@ -471,18 +587,19 @@ func _bar_row(title: String, bar: ProgressBar, value_label: Label = null) -> HBo
 
 func _make_value_label() -> Label:
 	var label := Label.new()
-	label.custom_minimum_size.x = 78.0
+	label.custom_minimum_size.x = 70.0 if _uses_touch_layout() else 78.0
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_font_size_override("font_size", _font_size(15, 18))
 	label.add_theme_color_override("font_color", Color("#edf6e8"))
 	return label
 
 
 func _build_intro() -> void:
+	var touch_layout := _uses_touch_layout()
 	intro_panel = PanelContainer.new()
-	intro_panel.set_anchors_preset(Control.PRESET_CENTER)
-	intro_panel.position = Vector2(-390, -220)
-	intro_panel.size = Vector2(780, 440)
+	intro_panel.set_anchors_preset(Control.PRESET_CENTER_TOP if touch_layout else Control.PRESET_CENTER)
+	intro_panel.position = Vector2(-400, 40) if touch_layout else Vector2(-390, -220)
+	intro_panel.size = Vector2(640, 410) if touch_layout else Vector2(780, 440)
 	intro_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.94), 24, Color(0.61, 0.92, 0.61, 0.62), 2))
 	hud_root.add_child(intro_panel)
 	var box := VBoxContainer.new()
@@ -497,7 +614,7 @@ func _build_intro() -> void:
 	box.add_child(eyebrow)
 	intro_title = Label.new()
 	intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	intro_title.add_theme_font_size_override("font_size", 38)
+	intro_title.add_theme_font_size_override("font_size", _font_size(38, 40))
 	intro_title.add_theme_color_override("font_color", Color("#f4f0cd"))
 	box.add_child(intro_title)
 	intro_body = Label.new()
@@ -505,24 +622,25 @@ func _build_intro() -> void:
 	intro_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	intro_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	intro_body.add_theme_font_size_override("font_size", 18)
+	intro_body.add_theme_font_size_override("font_size", _font_size(18, 20))
 	intro_body.add_theme_color_override("font_color", Color("#dfecd9"))
 	box.add_child(intro_body)
 	intro_controls = Label.new()
 	intro_controls.text = "WASD / 摇杆移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
 	intro_controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intro_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	intro_controls.add_theme_font_size_override("font_size", 17)
+	intro_controls.add_theme_font_size_override("font_size", _font_size(17, 19))
 	intro_controls.add_theme_color_override("font_color", Color(0.75, 0.86, 0.75, 0.82))
 	box.add_child(intro_controls)
 
 
 func _build_tutorial() -> void:
+	var touch_layout := _uses_touch_layout()
 	tutorial_panel = PanelContainer.new()
 	tutorial_panel.name = "Tutorial"
 	tutorial_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	tutorial_panel.position = Vector2(-280, 155)
-	tutorial_panel.size = Vector2(560, 162)
+	tutorial_panel.position = Vector2(-300, 142) if touch_layout else Vector2(-280, 155)
+	tutorial_panel.size = Vector2(600, 190) if touch_layout else Vector2(560, 162)
 	tutorial_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	tutorial_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.95), 18, Color(0.86, 0.79, 0.39, 0.72), 2))
 	hud_root.add_child(tutorial_panel)
@@ -533,25 +651,25 @@ func _build_tutorial() -> void:
 	box.add_child(header)
 	tutorial_title = Label.new()
 	tutorial_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tutorial_title.add_theme_font_size_override("font_size", 23)
+	tutorial_title.add_theme_font_size_override("font_size", _font_size(23, 25))
 	tutorial_title.add_theme_color_override("font_color", Color("#f4e7a7"))
 	header.add_child(tutorial_title)
 	tutorial_progress_label = Label.new()
 	tutorial_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	tutorial_progress_label.add_theme_font_size_override("font_size", 17)
+	tutorial_progress_label.add_theme_font_size_override("font_size", _font_size(17, 19))
 	tutorial_progress_label.add_theme_color_override("font_color", Color("#bdd9b8"))
 	header.add_child(tutorial_progress_label)
 	tutorial_body = Label.new()
 	tutorial_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tutorial_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tutorial_body.add_theme_font_size_override("font_size", 18)
+	tutorial_body.add_theme_font_size_override("font_size", _font_size(18, 20))
 	tutorial_body.add_theme_color_override("font_color", Color("#edf3df"))
 	box.add_child(tutorial_body)
 	var skip_button := Button.new()
 	skip_button.text = "跳过教学"
-	skip_button.custom_minimum_size = Vector2(132, 36)
+	skip_button.custom_minimum_size = Vector2(152, 52)
 	skip_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-	skip_button.add_theme_font_size_override("font_size", 17)
+	skip_button.add_theme_font_size_override("font_size", _font_size(17, 20))
 	skip_button.add_theme_color_override("font_color", Color("#edf4de"))
 	skip_button.add_theme_stylebox_override("normal", _panel_style(Color(0.08, 0.22, 0.18, 0.94), 10, Color(0.64, 0.83, 0.52, 0.46), 1))
 	skip_button.add_theme_stylebox_override("hover", _panel_style(Color(0.12, 0.32, 0.25, 0.98), 10, Color(0.78, 0.92, 0.62, 0.72), 1))
@@ -578,14 +696,14 @@ func _build_touch_controls() -> void:
 	joystick.offset_bottom = 0.0
 	touch_root.add_child(joystick)
 
-	attack_button = _make_touch_button("攻击", Vector2(-184, -180), Vector2(150, 150), Color("#a94c45"))
+	attack_button = _make_touch_button("攻击", TOUCH_ATTACK_OFFSET, TOUCH_ATTACK_SIZE, Color("#a94c45"))
 	attack_button.button_down.connect(func(): attack_held = true)
 	attack_button.button_up.connect(func(): attack_held = false)
-	skill_button = _make_touch_button("技能", Vector2(-336, -286), Vector2(132, 132), Color("#338c68"))
+	skill_button = _make_touch_button("技能", TOUCH_SKILL_OFFSET, TOUCH_SKILL_SIZE, Color("#338c68"))
 	skill_button.pressed.connect(func(): skill_requested = true)
-	eat_button = _make_touch_button("进食", Vector2(-464, -160), Vector2(112, 96), Color("#6b863b"))
+	eat_button = _make_touch_button("进食", TOUCH_EAT_OFFSET, TOUCH_EAT_SIZE, Color("#6b863b"))
 	eat_button.pressed.connect(func(): interact_requested = true)
-	sprint_button = _make_touch_button("冲刺", Vector2(-332, -128), Vector2(112, 96), Color("#9d7f34"))
+	sprint_button = _make_touch_button("冲刺", TOUCH_SPRINT_OFFSET, TOUCH_SPRINT_SIZE, Color("#9d7f34"))
 	sprint_button.button_down.connect(func(): sprint_held = true)
 	sprint_button.button_up.connect(func(): sprint_held = false)
 
@@ -599,7 +717,7 @@ func _make_touch_button(text_value: String, offset: Vector2, size_value: Vector2
 	button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT if right_anchor else Control.PRESET_BOTTOM_LEFT)
 	button.position = offset
 	button.size = size_value
-	button.add_theme_font_size_override("font_size", 24)
+	button.add_theme_font_size_override("font_size", _font_size(24, 28))
 	button.add_theme_stylebox_override("normal", _panel_style(Color(color, 0.78), 42, Color(1, 1, 1, 0.42), 3))
 	button.add_theme_stylebox_override("pressed", _panel_style(Color(color.lightened(0.18), 0.96), 42, Color(1, 1, 1, 0.78), 4))
 	touch_root.add_child(button)
@@ -612,7 +730,75 @@ func _build_modal_root() -> void:
 	modal_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(modal_root)
+	modal_shade = ColorRect.new()
+	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal_shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	modal_root.add_child(modal_shade)
+	modal_safe_root = Control.new()
+	modal_safe_root.name = "SafeContent"
+	modal_safe_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal_safe_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal_root.add_child(modal_safe_root)
 	modal_root.hide()
+
+
+func _build_orientation_guard() -> void:
+	orientation_root = Control.new()
+	orientation_root.name = "OrientationGuard"
+	orientation_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	orientation_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(orientation_root)
+	var shade := ColorRect.new()
+	shade.color = Color(0.006, 0.025, 0.022, 0.97)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	orientation_root.add_child(shade)
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-450, -230)
+	panel.size = Vector2(900, 460)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.99), 28, Color(0.62, 0.93, 0.64, 0.72), 3))
+	orientation_root.add_child(panel)
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 18)
+	panel.add_child(box)
+	var rotate_icon := Label.new()
+	rotate_icon.text = "90°"
+	rotate_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rotate_icon.add_theme_font_size_override("font_size", 100)
+	rotate_icon.add_theme_color_override("font_color", Color("#92e1a0"))
+	box.add_child(rotate_icon)
+	var title := Label.new()
+	title.text = "请横向握持手机"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 60)
+	title.add_theme_color_override("font_color", Color("#f5efc8"))
+	box.add_child(title)
+	var hint := Label.new()
+	hint.text = "旋转到横屏后会自动继续，当前生态世界已经暂停。"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 36)
+	hint.add_theme_color_override("font_color", Color("#c8ddc4"))
+	box.add_child(hint)
+	orientation_root.hide()
+
+
+func _clear_modal_content(shade_color: Color) -> void:
+	for child in modal_safe_root.get_children():
+		child.queue_free()
+	modal_shade.color = shade_color
+	modal_root.show()
+
+
+func _add_modal_panel(panel: PanelContainer, desired_size: Vector2) -> void:
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	var available_size := modal_safe_root.size - Vector2(24.0, 24.0)
+	var panel_size := Vector2(minf(desired_size.x, available_size.x), minf(desired_size.y, available_size.y))
+	panel.position = -panel_size * 0.5
+	panel.size = panel_size
+	modal_safe_root.add_child(panel)
 
 
 func show_menu() -> void:
@@ -636,8 +822,9 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	modal_root.hide()
 	hide_tutorial()
 	clear_enemy_health()
-	var touch_available := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
+	var touch_available := _uses_touch_layout()
 	touch_root.visible = touch_available
+	event_feed.visible = not touch_available
 	seed_label.text = "世界种子 %s" % world_seed
 	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
 	_reset_live_information()
@@ -651,6 +838,7 @@ func show_tutorial_step(step: int, total: int, title_text: String, body_text: St
 	tutorial_progress_label.text = "教学 %d / %d" % [step, total]
 	tutorial_body.text = body_text
 	tutorial_panel.modulate = Color.WHITE
+	tutorial_panel.move_to_front()
 	tutorial_panel.show()
 
 
@@ -699,7 +887,7 @@ func set_player(player_actor: EcoActor) -> void:
 func show_species_intro(species_id: String) -> void:
 	_cancel_intro_tween()
 	var data := Catalog.get_data(species_id)
-	var touch_layout := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") or "--touch-preview" in OS.get_cmdline_user_args()
+	var touch_layout := _uses_touch_layout()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
 	intro_controls.text = "左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
@@ -808,26 +996,17 @@ func _refresh_battle_ticker() -> void:
 
 func show_battle_report() -> void:
 	battle_report_opened.emit()
-	for child in modal_root.get_children():
-		child.queue_free()
-	modal_root.show()
-	var shade := ColorRect.new()
-	shade.color = Color(0.006, 0.025, 0.022, 0.90)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal_root.add_child(shade)
+	_clear_modal_content(Color(0.006, 0.025, 0.022, 0.90))
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-500, -310)
-	panel.size = Vector2(1000, 620)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.095, 0.078, 0.99), 24, Color(0.72, 0.86, 0.48, 0.68), 2))
-	modal_root.add_child(panel)
+	_add_modal_panel(panel, Vector2(1000, 620))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
 	var title := Label.new()
 	title.text = "生态战况"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 38)
+	title.add_theme_font_size_override("font_size", _font_size(38, 43))
 	title.add_theme_color_override("font_color", Color("#f4edc5"))
 	box.add_child(title)
 	var summary := Label.new()
@@ -838,7 +1017,7 @@ func show_battle_report() -> void:
 			break
 	summary.text = "已记录 %d 条关键战报　·　玩家当前等级排名 %s" % [battle_reports.size(), (str(player_rank) if player_rank > 0 else "--")]
 	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	summary.add_theme_font_size_override("font_size", 17)
+	summary.add_theme_font_size_override("font_size", _font_size(17, 20))
 	summary.add_theme_color_override("font_color", Color("#b9d5b7"))
 	box.add_child(summary)
 	var columns := HBoxContainer.new()
@@ -854,7 +1033,7 @@ func show_battle_report() -> void:
 	report_log.scroll_active = true
 	report_log.scroll_following = false
 	report_log.mouse_filter = Control.MOUSE_FILTER_STOP
-	report_log.add_theme_font_size_override("normal_font_size", 18)
+	report_log.add_theme_font_size_override("normal_font_size", _font_size(18, 20))
 	report_panel.add_child(report_log)
 	if battle_reports.is_empty():
 		report_log.append_text("[center][color=#9fb9a2]还没有关键战斗事件。[/color][/center]")
@@ -875,7 +1054,7 @@ func show_battle_report() -> void:
 	var rank_title := Label.new()
 	rank_title.text = "完整等级排名"
 	rank_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rank_title.add_theme_font_size_override("font_size", 21)
+	rank_title.add_theme_font_size_override("font_size", _font_size(21, 23))
 	rank_title.add_theme_color_override("font_color", Color("#f0e7b5"))
 	rank_box.add_child(rank_title)
 	var rank_log := RichTextLabel.new()
@@ -883,7 +1062,7 @@ func show_battle_report() -> void:
 	rank_log.scroll_active = true
 	rank_log.mouse_filter = Control.MOUSE_FILTER_STOP
 	rank_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	rank_log.add_theme_font_size_override("normal_font_size", 17)
+	rank_log.add_theme_font_size_override("normal_font_size", _font_size(17, 19))
 	rank_box.add_child(rank_log)
 	for entry in leaderboard_entries:
 		var row_color := "#f4df7b" if int(entry.get("rank", 0)) == 1 else ("#8fe0b0" if bool(entry.get("is_player", false)) else "#dcebd6")
@@ -978,19 +1157,10 @@ func add_event(text_value: String, color_hex: String = "#dcebd6") -> void:
 
 func show_result(title_text: String, body_text: String, retry_text: String = "轮回重生", include_settings: bool = false) -> void:
 	hide_tutorial()
-	for child in modal_root.get_children():
-		child.queue_free()
-	modal_root.show()
-	var shade := ColorRect.new()
-	shade.color = Color(0.01, 0.045, 0.04, 0.78)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal_root.add_child(shade)
+	_clear_modal_content(Color(0.01, 0.045, 0.04, 0.78))
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-300, -205)
-	panel.size = Vector2(600, 410)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	modal_root.add_child(panel)
+	_add_modal_panel(panel, Vector2(600, 440) if _uses_touch_layout() else Vector2(600, 410))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 15)
@@ -998,7 +1168,7 @@ func show_result(title_text: String, body_text: String, retry_text: String = "�
 	var title := Label.new()
 	title.text = title_text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_font_size_override("font_size", _font_size(40, 46))
 	title.add_theme_color_override("font_color", Color("#f5efc8"))
 	box.add_child(title)
 	var body := Label.new()
@@ -1007,7 +1177,7 @@ func show_result(title_text: String, body_text: String, retry_text: String = "�
 	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_theme_font_size_override("font_size", 18)
+	body.add_theme_font_size_override("font_size", _font_size(18, 22))
 	body.add_theme_color_override("font_color", Color("#dcebd7"))
 	box.add_child(body)
 	var retry := Button.new()
@@ -1036,20 +1206,11 @@ func show_pause() -> void:
 
 
 func show_free_mode() -> void:
-	for child in modal_root.get_children():
-		child.queue_free()
-	modal_root.show()
-	var shade := ColorRect.new()
-	shade.color = Color(0.008, 0.035, 0.032, 0.88)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal_root.add_child(shade)
+	_clear_modal_content(Color(0.008, 0.035, 0.032, 0.88))
 
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-470, -325)
-	panel.size = Vector2(940, 650)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.99), 24, Color(0.64, 0.94, 0.62, 0.72), 2))
-	modal_root.add_child(panel)
+	_add_modal_panel(panel, Vector2(940, 650))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 9)
@@ -1058,13 +1219,13 @@ func show_free_mode() -> void:
 	var title := Label.new()
 	title.text = "自由模式"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_font_size_override("font_size", _font_size(40, 44))
 	title.add_theme_color_override("font_color", Color("#f5efc8"))
 	box.add_child(title)
 	var subtitle := Label.new()
 	subtitle.text = "任选关卡与物种，专注练习地形、技能和生态策略。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 18)
+	subtitle.add_theme_font_size_override("font_size", _font_size(18, 20))
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
 	box.add_child(subtitle)
 
@@ -1074,24 +1235,24 @@ func show_free_mode() -> void:
 	box.add_child(selectors)
 	var level_label := Label.new()
 	level_label.text = "挑选关卡"
-	level_label.add_theme_font_size_override("font_size", 21)
+	level_label.add_theme_font_size_override("font_size", _font_size(21, 23))
 	level_label.add_theme_color_override("font_color", Color("#e8edcf"))
 	selectors.add_child(level_label)
 	var level_select := OptionButton.new()
 	level_select.custom_minimum_size = Vector2(230, 54)
-	level_select.add_theme_font_size_override("font_size", 20)
+	level_select.add_theme_font_size_override("font_size", _font_size(20, 22))
 	for level_number in range(1, 11):
 		level_select.add_item("第 %d 关 · %d 个体" % [level_number, level_number * 10])
 	level_select.selected = clampi(game.get_selected_free_level() - 1, 0, 9)
 	selectors.add_child(level_select)
 	var species_label_text := Label.new()
 	species_label_text.text = "挑选物种"
-	species_label_text.add_theme_font_size_override("font_size", 21)
+	species_label_text.add_theme_font_size_override("font_size", _font_size(21, 23))
 	species_label_text.add_theme_color_override("font_color", Color("#e8edcf"))
 	selectors.add_child(species_label_text)
 	var species_select := OptionButton.new()
 	species_select.custom_minimum_size = Vector2(280, 54)
-	species_select.add_theme_font_size_override("font_size", 20)
+	species_select.add_theme_font_size_override("font_size", _font_size(20, 22))
 	var selected_species_id: String = str(game.get_selected_free_species()) if game.has_method("get_selected_free_species") else "rabbit"
 	var selected_species_index := 0
 	for species_index in range(Catalog.ORDER.size()):
@@ -1106,7 +1267,7 @@ func show_free_mode() -> void:
 
 	var level_hint := Label.new()
 	level_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	level_hint.add_theme_font_size_override("font_size", 16)
+	level_hint.add_theme_font_size_override("font_size", _font_size(16, 18))
 	level_hint.add_theme_color_override("font_color", Color("#a9c9aa"))
 	box.add_child(level_hint)
 
@@ -1119,7 +1280,7 @@ func show_free_mode() -> void:
 	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	preview.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	preview.add_theme_font_size_override("font_size", 17)
+	preview.add_theme_font_size_override("font_size", _font_size(17, 19))
 	preview.add_theme_color_override("font_color", Color("#e2ebd6"))
 	preview_panel.add_child(preview)
 
@@ -1141,7 +1302,7 @@ func show_free_mode() -> void:
 	var mode_hint := Label.new()
 	mode_hint.text = "自由模式不推进战役，不计入死亡次数，不增加世界威胁。"
 	mode_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mode_hint.add_theme_font_size_override("font_size", 15)
+	mode_hint.add_theme_font_size_override("font_size", _font_size(15, 17))
 	mode_hint.add_theme_color_override("font_color", Color("#d6cda8"))
 	box.add_child(mode_hint)
 
@@ -1179,20 +1340,11 @@ func _free_species_description(species_id: String) -> String:
 
 func show_settings(from_pause: bool = false) -> void:
 	settings_from_pause = from_pause
-	for child in modal_root.get_children():
-		child.queue_free()
-	modal_root.show()
-	var shade := ColorRect.new()
-	shade.color = Color(0.008, 0.035, 0.032, 0.84)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal_root.add_child(shade)
+	_clear_modal_content(Color(0.008, 0.035, 0.032, 0.84))
 
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-330, -300)
-	panel.size = Vector2(660, 600)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	modal_root.add_child(panel)
+	_add_modal_panel(panel, Vector2(700, 620) if _uses_touch_layout() else Vector2(660, 600))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 7)
@@ -1201,14 +1353,14 @@ func show_settings(from_pause: bool = false) -> void:
 	var title := Label.new()
 	title.text = "游戏设置"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_font_size_override("font_size", _font_size(40, 44))
 	title.add_theme_color_override("font_color", Color("#f5efc8"))
 	box.add_child(title)
 
 	var subtitle := Label.new()
 	subtitle.text = "声音、画质与教学选项会自动保存。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 17)
+	subtitle.add_theme_font_size_override("font_size", _font_size(17, 19))
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
 	box.add_child(subtitle)
 
@@ -1221,14 +1373,14 @@ func show_settings(from_pause: bool = false) -> void:
 	audio_panel.add_child(audio_box)
 	var audio_title := Label.new()
 	audio_title.text = "声音"
-	audio_title.add_theme_font_size_override("font_size", 24)
+	audio_title.add_theme_font_size_override("font_size", _font_size(24, 26))
 	audio_title.add_theme_color_override("font_color", Color("#e9edcf"))
 	audio_box.add_child(audio_title)
 
 	var music_toggle := CheckButton.new()
 	music_toggle.text = "背景音乐与森林环境声"
 	music_toggle.button_pressed = game.is_music_enabled()
-	music_toggle.add_theme_font_size_override("font_size", 21)
+	music_toggle.add_theme_font_size_override("font_size", _font_size(21, 23))
 	music_toggle.toggled.connect(func(enabled: bool):
 		game.set_music_enabled(enabled)
 		if game.is_sfx_enabled():
@@ -1239,7 +1391,7 @@ func show_settings(from_pause: bool = false) -> void:
 	var sfx_toggle := CheckButton.new()
 	sfx_toggle.text = "战斗、技能与界面音效"
 	sfx_toggle.button_pressed = game.is_sfx_enabled()
-	sfx_toggle.add_theme_font_size_override("font_size", 21)
+	sfx_toggle.add_theme_font_size_override("font_size", _font_size(21, 23))
 	sfx_toggle.toggled.connect(func(enabled: bool): game.set_sfx_enabled(enabled))
 	audio_box.add_child(sfx_toggle)
 
@@ -1255,17 +1407,17 @@ func show_settings(from_pause: bool = false) -> void:
 	quality_row.add_child(quality_text_box)
 	var quality_title := Label.new()
 	quality_title.text = "画质"
-	quality_title.add_theme_font_size_override("font_size", 23)
+	quality_title.add_theme_font_size_override("font_size", _font_size(23, 25))
 	quality_title.add_theme_color_override("font_color", Color("#e9edcf"))
 	quality_text_box.add_child(quality_title)
 	var quality_hint := Label.new()
 	quality_hint.text = "手机卡顿时选择性能；修改后立即生效"
-	quality_hint.add_theme_font_size_override("font_size", 15)
+	quality_hint.add_theme_font_size_override("font_size", _font_size(15, 17))
 	quality_hint.add_theme_color_override("font_color", Color("#b8cbb5"))
 	quality_text_box.add_child(quality_hint)
 	var quality_select := OptionButton.new()
 	quality_select.custom_minimum_size = Vector2(210, 54)
-	quality_select.add_theme_font_size_override("font_size", 20)
+	quality_select.add_theme_font_size_override("font_size", _font_size(20, 22))
 	quality_select.add_item("性能（低）")
 	quality_select.add_item("平衡（中）")
 	quality_select.add_item("高画质")
@@ -1299,7 +1451,7 @@ func show_settings(from_pause: bool = false) -> void:
 	var reset_hint := Label.new()
 	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音与画质会保留。"
 	reset_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	reset_hint.add_theme_font_size_override("font_size", 16)
+	reset_hint.add_theme_font_size_override("font_size", _font_size(16, 18))
 	reset_hint.add_theme_color_override("font_color", Color("#d5c7a7"))
 	box.add_child(reset_hint)
 
@@ -1317,19 +1469,10 @@ func show_settings(from_pause: bool = false) -> void:
 
 
 func show_reset_confirmation() -> void:
-	for child in modal_root.get_children():
-		child.queue_free()
-	modal_root.show()
-	var shade := ColorRect.new()
-	shade.color = Color(0.008, 0.025, 0.022, 0.90)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	modal_root.add_child(shade)
+	_clear_modal_content(Color(0.008, 0.025, 0.022, 0.90))
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-300, -170)
-	panel.size = Vector2(600, 340)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.08, 0.075, 0.045, 0.98), 24, Color(0.90, 0.69, 0.36, 0.75), 2))
-	modal_root.add_child(panel)
+	_add_modal_panel(panel, Vector2(620, 380) if _uses_touch_layout() else Vector2(600, 340))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 16)
@@ -1337,14 +1480,14 @@ func show_reset_confirmation() -> void:
 	var title := Label.new()
 	title.text = "确认重置游戏？"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_font_size_override("font_size", _font_size(34, 40))
 	title.add_theme_color_override("font_color", Color("#f3ddb8"))
 	box.add_child(title)
 	var body := Label.new()
 	body.text = "你将回到第一关，死亡次数和世界威胁归零。\n此操作无法撤销，但不会改变声音设置。"
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_theme_font_size_override("font_size", 20)
+	body.add_theme_font_size_override("font_size", _font_size(20, 23))
 	body.add_theme_color_override("font_color", Color("#e7e0cf"))
 	box.add_child(body)
 	var confirm := Button.new()

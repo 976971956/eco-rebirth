@@ -90,6 +90,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var leaderboard_result := root.get_texture().get_image().save_png("res://docs/images/v15-leaderboard-ticker.png")
+	var mobile_safe_result := root.get_texture().get_image().save_png("res://docs/images/v17-mobile-safe-ui.png")
 	ui.show_battle_report()
 	for _frame in range(5):
 		await process_frame
@@ -109,7 +110,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

@@ -76,6 +76,7 @@ var selected_free_level: int = 1
 var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
 var leaderboard_refresh_remaining: float = 0.0
+var orientation_blocked: bool = false
 
 
 func _ready() -> void:
@@ -100,6 +101,7 @@ func _ready() -> void:
 	ui.tutorial_skipped.connect(_skip_tutorial)
 	ui.battle_report_opened.connect(_on_battle_report_opened)
 	ui.battle_report_closed.connect(_on_battle_report_closed)
+	ui.orientation_blocked_changed.connect(_on_orientation_blocked_changed)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
 	if batch_arg != "":
@@ -121,7 +123,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if state == "playing":
+	if state == "playing" and not orientation_blocked:
 		level_elapsed += delta
 		if not collapse_triggered:
 			_check_collapse_trigger()
@@ -130,7 +132,7 @@ func _process(delta: float) -> void:
 		if living.size() <= 1 or level_elapsed > 900.0:
 			_finish_batch_run(living)
 			return
-	if state == "playing" and is_instance_valid(player):
+	if state == "playing" and not orientation_blocked and is_instance_valid(player):
 		if is_instance_valid(world):
 			world.update_weather_focus(player.global_position)
 		var living_count := get_living_actors().size()
@@ -145,7 +147,7 @@ func _process(delta: float) -> void:
 			var survival_pressure := 1.0 - float(living_count - 1) / maxf(float(roster_size - 1), 1.0)
 			var health_pressure := 1.0 - clampf(player.health / maxf(player.max_health, 1.0), 0.0, 1.0)
 			audio.set_game_intensity(clampf(survival_pressure * 0.72 + health_pressure * 0.28, 0.0, 1.0))
-	if Input.is_action_just_pressed("pause"):
+	if not orientation_blocked and Input.is_action_just_pressed("pause"):
 		if state == "battle_report":
 			ui.hide_battle_report()
 		elif state == "playing" or state == "paused":
@@ -227,6 +229,12 @@ func _on_battle_report_closed() -> void:
 	state = "playing"
 	if audio != null:
 		audio.set_context("game")
+
+
+func _on_orientation_blocked_changed(blocked: bool) -> void:
+	orientation_blocked = blocked
+	if state == "playing":
+		get_tree().paused = blocked
 
 
 func _start_new_world(free_mode: bool = false) -> void:
@@ -312,6 +320,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		if audio != null:
 			audio.set_context("game")
 			audio.play_sfx("world")
+		_on_orientation_blocked_changed(ui.is_orientation_blocked())
 		_begin_tutorial_if_needed()
 
 

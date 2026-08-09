@@ -15,6 +15,15 @@
 
 Godot 官方建议让场景保持单一职责、低耦合，并由拥有者管理外部关系；自定义 Resource 可直接序列化、在 Inspector 编辑且适合版本控制。因此本项目采用“场景负责行为组合，Resource 负责数据”的结构。
 
+### 1.1 当前可玩版移动 UI 基线（V1.5）
+
+- 逻辑设计尺寸为 1280×720，使用 `canvas_items + expand` 兼容 16:9、超宽手机和 4:3 平板横屏。
+- Android/iOS 通过 `DisplayServer.get_display_safe_area()` 把物理安全区域换算为 Godot 逻辑边距；首页内容、HUD、弹窗和触控层共用同一套边距。
+- 手机 Web 无法依赖原生方向锁定，因此竖屏时由最高层 `OrientationGuard` 拦截输入并通知主流程暂停生态模拟。
+- 触控动作保持在右下两列，动态摇杆仍可在左侧下半区任意位置唤醒；普通可选控件至少 52 逻辑像素高，主要动作按钮保持 96–150 逻辑像素。
+- 手机 HUD 使用独立的大字号和紧凑宽度，教学与物种攻略位于触控区域上方；桌面布局继续使用原有信息密度。
+- 安全区域每 0.45 秒复核一次，以覆盖不改变视口尺寸的 180 度横屏翻转，同时也监听视口尺寸变化。
+
 ## 2. 推荐项目目录
 
 ```text
@@ -410,4 +419,3 @@ Resource 默认可能被多个实例共享。任何运行时会变化的状态�
 - [Godot 多线程与线程安全提示](https://docs.godotengine.org/en/stable/tutorials/performance/using_multiple_threads.html)
 - [使用低层 Servers 优化大量对象](https://docs.godotengine.org/en/stable/tutorials/performance/using_servers.html)
 - [使用 MultiMesh 优化大量重复实例](https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html)
-
