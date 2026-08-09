@@ -765,6 +765,17 @@ func show_enemy_health(target: EcoActor) -> void:
 		ui.show_enemy_health(target)
 
 
+func on_opportunity_strike(attacker: EcoActor, target: EcoActor, threat_gap: int, bonus_damage: float) -> void:
+	if ui == null or batch_mode or not is_instance_valid(attacker) or not is_instance_valid(target):
+		return
+	if attacker == player:
+		ui.show_enemy_health(target)
+		ui.show_hint("抓住破绽！无视部分护甲，额外造成 %d 伤害" % roundi(bonus_damage))
+		ui.add_event("逆袭命中%s · 威胁差%d级" % [Catalog.display_name(target.species_id), threat_gap], "#f1d46b")
+	elif target == player:
+		ui.show_hint("你在破绽状态遭到逆袭！停止攻击并恢复耐力")
+
+
 func on_player_experience_gained(amount: int, defeated_species: String, reason: String = "击杀") -> void:
 	if ui == null or batch_mode:
 		return

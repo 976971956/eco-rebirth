@@ -1,6 +1,10 @@
 class_name SpeciesCatalog
 extends RefCounted
 
+const OPPORTUNITY_BASE_HEALTH_RATIO := 0.02
+const OPPORTUNITY_RATIO_PER_GAP := 0.01
+const OPPORTUNITY_MAX_GAP := 4
+
 
 const ORDER: Array[String] = [
 	"rabbit", "fox", "deer", "wolf", "snake", "bear",
@@ -1154,6 +1158,38 @@ static func get_color(species_id: String) -> Color:
 static func experience_reward(species_id: String, victim_level: int = 1) -> int:
 	var base_reward := int(DATA.get(species_id, DATA["rabbit"]).get("xp_reward", 20))
 	return maxi(int(round(base_reward * (1.0 + maxi(victim_level - 1, 0) * 0.14))), 1)
+
+
+static func combat_tier(species_id: String) -> int:
+	var reward := int(DATA.get(species_id, DATA["rabbit"]).get("xp_reward", 20))
+	if reward <= 30:
+		return 1
+	if reward <= 50:
+		return 2
+	if reward <= 80:
+		return 3
+	if reward <= 110:
+		return 4
+	return 5
+
+
+static func opportunity_threat_gap(attacker_id: String, target_id: String) -> int:
+	var attacker_data: Dictionary = DATA.get(attacker_id, DATA["rabbit"])
+	var target_data: Dictionary = DATA.get(target_id, DATA["rabbit"])
+	var tier_gap := combat_tier(target_id) - combat_tier(attacker_id)
+	var size_gap := int(target_data["size"]) - int(attacker_data["size"])
+	return clampi(maxi(tier_gap, size_gap), 0, OPPORTUNITY_MAX_GAP)
+
+
+static func opportunity_health_ratio(threat_gap: int) -> float:
+	if threat_gap <= 0:
+		return 0.0
+	return OPPORTUNITY_BASE_HEALTH_RATIO + float(clampi(threat_gap, 1, OPPORTUNITY_MAX_GAP)) * OPPORTUNITY_RATIO_PER_GAP
+
+
+static func skill_exposure_duration(species_id: String) -> float:
+	var data: Dictionary = DATA.get(species_id, DATA["rabbit"])
+	return 0.85 + float(int(data["size"])) * 0.18 + float(combat_tier(species_id) - 1) * 0.12
 
 
 static func available_species(campaign_level: int) -> Array[String]:

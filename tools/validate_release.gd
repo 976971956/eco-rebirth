@@ -5,6 +5,7 @@ const WorldScript = preload("res://scripts/eco_world.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
+const Catalog = preload("res://scripts/species_catalog.gd")
 
 var failures: Array[String] = []
 
@@ -20,8 +21,9 @@ func _init() -> void:
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
 	_validate_adaptive_ui_contract()
+	_validate_opportunity_contract()
 	if failures.is_empty():
-		print("[release] V1.5 发布校验通过：移动安全区、横屏守卫、触控布局、安全轮回、生态地图与 Web 音频正常")
+		print("[release] V1.6 发布校验通过：生态逆袭、力竭破绽、移动安全区、安全轮回、生态地图与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -230,6 +232,20 @@ func _validate_adaptive_ui_contract() -> void:
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
+
+
+func _validate_opportunity_contract() -> void:
+	_expect(Catalog.opportunity_threat_gap("rabbit", "elephant") == 4, "生态逆袭没有识别雪兔与巨象的威胁差")
+	_expect(is_equal_approx(Catalog.opportunity_health_ratio(4), 0.06), "最高逆袭额外伤害不是目标最大生命 6%")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("OPPORTUNITY_ARMOR_FACTOR := 0.50"), "逆袭没有实现 50% 有效护甲")
+	_expect(actor_source.contains("EXHAUSTION_ENTER_RATIO := 0.10"), "力竭进入阈值不是 10%")
+	_expect(actor_source.contains("EXHAUSTION_EXIT_RATIO := 0.25"), "力竭解除阈值不是 25%")
+	_expect(actor_source.contains("not _collapse_competition_active()"), "最终争夺圈没有停止无限绕行")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("可逆袭"), "敌方血条没有可逆袭提示")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("func on_opportunity_strike"), "主流程没有接收逆袭命中反馈")
 
 
 func _expect(condition: bool, message: String) -> void:

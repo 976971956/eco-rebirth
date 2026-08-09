@@ -5,6 +5,12 @@ const Catalog = preload("res://scripts/species_catalog.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const SkillVFX = preload("res://scripts/skill_vfx.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
+const EXPOSED_STAMINA_RATIO := 0.20
+const EXHAUSTION_ENTER_RATIO := 0.10
+const EXHAUSTION_EXIT_RATIO := 0.25
+const OPPORTUNITY_ARMOR_FACTOR := 0.50
+const OPPORTUNITY_STAMINA_DAMAGE_RATIO := 0.08
+const OPPORTUNITY_COOLDOWN := 3.0
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -56,6 +62,9 @@ var flight_target_height: float = 0.45
 var landing_target_position := Vector3.ZERO
 var pending_food_resource: Node3D
 var burst_exhaustion_timer: float = 0.0
+var exposed_timer: float = 0.0
+var opportunity_strike_timer: float = 0.0
+var exhausted: bool = false
 var canopy_timer: float = 0.0
 var canopy_anchor := Vector3.ZERO
 var calm_timer: float = 0.0
@@ -1162,6 +1171,8 @@ func _update_timers(delta: float) -> void:
 	flight_ground_timer = maxf(flight_ground_timer - delta, 0.0)
 	flight_dive_timer = maxf(flight_dive_timer - delta, 0.0)
 	burst_exhaustion_timer = maxf(burst_exhaustion_timer - delta, 0.0)
+	exposed_timer = maxf(exposed_timer - delta, 0.0)
+	opportunity_strike_timer = maxf(opportunity_strike_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
 	if Catalog.has_trait(species_id, "flying"):
@@ -1194,6 +1205,33 @@ func _update_timers(delta: float) -> void:
 		if health <= 0.0:
 			var valid_poison_source: EcoActor = poison_source if is_instance_valid(poison_source) else null
 			die(valid_poison_source)
+	_update_exhaustion_state()
+
+
+func _update_exhaustion_state() -> void:
+	if max_stamina <= 0.0:
+		exhausted = false
+		return
+	var stamina_ratio := stamina / max_stamina
+	if exhausted:
+		if stamina_ratio >= EXHAUSTION_EXIT_RATIO:
+			exhausted = false
+	elif stamina_ratio <= EXHAUSTION_ENTER_RATIO:
+		exhausted = true
+
+
+func is_opportunity_exposed() -> bool:
+	return not dead and (exposed_timer > 0.0 or stamina <= max_stamina * EXPOSED_STAMINA_RATIO)
+
+
+func opportunity_status_text() -> String:
+	if exhausted:
+		return "力竭破绽"
+	if stamina <= max_stamina * EXPOSED_STAMINA_RATIO:
+		return "耐力破绽"
+	if exposed_timer > 0.0:
+		return "技能破绽 %.1fs" % exposed_timer
+	return ""
 
 
 func _update_needs(delta: float) -> void:
@@ -1348,6 +1386,20 @@ func _update_ai(delta: float) -> void:
 				desired_direction = Vector3(to_target.x, 0.0, to_target.z).normalized()
 				var distance := global_position.distance_to(ai_target.global_position)
 				var planar_distance := Vector2(global_position.x - ai_target.global_position.x, global_position.z - ai_target.global_position.z).length()
+				var target_threat_gap := Catalog.opportunity_threat_gap(species_id, ai_target.species_id)
+				# Weak animals normally kite a stronger target until it exposes itself.
+				# The fully collapsed habitat is the final duel, so continued kiting
+				# there would prevent the level from ever selecting one survivor.
+				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not _collapse_competition_active():
+					var away_from_stronger := Vector3(global_position.x - ai_target.global_position.x, 0.0, global_position.z - ai_target.global_position.z).normalized()
+					var orbit_side := Vector3(-away_from_stronger.z, 0.0, away_from_stronger.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
+					desired_direction = (away_from_stronger * 0.78 + orbit_side * 0.62).normalized()
+					wants_sprint = distance < float(ai_target.data["attack_range"]) + 2.4 and stamina > max_stamina * 0.35 and not exhausted
+					attack_intent = false
+					var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
+					if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range():
+						use_skill(ai_target)
+					return
 				if Catalog.has_trait(species_id, "flying"):
 					if planar_distance < 4.8:
 						_request_landing(1.25)
@@ -1410,6 +1462,9 @@ func _think() -> void:
 			if distance < threat_distance and stronger:
 				nearest_threat = other
 				threat_distance = distance
+	if stamina < max_stamina * EXPOSED_STAMINA_RATIO:
+		_switch_state("rest", null)
+		return
 	# The final habitat contest overrides ordinary fear and retaliation. Without
 	# this priority, wounded same-species survivors can keep fleeing from one
 	# another forever after they become the only remaining group.
@@ -1430,10 +1485,6 @@ func _think() -> void:
 	var flee_health_threshold := 0.38 if Catalog.has_trait(species_id, "brave_vs_large") else 0.72
 	if is_instance_valid(nearest_threat) and threat_distance < flee_distance and (health < max_health * flee_health_threshold or float(data["courage"]) < 0.4):
 		_switch_state("flee", nearest_threat)
-		return
-
-	if stamina < max_stamina * 0.20:
-		_switch_state("rest", null)
 		return
 
 	if calm_timer > 0.0 and hunger < 70.0:
@@ -1590,7 +1641,11 @@ func _best_prey() -> EcoActor:
 	var best: EcoActor
 	var best_score := -INF
 	for other in game.get_living_actors():
-		if other == self or other.dead or other.spawn_protection > 0.0 or not Catalog.considers_prey(species_id, other.species_id):
+		if other == self or other.dead or other.spawn_protection > 0.0:
+			continue
+		var considers_target: bool = Catalog.considers_prey(species_id, other.species_id)
+		var brave_opportunity: bool = Catalog.has_trait(species_id, "brave_vs_large") and other.is_opportunity_exposed() and Catalog.opportunity_threat_gap(species_id, other.species_id) > 0
+		if not considers_target and not brave_opportunity:
 			continue
 		if other.is_airborne() and not Catalog.has_trait(species_id, "flying"):
 			continue
@@ -1609,6 +1664,8 @@ func _best_prey() -> EcoActor:
 		var score: float = weakness * size_risk / maxf(distance, 2.0)
 		if other.scent_mark_timer > 0.0:
 			score *= 2.15
+		if other.is_opportunity_exposed():
+			score *= 1.45 + float(Catalog.opportunity_threat_gap(species_id, other.species_id)) * 0.18
 		if score > best_score:
 			best_score = score
 			best = other
@@ -1681,7 +1738,7 @@ func _apply_movement(delta: float) -> void:
 		speed *= slow_multiplier
 	if species_id == "cheetah" and burst_exhaustion_timer > 0.0 and dash_timer <= 0.0:
 		speed *= 0.70
-	var sprinting := wants_sprint and stamina > 0.0 and flat_direction.length() > 0.1
+	var sprinting := wants_sprint and not exhausted and stamina > 0.0 and flat_direction.length() > 0.1
 	if sprinting and flat_direction.dot(previous_flat_direction) > 0.9:
 		straight_run_timer += delta
 	else:
@@ -1755,12 +1812,13 @@ func _apply_movement(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-delta * (7.0 if int(data["size"]) < 4 else 4.2)))
 	var flat_speed := Vector2(velocity.x, velocity.z).length()
 	still_timer = still_timer + delta if flat_speed < 0.35 else 0.0
+	_update_exhaustion_state()
 	if is_player:
 		stamina_changed.emit(stamina, max_stamina)
 
 
 func _try_attack() -> void:
-	if not attack_intent or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
+	if not attack_intent or exhausted or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
 		return
 	if is_airborne():
 		_request_landing(1.15)
@@ -1787,6 +1845,7 @@ func _try_attack() -> void:
 				nearby_pack += 1
 		attack_cost *= 1.0 - mini(nearby_pack, 3) * 0.06
 	stamina -= attack_cost
+	_update_exhaustion_state()
 	var damage := float(data["attack"])
 	if not is_player:
 		damage *= game.get_ai_damage_multiplier()
@@ -1803,7 +1862,7 @@ func _try_attack() -> void:
 
 
 func use_skill(target: EcoActor = null) -> bool:
-	if dead or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
+	if dead or exhausted or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
 	var used := false
 	var affected_count := 0
@@ -2246,8 +2305,10 @@ func use_skill(target: EcoActor = null) -> bool:
 				used = true
 	if used:
 		spawn_protection = 0.0
-		stamina -= float(data["skill_cost"])
+		stamina = maxf(stamina - float(data["skill_cost"]), 0.0)
 		skill_timer = float(data["skill_cooldown"])
+		exposed_timer = maxf(exposed_timer, Catalog.skill_exposure_duration(species_id))
+		_update_exhaustion_state()
 		if game.has_method("play_sfx_near"):
 			game.play_sfx_near("skill_%s" % species_id, global_position, is_player)
 		_play_species_skill_animation()
@@ -2355,7 +2416,14 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		return
 	if spawn_protection > 0.0:
 		return
+	var threat_gap := 0
+	var opportunity_strike := false
+	if is_instance_valid(source):
+		threat_gap = Catalog.opportunity_threat_gap(source.species_id, species_id)
+		opportunity_strike = threat_gap > 0 and is_opportunity_exposed() and source.opportunity_strike_timer <= 0.0
 	var armor := float(data["armor"])
+	if opportunity_strike:
+		armor *= OPPORTUNITY_ARMOR_FACTOR
 	var reduction := armor / (armor + 100.0)
 	var size_scale := 1.0
 	if is_instance_valid(source):
@@ -2364,8 +2432,19 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		register_ecology_influence(source, 8.0)
 		if not is_player:
 			ai_target = source
-			ai_state = "hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 else "flee"
+			var source_gap := Catalog.opportunity_threat_gap(species_id, source.species_id)
+			var safe_to_counter := source_gap <= 0 or source.is_opportunity_exposed() or Catalog.has_trait(species_id, "brave_vs_large")
+			ai_state = "hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 and safe_to_counter else "flee"
 	var final_damage := maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
+	var opportunity_bonus := 0.0
+	if opportunity_strike:
+		opportunity_bonus = max_health * Catalog.opportunity_health_ratio(threat_gap)
+		final_damage += opportunity_bonus
+		stamina = maxf(stamina - max_stamina * OPPORTUNITY_STAMINA_DAMAGE_RATIO, 0.0)
+		source.opportunity_strike_timer = OPPORTUNITY_COOLDOWN
+		exposed_timer = 0.0
+		apply_slow(0.84, 1.25)
+		_update_exhaustion_state()
 	if shell_guard_timer > 0.0:
 		final_damage *= 0.42 if _collapse_competition_active() else 0.24
 		final_damage = maxf(final_damage, 1.0)
@@ -2373,6 +2452,8 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
 			final_damage *= 1.32
 	health -= final_damage
+	if opportunity_strike and game.has_method("on_opportunity_strike"):
+		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus)
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
 		rage_timer = 4.0
 		rage_cooldown_timer = 8.0

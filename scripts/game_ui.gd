@@ -64,6 +64,7 @@ var leaderboard_content: RichTextLabel
 var leaderboard_entries: Array[Dictionary] = []
 var enemy_panel: PanelContainer
 var enemy_name_label: Label
+var enemy_status_label: Label
 var enemy_hp_bar: ProgressBar
 var enemy_hp_value_label: Label
 var enemy_target: EcoActor
@@ -417,12 +418,12 @@ func _build_hud() -> void:
 	enemy_panel.name = "EnemyHealth"
 	enemy_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	enemy_panel.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
-	enemy_panel.size = Vector2(320, 84) if touch_layout else Vector2(440, 78)
+	enemy_panel.size = Vector2(320, 110) if touch_layout else Vector2(440, 102)
 	enemy_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	enemy_panel.add_theme_stylebox_override("panel", _panel_style(HUD_ENEMY_BACKGROUND, 14, Color(0.95, 0.38, 0.32, 0.70), 2))
 	hud_root.add_child(enemy_panel)
 	var enemy_box := VBoxContainer.new()
-	enemy_box.add_theme_constant_override("separation", 6)
+	enemy_box.add_theme_constant_override("separation", 4)
 	enemy_panel.add_child(enemy_box)
 	var enemy_title_row := HBoxContainer.new()
 	enemy_box.add_child(enemy_title_row)
@@ -437,6 +438,12 @@ func _build_hud() -> void:
 	enemy_hp_value_label.add_theme_font_size_override("font_size", _font_size(18, 20))
 	enemy_hp_value_label.add_theme_color_override("font_color", Color("#ffd0c4"))
 	enemy_title_row.add_child(enemy_hp_value_label)
+	enemy_status_label = Label.new()
+	enemy_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	enemy_status_label.add_theme_font_size_override("font_size", _font_size(17, 19))
+	enemy_status_label.add_theme_color_override("font_color", Color("#edc7b4"))
+	enemy_box.add_child(enemy_status_label)
 	enemy_hp_bar = _make_bar(Color("#d6534f"), 100.0)
 	enemy_hp_bar.custom_minimum_size.y = 17.0
 	enemy_box.add_child(enemy_hp_bar)
@@ -874,7 +881,9 @@ func _reset_live_information() -> void:
 func set_player(player_actor: EcoActor) -> void:
 	var data := Catalog.get_data(player_actor.species_id)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, data["name"], data["subtitle"]]
-	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"])]
+	var player_exposure_text := "　力竭" if player_actor.exhausted else ("　破绽" if player_actor.is_opportunity_exposed() else "")
+	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), player_exposure_text]
+	combat_stats_label.add_theme_color_override("font_color", Color("#f1d46b") if player_actor.is_opportunity_exposed() else Color("#b9d9bd"))
 	hp_bar.max_value = player_actor.max_health
 	stamina_bar.max_value = player_actor.max_stamina
 	hp_bar.value = player_actor.health
@@ -898,7 +907,7 @@ func show_species_intro(species_id: String) -> void:
 	var data := Catalog.get_data(species_id)
 	var touch_layout := _uses_touch_layout()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_controls.text = "左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
+	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：趁更强敌人耐力不足或技能后摇时攻击"
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
 		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
@@ -929,7 +938,9 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	stamina_value_label.text = "%d / %d" % [maxi(ceili(player_actor.stamina), 0), ceili(player_actor.max_stamina)]
 	satiety_value_label.text = "%d / 100" % ceili(satiety)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, player_actor.data["name"], player_actor.data["subtitle"]]
-	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"])]
+	var player_exposure_text := "　力竭" if player_actor.exhausted else ("　破绽" if player_actor.is_opportunity_exposed() else "")
+	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), player_exposure_text]
+	combat_stats_label.add_theme_color_override("font_color", Color("#f1d46b") if player_actor.is_opportunity_exposed() else Color("#b9d9bd"))
 	var needed_xp := player_actor.experience_to_next_level()
 	xp_bar.max_value = maxf(float(needed_xp), 1.0)
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
@@ -940,8 +951,8 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	var cooldown_remaining := player_actor.skill_timer
 	skill_bar.max_value = cooldown
 	skill_bar.value = cooldown - cooldown_remaining
-	var skill_ready := cooldown_remaining <= 0.0 and player_actor.stamina >= float(player_actor.data["skill_cost"])
-	var skill_state := "就绪" if skill_ready else ("耐力不足" if cooldown_remaining <= 0.0 else "%.1fs" % cooldown_remaining)
+	var skill_ready := cooldown_remaining <= 0.0 and not player_actor.exhausted and player_actor.stamina >= float(player_actor.data["skill_cost"])
+	var skill_state := "力竭" if player_actor.exhausted else ("就绪" if skill_ready else ("耐力不足" if cooldown_remaining <= 0.0 else "%.1fs" % cooldown_remaining))
 	skill_label.text = "%s　%s" % [player_actor.data["skill"], skill_state]
 	skill_button.text = "%s\n%s" % [player_actor.data["skill"], skill_state]
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
@@ -1138,10 +1149,23 @@ func _refresh_enemy_health() -> void:
 		status_parts.append("减速")
 	if enemy_target.panic_timer > 0.0:
 		status_parts.append("受惊")
-	var status_text := " · " + " / ".join(status_parts) if not status_parts.is_empty() else ""
-	enemy_name_label.text = "攻击目标 · Lv.%d %s%s" % [enemy_target.level, target_data["name"], status_text]
+	var player_actor := game.get("player") as EcoActor if game != null else null
+	var can_opportunity_strike := is_instance_valid(player_actor) and Catalog.opportunity_threat_gap(player_actor.species_id, enemy_target.species_id) > 0 and enemy_target.is_opportunity_exposed()
+	if enemy_target.is_opportunity_exposed():
+		status_parts.append(("可逆袭 · " if can_opportunity_strike else "") + enemy_target.opportunity_status_text())
+	enemy_name_label.text = "Lv.%d %s" % [enemy_target.level, target_data["name"]]
+	enemy_status_label.text = " / ".join(status_parts) if not status_parts.is_empty() else "状态稳定"
+	enemy_name_label.add_theme_color_override("font_color", Color("#ffe078") if can_opportunity_strike else Color("#fff0df"))
+	enemy_status_label.add_theme_color_override("font_color", Color("#ffe078") if can_opportunity_strike else Color("#edc7b4"))
+	enemy_panel.add_theme_stylebox_override("panel", _panel_style(
+		Color(0.14, 0.10, 0.025, 0.76) if can_opportunity_strike else HUD_ENEMY_BACKGROUND,
+		14,
+		Color(1.0, 0.80, 0.24, 0.86) if can_opportunity_strike else Color(0.95, 0.38, 0.32, 0.70),
+		2
+	))
 	enemy_hp_bar.max_value = maxf(enemy_target.max_health, 1.0)
 	enemy_hp_bar.value = maxf(enemy_target.health, 0.0)
+	enemy_hp_bar.add_theme_stylebox_override("fill", _bar_style(Color("#e8b93f") if can_opportunity_strike else Color("#d6534f")))
 	enemy_hp_value_label.text = "%d / %d" % [ceili(maxf(enemy_target.health, 0.0)), ceili(enemy_target.max_health)]
 
 

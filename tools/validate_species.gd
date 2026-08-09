@@ -83,6 +83,61 @@ func _run_validation() -> void:
 			failures.append("%s 升到满级后没有全面提升生命、攻击、速度与耐力" % species_id)
 		if actor.max_health > base_health * 2.25 or float(actor.data["attack"]) > base_attack * 1.72 or float(actor.data["speed"]) > base_speed * 1.20:
 			failures.append("%s 的满级成长超过首发平衡上限" % species_id)
+		var combat_tier := Catalog.combat_tier(species_id)
+		if combat_tier < 1 or combat_tier > 5:
+			failures.append("%s 的生态威胁级不在 1–5 范围" % species_id)
+
+	if Catalog.opportunity_threat_gap("rabbit", "elephant") != 4:
+		failures.append("雪兔对巨象的逆袭威胁差应为 4 级")
+	if Catalog.opportunity_threat_gap("elephant", "rabbit") != 0:
+		failures.append("强物种攻击弱物种不应获得逆袭补偿")
+	if not is_equal_approx(Catalog.opportunity_health_ratio(4), 0.06):
+		failures.append("4 级威胁差的逆袭百分比应为 6%")
+	if Catalog.skill_exposure_duration("elephant") <= Catalog.skill_exposure_duration("rabbit"):
+		failures.append("巨兽技能后的破绽窗口应长于微型物种")
+
+	var rabbit_opportunity: EcoActor = ActorScript.new()
+	rabbit_opportunity.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(rabbit_opportunity)
+	rabbit_opportunity.setup(game_stub, 80, "rabbit", false, Vector3.ZERO, 0)
+	var elephant_opportunity: EcoActor = ActorScript.new()
+	elephant_opportunity.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(elephant_opportunity)
+	elephant_opportunity.setup(game_stub, 81, "elephant", false, Vector3(0.0, 0.0, -1.8), 0)
+	rabbit_opportunity.spawn_protection = 0.0
+	elephant_opportunity.spawn_protection = 0.0
+	game_stub.actors = [rabbit_opportunity, elephant_opportunity]
+	elephant_opportunity.stamina = elephant_opportunity.max_stamina * 0.18
+	elephant_opportunity._update_exhaustion_state()
+	var opportunity_health_before := elephant_opportunity.health
+	var opportunity_stamina_before := elephant_opportunity.stamina
+	elephant_opportunity.take_damage(float(rabbit_opportunity.data["attack"]), rabbit_opportunity)
+	var first_opportunity_damage := opportunity_health_before - elephant_opportunity.health
+	if first_opportunity_damage < elephant_opportunity.max_health * 0.06:
+		failures.append("弱物种命中强敌破绽时没有造成百分比逆袭伤害")
+	if rabbit_opportunity.opportunity_strike_timer <= 0.0:
+		failures.append("逆袭命中后没有进入防止连续触发的冷却")
+	if elephant_opportunity.stamina >= opportunity_stamina_before:
+		failures.append("逆袭命中没有削减强敌耐力")
+	var second_health_before := elephant_opportunity.health
+	elephant_opportunity.take_damage(float(rabbit_opportunity.data["attack"]), rabbit_opportunity)
+	if second_health_before - elephant_opportunity.health >= first_opportunity_damage * 0.50:
+		failures.append("逆袭冷却期间仍重复结算百分比伤害")
+	elephant_opportunity.stamina = elephant_opportunity.max_stamina * 0.09
+	elephant_opportunity._update_exhaustion_state()
+	if not elephant_opportunity.exhausted:
+		failures.append("耐力低于 10% 后没有进入力竭")
+	elephant_opportunity.stamina = elephant_opportunity.max_stamina * 0.20
+	elephant_opportunity._update_exhaustion_state()
+	if not elephant_opportunity.exhausted:
+		failures.append("力竭没有保持到 25% 恢复阈值")
+	elephant_opportunity.stamina = elephant_opportunity.max_stamina * 0.26
+	elephant_opportunity._update_exhaustion_state()
+	if elephant_opportunity.exhausted:
+		failures.append("耐力恢复到 25% 后仍未解除力竭")
+	rabbit_opportunity.free()
+	elephant_opportunity.free()
+	game_stub.actors.clear()
 
 	var rng := RandomNumberGenerator.new()
 	var minimum_types_by_level := [4, 6, 8, 10, 12, 14, 16, 18, 20, 22]
@@ -124,6 +179,8 @@ func _run_validation() -> void:
 			failures.append("%s 的主动技能未能命中近距离测试目标" % new_species[index])
 		elif attacker.skill_timer <= 0.0:
 			failures.append("%s 的主动技能没有进入冷却" % new_species[index])
+		elif attacker.exposed_timer <= 0.0:
+			failures.append("%s 的主动技能没有产生可反击的后摇破绽" % new_species[index])
 		if new_species[index] == "monkey":
 			var projectile_created := false
 			for child in container.get_children():
@@ -204,7 +261,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

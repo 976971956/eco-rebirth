@@ -91,6 +91,22 @@ func _render() -> void:
 		await process_frame
 	var leaderboard_result := root.get_texture().get_image().save_png("res://docs/images/v15-leaderboard-ticker.png")
 	var mobile_safe_result := root.get_texture().get_image().save_png("res://docs/images/v17-mobile-safe-ui.png")
+	ui.battle_ticker_button.hide()
+	ui.enemy_name_label.text = "Lv.2 非洲巨象"
+	ui.enemy_status_label.text = "可逆袭 · 力竭破绽"
+	ui.enemy_name_label.add_theme_color_override("font_color", Color("#ffe078"))
+	ui.enemy_status_label.add_theme_color_override("font_color", Color("#ffe078"))
+	ui.enemy_hp_bar.max_value = 540.0
+	ui.enemy_hp_bar.value = 318.0
+	ui.enemy_hp_value_label.text = "318 / 540"
+	ui.enemy_hp_bar.add_theme_stylebox_override("fill", ui._bar_style(Color("#e8b93f")))
+	ui.enemy_panel.add_theme_stylebox_override("panel", ui._panel_style(Color(0.14, 0.10, 0.025, 0.76), 14, Color(1.0, 0.80, 0.24, 0.86), 2))
+	ui.enemy_panel.show()
+	for _frame in range(5):
+		await process_frame
+	var opportunity_result := root.get_texture().get_image().save_png("res://docs/images/v18-opportunity-strike.png")
+	ui.enemy_panel.hide()
+	ui.battle_ticker_button.show()
 	ui.show_battle_report()
 	for _frame in range(5):
 		await process_frame
@@ -110,7 +126,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:
