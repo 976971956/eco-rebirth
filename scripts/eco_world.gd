@@ -18,6 +18,9 @@ const MIN_PASSAGE_GAP := 3.4
 const TERRAIN_COUNTER_THRESHOLD := 0.72
 const ECOLOGY_EVENT_FIRST_BASE := 34.0
 const ECOLOGY_EVENT_REPEAT_BASE := 72.0
+const ECOLOGY_TRACE_MIN_AGE := 0.75
+const ECOLOGY_TRACE_MAX_ENTRIES := 180
+const DANGER_MEMORY_MAX_ENTRIES := 24
 const ECOLOGY_EVENT_ORDER: Array[String] = ["fruit_fall", "grass_flush", "fish_run", "root_bloom"]
 const ECOLOGY_EVENT_PROFILES := {
 	"fruit_fall": {"unlock": 1, "title": "落果潮", "region": "forest", "foods": ["fruit", "berries", "fruit"], "color": "#e6a84f", "description": "成熟果实集中坠落，草食与杂食动物正在向林地迁徙"},
@@ -60,6 +63,11 @@ var active_event_ring_material: StandardMaterial3D
 var ecology_event_timer: float = 0.0
 var ecology_event_sequence: int = 0
 var last_ecology_event_id: String = ""
+var ecology_clock: float = 0.0
+var ecology_trace_cleanup_timer: float = 0.0
+var ecology_trace_sequence: int = 0
+var movement_traces: Array[Dictionary] = []
+var danger_memories: Array[Dictionary] = []
 var decoration_root: Node3D
 var obstacle_root: Node3D
 var environment_resource: Environment
@@ -98,6 +106,11 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	_build_biome_props()
 	_build_food()
 	_build_visible_border()
+	ecology_clock = 0.0
+	ecology_trace_cleanup_timer = 0.0
+	ecology_trace_sequence = 0
+	movement_traces.clear()
+	danger_memories.clear()
 	ecology_event_timer = ecology_event_first_delay(campaign_level, event_rng.randf())
 
 
@@ -759,6 +772,7 @@ func trigger_collapse() -> void:
 func _process(delta: float) -> void:
 	_process_weather(delta)
 	_process_ecology_events(delta)
+	_process_ecology_traces(delta)
 	if collapse_active:
 		var min_radius := world_size * COLLAPSE_MIN_RADIUS_RATIO
 		if collapse_radius > min_radius:
@@ -811,6 +825,157 @@ static func ecology_ambush_offset(radius: float, actor_id: int, event_sequence: 
 	var angle := fmod(float(actor_id) * 2.399963 + float(event_sequence) * 0.83, TAU)
 	var distance := radius + 3.2 + float(posmod(actor_id, 3)) * 1.1
 	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)
+
+
+static func ecology_trace_lifetime(condition_id: String, injured: bool, sprinting: bool, scent_marked: bool = false) -> float:
+	var lifetime := 13.0
+	if injured:
+		lifetime *= 1.42
+	if sprinting:
+		lifetime *= 1.18
+	if scent_marked:
+		lifetime *= 1.32
+	match condition_id:
+		"rain": lifetime *= 0.56
+		"storm": lifetime *= 0.44
+		"fog": lifetime *= 1.12
+	return clampf(lifetime, 6.0, 30.0)
+
+
+static func should_record_ecology_trace(moved_distance: float, concealed: bool, sprinting: bool, injured: bool, scent_marked: bool, airborne: bool) -> bool:
+	if airborne or moved_distance < 0.62:
+		return false
+	if concealed and not sprinting and not injured and not scent_marked:
+		return false
+	return true
+
+
+func _process_ecology_traces(delta: float) -> void:
+	ecology_clock += delta
+	ecology_trace_cleanup_timer -= delta
+	if ecology_trace_cleanup_timer > 0.0:
+		return
+	ecology_trace_cleanup_timer = 0.8
+	movement_traces = movement_traces.filter(func(trace: Dictionary) -> bool: return float(trace.get("expires_at", 0.0)) > ecology_clock)
+	danger_memories = danger_memories.filter(func(memory: Dictionary) -> bool: return float(memory.get("expires_at", 0.0)) > ecology_clock)
+	while movement_traces.size() > ECOLOGY_TRACE_MAX_ENTRIES:
+		movement_traces.pop_front()
+	while danger_memories.size() > DANGER_MEMORY_MAX_ENTRIES:
+		danger_memories.pop_front()
+
+
+func record_movement_trace(source_id: int, source_species: String, trace_position: Vector3, trace_direction: Vector3, injured: bool, sprinting: bool, scent_marked: bool = false) -> Dictionary:
+	if source_id < 0 or source_species == "":
+		return {}
+	ecology_trace_sequence += 1
+	var lifetime := ecology_trace_lifetime(weather_id, injured, sprinting, scent_marked)
+	var strength := 1.0 + (0.42 if injured else 0.0) + (0.20 if sprinting else 0.0) + (0.46 if scent_marked else 0.0)
+	var direction := Vector3(trace_direction.x, 0.0, trace_direction.z).normalized()
+	var trace := {
+		"sequence": ecology_trace_sequence,
+		"source_id": source_id,
+		"species_id": source_species,
+		"position": Vector3(trace_position.x, 0.08, trace_position.z),
+		"direction": direction,
+		"kind": "血迹" if injured or scent_marked else "足迹",
+		"strength": strength,
+		"created_at": ecology_clock,
+		"expires_at": ecology_clock + lifetime,
+		"lifetime": lifetime,
+	}
+	movement_traces.append(trace)
+	if movement_traces.size() > ECOLOGY_TRACE_MAX_ENTRIES:
+		movement_traces.pop_front()
+	return trace.duplicate(true)
+
+
+func record_danger_memory(trace_position: Vector3, victim_species: String, victim_size: int, killer_species: String = "") -> Dictionary:
+	ecology_trace_sequence += 1
+	var combat_death := killer_species != ""
+	var lifetime := (34.0 if combat_death else 23.0) + float(clampi(victim_size, 1, 5)) * 2.6
+	if weather_id == "rain":
+		lifetime *= 0.78
+	elif weather_id == "storm":
+		lifetime *= 0.66
+	var memory := {
+		"sequence": ecology_trace_sequence,
+		"position": Vector3(trace_position.x, 0.08, trace_position.z),
+		"victim_species": victim_species,
+		"killer_species": killer_species,
+		"kind": "血战残迹" if combat_death else "饥饿残迹",
+		"radius": 8.0 + float(clampi(victim_size, 1, 5)) * 1.25 + (2.0 if combat_death else 0.0),
+		"created_at": ecology_clock,
+		"expires_at": ecology_clock + lifetime,
+		"lifetime": lifetime,
+	}
+	danger_memories.append(memory)
+	if danger_memories.size() > DANGER_MEMORY_MAX_ENTRIES:
+		danger_memories.pop_front()
+	return memory.duplicate(true)
+
+
+func best_prey_trace(observer_id: int, observer_species: String, origin: Vector3, max_distance: float, after_sequence: int = 0) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := -INF
+	for trace in movement_traces:
+		var sequence := int(trace.get("sequence", 0))
+		if sequence <= after_sequence or int(trace.get("source_id", -1)) == observer_id:
+			continue
+		var source_species := str(trace.get("species_id", ""))
+		if not Catalog.considers_prey(observer_species, source_species):
+			continue
+		var age := ecology_clock - float(trace.get("created_at", ecology_clock))
+		var lifetime := maxf(float(trace.get("lifetime", 1.0)), 1.0)
+		if age < ECOLOGY_TRACE_MIN_AGE or age >= lifetime:
+			continue
+		var trace_position: Vector3 = trace.get("position", origin)
+		var distance := origin.distance_to(trace_position)
+		if distance > max_distance:
+			continue
+		var freshness := clampf(1.0 - age / lifetime, 0.0, 1.0)
+		var score := freshness * float(trace.get("strength", 1.0)) / maxf(distance, 3.0)
+		if score > best_score:
+			best_score = score
+			best = trace.duplicate(true)
+			best["age"] = age
+			best["distance"] = distance
+	return best
+
+
+func nearest_danger_memory(origin: Vector3, max_distance: float, excluded_sequences: Dictionary = {}) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := -INF
+	for memory in danger_memories:
+		if excluded_sequences.has(str(int(memory.get("sequence", 0)))):
+			continue
+		var age := ecology_clock - float(memory.get("created_at", ecology_clock))
+		var lifetime := maxf(float(memory.get("lifetime", 1.0)), 1.0)
+		if age >= lifetime:
+			continue
+		var memory_position: Vector3 = memory.get("position", origin)
+		var distance := origin.distance_to(memory_position)
+		if distance > max_distance:
+			continue
+		var freshness := clampf(1.0 - age / lifetime, 0.0, 1.0)
+		var score := freshness * float(memory.get("radius", 8.0)) / maxf(distance, 2.0)
+		if score > best_score:
+			best_score = score
+			best = memory.duplicate(true)
+			best["age"] = age
+			best["distance"] = distance
+	return best
+
+
+func ecology_trace_status(observer_id: int, observer_species: String, origin: Vector3) -> String:
+	var danger := nearest_danger_memory(origin, 28.0)
+	if not danger.is_empty() and float(danger.get("distance", INF)) <= float(danger.get("radius", 8.0)) + 2.0:
+		return "危险记忆 · %s %s %dm · %.0fs前" % [str(danger.get("kind", "危险残迹")), compass_direction(origin, danger.get("position", origin)), roundi(float(danger.get("distance", 0.0))), maxf(float(danger.get("age", 0.0)), 1.0)]
+	var trace := best_prey_trace(observer_id, observer_species, origin, 36.0)
+	if not trace.is_empty():
+		return "追踪线索 · %s%s %s %dm · %.0fs前" % [Catalog.display_name(str(trace.get("species_id", ""))), str(trace.get("kind", "足迹")), compass_direction(origin, trace.get("position", origin)), roundi(float(trace.get("distance", 0.0))), maxf(float(trace.get("age", 0.0)), 1.0)]
+	if not danger.is_empty():
+		return "危险记忆 · %s %s %dm" % [str(danger.get("kind", "危险残迹")), compass_direction(origin, danger.get("position", origin)), roundi(float(danger.get("distance", 0.0)))]
+	return "生态踪迹 · 暂无线索"
 
 
 func _process_ecology_events(delta: float) -> void:

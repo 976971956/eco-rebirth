@@ -28,8 +28,9 @@ func _init() -> void:
 	_validate_ecology_leverage_contract()
 	_validate_counterplay_mastery_contract()
 	_validate_ecology_hotspot_contract()
+	_validate_ecology_trace_contract()
 	if failures.is_empty():
-		print("[release] V1.12 发布校验通过：食物链迁徙、猎手围猎、风险判断、生态热点与三端规则正常")
+		print("[release] V1.13 发布校验通过：生态踪迹、猎手调查、危险记忆、食物链迁徙与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -400,6 +401,71 @@ func _validate_ecology_hotspot_contract() -> void:
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("ecology_event_label") and ui_source.contains("生态热点 · 正在等待迁徙信号"), "移动 HUD 没有持续显示生态热点状态")
 	_expect(ui_source.contains("ecology_activity_label") and ui_source.contains("迁徙监测 · 尚无活动"), "移动 HUD 没有显示迁徙数、猎手数和风险")
+
+
+func _validate_ecology_trace_contract() -> void:
+	_expect(WorldScript.ecology_trace_lifetime("clear", true, true, false) > WorldScript.ecology_trace_lifetime("clear", false, false, false), "受伤与奔跑没有增强生态踪迹")
+	_expect(WorldScript.ecology_trace_lifetime("storm", true, true, false) < WorldScript.ecology_trace_lifetime("clear", true, true, false), "暴雨没有缩短生态踪迹寿命")
+	_expect(not WorldScript.should_record_ecology_trace(1.2, true, false, false, false, false), "安静穿过草丛仍留下可追踪足迹，破坏隐蔽")
+	_expect(WorldScript.should_record_ecology_trace(1.2, true, true, false, false, false), "草丛中冲刺没有暴露足迹")
+	_expect(not WorldScript.should_record_ecology_trace(2.0, false, true, true, true, true), "飞行动物错误留下地面足迹")
+	_expect(ActorScript.should_investigate_ecology_trace(62.0, 0.68, 0.9, 0.8, false, false), "健康饥饿猎手不会调查猎物足迹")
+	_expect(not ActorScript.should_investigate_ecology_trace(62.0, 0.68, 0.4, 0.8, false, false), "重伤猎手仍会冒险追踪")
+	_expect(ActorScript.should_avoid_danger_memory(0.18, 48.0, 0.9, 1, false), "胆小猎物不会避开危险记忆")
+	_expect(not ActorScript.should_avoid_danger_memory(0.18, 86.0, 0.9, 1, false), "极饿猎物被危险记忆永久阻止觅食")
+	var world := WorldScript.new()
+	world.weather_id = "clear"
+	world.ecology_clock = 0.0
+	var trace := world.record_movement_trace(7, "rabbit", Vector3(8.0, 0.0, 0.0), Vector3.RIGHT, true, true)
+	_expect(not trace.is_empty() and str(trace.get("kind", "")) == "血迹", "受伤猎物没有留下血迹")
+	world.ecology_clock = 0.5
+	_expect(world.best_prey_trace(4, "wolf", Vector3.ZERO, 20.0).is_empty(), "猎手读取了过于实时的精确足迹")
+	world.ecology_clock = 1.0
+	var found_trace := world.best_prey_trace(4, "wolf", Vector3.ZERO, 20.0)
+	_expect(int(found_trace.get("source_id", -1)) == 7 and float(found_trace.get("age", 0.0)) >= 0.75, "猎手无法读取已延迟的猎物足迹")
+	_expect(world.best_prey_trace(8, "deer", Vector3.ZERO, 20.0).is_empty(), "非捕食者错误读取其他动物为猎物线索")
+	var danger := world.record_danger_memory(Vector3(18.0, 0.0, 0.0), "deer", 3, "wolf")
+	_expect(not danger.is_empty() and str(danger.get("kind", "")) == "血战残迹", "战斗死亡没有形成危险记忆")
+	var excluded := {str(int(danger.get("sequence", 0))): true}
+	_expect(world.nearest_danger_memory(Vector3(18.0, 0.0, 0.0), 5.0, excluded).is_empty(), "已记住的危险地点被 AI 反复触发")
+	_expect(world.ecology_trace_status(4, "wolf", Vector3.ZERO).contains("追踪线索"), "HUD 没有显示猎物踪迹方向与距离")
+	var main := MainScript.new()
+	main.world = world
+	var hunter := ActorScript.new()
+	hunter.actor_id = 4
+	hunter.species_id = "wolf"
+	hunter.data = Catalog.get_data("wolf")
+	hunter.game = main
+	hunter.position = Vector3.ZERO
+	hunter.max_health = 100.0
+	hunter.health = 90.0
+	hunter.max_stamina = 100.0
+	hunter.stamina = 80.0
+	hunter.hunger = 62.0
+	main.actors = [hunter]
+	_expect(hunter._begin_ecology_trace_investigation() and hunter.ai_state == "trace_investigate", "真实 AI 没有进入足迹调查状态")
+	var timid := ActorScript.new()
+	timid.actor_id = 9
+	timid.species_id = "rabbit"
+	timid.data = Catalog.get_data("rabbit")
+	timid.game = main
+	timid.position = Vector3(17.0, 0.0, 0.0)
+	timid.max_health = 100.0
+	timid.health = 90.0
+	timid.max_stamina = 100.0
+	timid.stamina = 90.0
+	timid.hunger = 48.0
+	main.actors.append(timid)
+	_expect(timid._begin_danger_memory_avoidance() and timid.ai_state == "danger_avoid", "真实胆小 AI 没有绕开附近危险记忆")
+	_expect(main.ecology_trace_investigations == 1 and main.danger_memory_avoidances == 1, "主流程没有统计踪迹调查与危险绕行")
+	main.actors.clear()
+	hunter.free()
+	timid.free()
+	main.world = null
+	main.free()
+	world.free()
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("ecology_trace_label") and ui_source.contains("生态踪迹 · 暂无线索"), "移动 HUD 没有持续显示生态踪迹")
 
 
 func _expect(condition: bool, message: String) -> void:

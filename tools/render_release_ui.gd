@@ -70,6 +70,7 @@ func _render() -> void:
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.ecology_event_label.text = "生态热点 · 下一次信号 26s"
 	ui.ecology_activity_label.text = "迁徙监测 · 尚无活动"
+	ui.ecology_trace_label.text = "生态踪迹 · 暂无线索"
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
 	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
@@ -178,6 +179,15 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var food_chain_migration_result := root.get_texture().get_image().save_png("res://docs/images/v24-food-chain-migration.png")
+	ui.ecology_activity_label.text = "迁徙 4 · 猎手 1 · 风险：警戒"
+	ui.ecology_activity_label.add_theme_color_override("font_color", Color("#f0b46f"))
+	ui.ecology_trace_label.text = "追踪线索 · 林鹿血迹 东北 18m · 5s前"
+	ui.ecology_trace_label.add_theme_color_override("font_color", Color("#d5b27a"))
+	ui.battle_ticker_button.text = "战报 [展开] · 灰狼只获得过去位置，正在调查林鹿血迹"
+	ui.show_hint("发现5秒前的林鹿血迹：沿线调查，草丛中的目标仍需重新感知")
+	for _frame in range(5):
+		await process_frame
+	var ecology_traces_result := root.get_texture().get_image().save_png("res://docs/images/v25-ecology-traces.png")
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
@@ -217,7 +227,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

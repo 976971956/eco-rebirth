@@ -65,6 +65,10 @@ var ecology_hotspot_snapshot: Dictionary = {}
 var ecology_hunter_peak: int = 0
 var reported_hotspot_hunter_sequence: int = -1
 var reported_hotspot_danger_sequence: int = -1
+var ecology_trace_investigations: int = 0
+var danger_memory_avoidances: int = 0
+var ecology_trace_report_cooldown: float = 0.0
+var danger_memory_report_cooldown: float = 0.0
 var batch_deaths: Array = []
 var batch_results: Array = []
 var batch_log_file: FileAccess
@@ -121,7 +125,7 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,winner,duration_s,death_count,event_count,hunter_peak,outcome")
+			batch_log_file.store_line("run,level,winner,duration_s,death_count,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
 		batch_death_log_file = FileAccess.open("user://batch_deaths.csv", FileAccess.WRITE)
 		if batch_death_log_file != null:
 			batch_death_log_file.store_line("run,victim,killer")
@@ -133,6 +137,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if state == "playing" and not orientation_blocked:
 		level_elapsed += delta
+		ecology_trace_report_cooldown = maxf(ecology_trace_report_cooldown - delta, 0.0)
+		danger_memory_report_cooldown = maxf(danger_memory_report_cooldown - delta, 0.0)
 		if not collapse_triggered:
 			_check_collapse_trigger()
 		_refresh_ecology_hotspot_activity(delta)
@@ -150,7 +156,8 @@ func _process(delta: float) -> void:
 		var region_name := "%s · %s%s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix, adaptation_suffix] if is_instance_valid(world) else "未知区域"
 		var ecology_status := world.ecology_event_status(player.global_position) if is_instance_valid(world) else ""
 		var ecology_activity := ecology_hotspot_activity_status()
-		ui.update_hud(player, living_count, roster_size, region_name, ecology_status, ecology_activity)
+		var trace_status := ecology_trace_status()
+		ui.update_hud(player, living_count, roster_size, region_name, ecology_status, ecology_activity, trace_status)
 		_update_player_ecology_hotspot()
 		leaderboard_refresh_remaining -= delta
 		if leaderboard_refresh_remaining <= 0.0:
@@ -268,6 +275,10 @@ func _start_new_world(free_mode: bool = false) -> void:
 	ecology_hunter_peak = 0
 	reported_hotspot_hunter_sequence = -1
 	reported_hotspot_danger_sequence = -1
+	ecology_trace_investigations = 0
+	danger_memory_avoidances = 0
+	ecology_trace_report_cooldown = 0.0
+	danger_memory_report_cooldown = 0.0
 	world_seed = int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
 	rng.seed = world_seed
 
@@ -447,6 +458,8 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	corpse.global_position = Vector3(actor.global_position.x, 0.0, actor.global_position.z)
 	corpse.setup(actor.species_id, actor.actor_id)
 	corpses.append(corpse)
+	if is_instance_valid(world):
+		world.record_danger_memory(actor.global_position, actor.species_id, int(actor.data["size"]), killer.species_id if is_instance_valid(killer) else "")
 	if is_instance_valid(killer) and killer != actor:
 		var reward := Catalog.experience_reward(actor.species_id, actor.level)
 		killer.gain_experience(reward, actor.species_id)
@@ -509,7 +522,7 @@ func _finish_loss(killer: EcoActor) -> void:
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		_format_time(seconds),
@@ -519,6 +532,8 @@ func _finish_loss(killer: EcoActor) -> void:
 		player_hotspots_visited,
 		ecology_events_started,
 		ecology_hunter_peak,
+		ecology_trace_investigations,
+		danger_memory_avoidances,
 		pressure_text
 	]
 	ui.show_result("本次生命结束", body, "重新自由挑战" if run_uses_free_mode else "轮回重生")
@@ -534,7 +549,7 @@ func _finish_victory() -> void:
 		return
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
-	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		_format_time(seconds),
 		player.kills,
@@ -543,6 +558,8 @@ func _finish_victory() -> void:
 		player_hotspots_visited,
 		ecology_events_started,
 		ecology_hunter_peak,
+		ecology_trace_investigations,
+		danger_memory_avoidances,
 		total_deaths,
 		world_seed,
 		progression_text
@@ -704,6 +721,33 @@ func ecology_hotspot_activity_status() -> String:
 	return WorldScript.ecology_activity_status(int(ecology_hotspot_snapshot.get("migrants", 0)), int(ecology_hotspot_snapshot.get("hunters", 0)))
 
 
+func ecology_trace_status() -> String:
+	if not is_instance_valid(world) or not is_instance_valid(player):
+		return "生态踪迹 · 暂无线索"
+	return world.ecology_trace_status(player.actor_id, player.species_id, player.global_position)
+
+
+func on_ecology_trace_investigation(actor: EcoActor, trace: Dictionary) -> void:
+	ecology_trace_investigations += 1
+	if batch_mode or ui == null or ecology_trace_report_cooldown > 0.0 or not is_instance_valid(actor):
+		return
+	ecology_trace_report_cooldown = 9.0
+	var prey_name := Catalog.display_name(str(trace.get("species_id", "未知")))
+	var hunter_name := Catalog.display_name(actor.species_id)
+	ui.add_event("%s循着%s的%s展开追踪" % [hunter_name, prey_name, str(trace.get("kind", "足迹"))], "#d5b27a")
+	ui.add_battle_report("%s只获得过去位置，正在调查%s留下的%s" % [hunter_name, prey_name, str(trace.get("kind", "足迹"))], "追踪", "#d5b27a")
+
+
+func on_danger_memory_avoidance(actor: EcoActor, memory: Dictionary) -> void:
+	danger_memory_avoidances += 1
+	if batch_mode or ui == null or danger_memory_report_cooldown > 0.0 or not is_instance_valid(actor):
+		return
+	danger_memory_report_cooldown = 11.0
+	var actor_name := Catalog.display_name(actor.species_id)
+	ui.add_event("%s察觉危险残迹并改变路线" % actor_name, "#8fd0c2")
+	ui.add_battle_report("%s避开%s；极度饥饿时会重新冒险" % [actor_name, str(memory.get("kind", "危险地点"))], "避险", "#8fd0c2")
+
+
 func _start_batch_run() -> void:
 	current_level = batch_level
 	threat_level = 0
@@ -724,15 +768,17 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"deaths": batch_deaths.duplicate(),
 		"events": ecology_events_started,
 		"hunter_peak": ecology_hunter_peak,
+		"trace_hunts": ecology_trace_investigations,
+		"danger_avoids": danger_memory_avoidances,
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
 			batch_death_log_file.store_line("%d,%s,%s" % [run_index, death["victim"], death["killer"]])
-	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d events=%d hunter_peak=%d%s" % [
-		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, " (超时)" if timed_out else ""
+	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
+		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -762,6 +808,8 @@ func _print_batch_report() -> void:
 	var total_duration := 0.0
 	var total_events := 0
 	var total_hunter_peak := 0
+	var total_trace_hunts := 0
+	var total_danger_avoids := 0
 	var timeout_runs := 0
 	for result in batch_results:
 		var winner: String = result["winner"]
@@ -769,6 +817,8 @@ func _print_batch_report() -> void:
 		total_duration += float(result["duration"])
 		total_events += int(result.get("events", 0))
 		total_hunter_peak += int(result.get("hunter_peak", 0))
+		total_trace_hunts += int(result.get("trace_hunts", 0))
+		total_danger_avoids += int(result.get("danger_avoids", 0))
 		if result["timeout"]:
 			timeout_runs += 1
 		for death in result["deaths"]:
@@ -781,6 +831,7 @@ func _print_batch_report() -> void:
 	print("平均局长：%.1fs　超时未分胜负：%d/%d" % [total_duration / maxf(float(batch_results.size()), 1.0), timeout_runs, batch_total_runs])
 	print("平均生态热点：%.1f 次/局" % [float(total_events) / maxf(float(batch_results.size()), 1.0)])
 	print("平均热点猎手峰值：%.1f" % [float(total_hunter_peak) / maxf(float(batch_results.size()), 1.0)])
+	print("平均踪迹追踪：%.1f　平均危险绕行：%.1f" % [float(total_trace_hunts) / maxf(float(batch_results.size()), 1.0), float(total_danger_avoids) / maxf(float(batch_results.size()), 1.0)])
 	print("死因：战斗击杀 %d　饥饿 %d" % [combat_deaths, starvation_deaths])
 	print("胜率（按物种）：")
 	for species_id in win_counts.keys():

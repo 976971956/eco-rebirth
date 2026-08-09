@@ -74,6 +74,7 @@ var seed_label: Label
 var region_label: Label
 var ecology_event_label: Label
 var ecology_activity_label: Label
+var ecology_trace_label: Label
 var skill_label: Label
 var skill_hint_label: Label
 var skill_bar: ProgressBar
@@ -454,7 +455,7 @@ func _build_hud() -> void:
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	info_panel.position = Vector2(-390, 16) if touch_layout else Vector2(-420, 20)
-	info_panel.size = Vector2(320, 174) if touch_layout else Vector2(350, 168)
+	info_panel.size = Vector2(320, 200) if touch_layout else Vector2(350, 194)
 	info_panel.add_theme_stylebox_override("panel", _panel_style(HUD_INFO_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.32), 1))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
@@ -481,6 +482,12 @@ func _build_hud() -> void:
 	ecology_activity_label.add_theme_font_size_override("font_size", _font_size(15, 17))
 	ecology_activity_label.add_theme_color_override("font_color", Color("#9bd69b"))
 	info_box.add_child(ecology_activity_label)
+	ecology_trace_label = Label.new()
+	ecology_trace_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ecology_trace_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	ecology_trace_label.add_theme_font_size_override("font_size", _font_size(15, 17))
+	ecology_trace_label.add_theme_color_override("font_color", Color("#b6c9b5"))
+	info_box.add_child(ecology_trace_label)
 	seed_label = Label.new()
 	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	seed_label.add_theme_font_size_override("font_size", _font_size(15, 18))
@@ -490,7 +497,7 @@ func _build_hud() -> void:
 	leaderboard_panel = PanelContainer.new()
 	leaderboard_panel.name = "LevelLeaderboard"
 	leaderboard_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	leaderboard_panel.position = Vector2(-390, 198) if touch_layout else Vector2(-420, 196)
+	leaderboard_panel.position = Vector2(-390, 224) if touch_layout else Vector2(-420, 222)
 	leaderboard_panel.size = Vector2(320, 194) if touch_layout else Vector2(350, 188)
 	leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(HUD_LEADERBOARD_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.44), 1))
@@ -860,6 +867,7 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	seed_label.text = "世界种子 %s" % world_seed
 	ecology_event_label.text = "生态热点 · 正在等待迁徙信号"
 	ecology_activity_label.text = "迁徙监测 · 尚无活动"
+	ecology_trace_label.text = "生态踪迹 · 暂无线索"
 	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
 	_reset_live_information()
 	set_player(player_actor)
@@ -943,7 +951,7 @@ func _cancel_intro_tween() -> void:
 	intro_tween = null
 
 
-func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域", ecology_event_status: String = "", ecology_activity_status: String = "") -> void:
+func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域", ecology_event_status: String = "", ecology_activity_status: String = "", ecology_trace_status: String = "") -> void:
 	if not hud_root.visible or not is_instance_valid(player_actor):
 		return
 	hp_bar.value = maxf(player_actor.health, 0.0)
@@ -965,6 +973,9 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	ecology_activity_label.text = ecology_activity_status
 	var activity_color := Color("#ef7d68") if ecology_activity_status.contains("高危") else (Color("#f0cf78") if ecology_activity_status.contains("警戒") else Color("#9bd69b"))
 	ecology_activity_label.add_theme_color_override("font_color", activity_color)
+	ecology_trace_label.text = ecology_trace_status
+	var trace_color := Color("#ef8b78") if ecology_trace_status.contains("危险记忆") else (Color("#d5b27a") if ecology_trace_status.contains("追踪线索") else Color("#b6c9b5"))
+	ecology_trace_label.add_theme_color_override("font_color", trace_color)
 	var cooldown := float(player_actor.data["skill_cooldown"])
 	var cooldown_remaining := player_actor.skill_timer
 	skill_bar.max_value = cooldown

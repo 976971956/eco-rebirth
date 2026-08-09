@@ -5,6 +5,7 @@ const Catalog = preload("res://scripts/species_catalog.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const SkillVFX = preload("res://scripts/skill_vfx.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
+const WorldRules = preload("res://scripts/eco_world.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -31,6 +32,9 @@ const COUNTERPLAY_CHAIN_WINDOW := 18.0
 const COUNTERPLAY_MASTERY_HEALTH_RATIO := 0.06
 const COUNTERPLAY_MASTERY_STAMINA_RATIO := 0.18
 const COUNTERPLAY_MASTERY_VISUAL_TIME := 3.2
+const ECOLOGY_TRACE_INTERVAL := 1.05
+const ECOLOGY_TRACE_INVESTIGATION_SECONDS := 5.2
+const DANGER_MEMORY_AVOID_SECONDS := 2.6
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -135,6 +139,14 @@ var ai_target: EcoActor
 var resource_target: Node3D
 var hotspot_stalk_position := Vector3(INF, 0.0, INF)
 var hotspot_event_sequence: int = -1
+var ecology_trace_emit_timer: float = 0.0
+var ecology_trace_last_position := Vector3.ZERO
+var trace_investigation_position := Vector3(INF, 0.0, INF)
+var trace_investigation_timer: float = 0.0
+var last_investigated_trace_sequence: int = 0
+var danger_memory_position := Vector3(INF, 0.0, INF)
+var danger_memory_timer: float = 0.0
+var avoided_danger_sequences: Dictionary = {}
 var wander_direction := Vector3.FORWARD
 var desired_direction := Vector3.ZERO
 var wants_sprint: bool = false
@@ -196,6 +208,8 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	decision_timer = fmod(float(actor_id) * 0.073, 0.33) + 0.05
 	wander_timer = 0.1
 	last_sample_position = global_position
+	ecology_trace_last_position = global_position
+	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
 
 
 static func should_follow_hotspot_signal(hunger_value: float, aggression: float, health_ratio: float, stamina_ratio: float, prey_signals: int, can_feed: bool, territory_restricted: bool, actor_value: int, event_sequence: int) -> bool:
@@ -206,6 +220,23 @@ static func should_follow_hotspot_signal(hunger_value: float, aggression: float,
 	var signal_score := hunger_value / 100.0 * 0.45 + clampf(aggression, 0.0, 1.0) * 0.48 + float(mini(prey_signals, 4)) * 0.08
 	var threshold := 0.62 + float(posmod(actor_value + event_sequence, 4)) * 0.025
 	return signal_score >= threshold
+
+
+static func should_investigate_ecology_trace(hunger_value: float, aggression: float, health_ratio: float, stamina_ratio: float, scavenger: bool, territory_restricted: bool) -> bool:
+	if health_ratio < 0.55 or stamina_ratio < 0.35:
+		return false
+	if territory_restricted and hunger_value < 70.0:
+		return false
+	if hunger_value < 28.0 and not scavenger:
+		return false
+	var motivation := hunger_value / 100.0 * 0.46 + clampf(aggression, 0.0, 1.0) * 0.44 + (0.16 if scavenger else 0.0)
+	return motivation >= 0.43
+
+
+static func should_avoid_danger_memory(courage: float, hunger_value: float, health_ratio: float, size_level: int, scavenger: bool) -> bool:
+	if scavenger or hunger_value >= 82.0 or courage >= 0.62 or size_level >= 5:
+		return false
+	return size_level <= 2 or health_ratio < 0.68 or courage < 0.46
 
 
 func _build_collision() -> void:
@@ -1385,6 +1416,8 @@ func _update_timers(delta: float) -> void:
 		counterplay_chain_target_id = -1
 		counterplay_chain_flags = 0
 	search_timer = maxf(search_timer - delta, 0.0)
+	trace_investigation_timer = maxf(trace_investigation_timer - delta, 0.0)
+	danger_memory_timer = maxf(danger_memory_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
 	if Catalog.has_trait(species_id, "flying"):
@@ -1706,6 +1739,36 @@ func _update_ai(delta: float) -> void:
 			else:
 				var search_angle := fmod(float(actor_id) * 1.71 + search_timer * 2.2, TAU)
 				desired_direction = Vector3(cos(search_angle), 0.0, sin(search_angle)) * 0.34
+		"trace_investigate":
+			var trace_offset := trace_investigation_position - global_position
+			var trace_distance := Vector2(trace_offset.x, trace_offset.z).length()
+			if trace_investigation_timer <= 0.0 or trace_investigation_position.x == INF:
+				ai_state = "wander"
+				trace_investigation_position = Vector3(INF, 0.0, INF)
+				desired_direction = Vector3.ZERO
+			elif trace_distance > 1.35:
+				desired_direction = Vector3(trace_offset.x, 0.0, trace_offset.z).normalized()
+				wants_sprint = trace_distance > 9.0 and stamina > max_stamina * 0.50 and not exhausted
+			else:
+				search_position = trace_investigation_position
+				search_timer = 1.85 + float(int(data["size"])) * 0.12
+				ai_state = "search"
+				trace_investigation_timer = 0.0
+				trace_investigation_position = Vector3(INF, 0.0, INF)
+				desired_direction = Vector3.ZERO
+		"danger_avoid":
+			if danger_memory_timer <= 0.0 or danger_memory_position.x == INF or _collapse_competition_active():
+				ai_state = "wander"
+				danger_memory_position = Vector3(INF, 0.0, INF)
+				desired_direction = Vector3.ZERO
+			else:
+				var away_from_memory := Vector3(global_position.x - danger_memory_position.x, 0.0, global_position.z - danger_memory_position.z).normalized()
+				if away_from_memory.length() < 0.1:
+					var escape_angle := fmod(float(actor_id) * 2.13, TAU)
+					away_from_memory = Vector3(cos(escape_angle), 0.0, sin(escape_angle))
+				var caution_side := Vector3(-away_from_memory.z, 0.0, away_from_memory.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
+				desired_direction = (away_from_memory * 0.94 + caution_side * 0.28).normalized()
+				wants_sprint = health < max_health * 0.48 and stamina > max_stamina * 0.38
 		"hide":
 			desired_direction = Vector3.ZERO
 			wants_sprint = false
@@ -1845,7 +1908,11 @@ func _think() -> void:
 		var reacquired := _best_prey()
 		if is_instance_valid(reacquired):
 			_switch_state("hunt", reacquired)
-		return
+			return
+	if ai_state == "trace_investigate" and trace_investigation_timer > 0.0:
+		var visible_trace_prey := _best_prey()
+		if is_instance_valid(visible_trace_prey):
+			_switch_state("hunt", visible_trace_prey)
 	if ai_state == "hide" and is_cover_concealed():
 		if is_instance_valid(nearest_threat):
 			var hidden_threat_gap := Catalog.opportunity_threat_gap(species_id, nearest_threat.species_id)
@@ -1870,12 +1937,16 @@ func _think() -> void:
 		_switch_state("flee", last_attacker)
 		return
 
-	if state_commit_timer > 0.0 and ai_state not in ["wander", "hotspot_stalk"]:
+	if state_commit_timer > 0.0 and ai_state not in ["wander", "hotspot_stalk", "trace_investigate", "danger_avoid"]:
 		return
 
 	var flee_health_threshold := 0.38 if Catalog.has_trait(species_id, "brave_vs_large") else 0.72
 	if is_instance_valid(nearest_threat) and threat_distance < flee_distance and (health < max_health * flee_health_threshold or float(data["courage"]) < 0.4):
 		_switch_state("flee", nearest_threat)
+		return
+	if ai_state == "trace_investigate" and trace_investigation_timer > 0.0:
+		return
+	if ai_state == "danger_avoid" and danger_memory_timer > 0.0 and not _collapse_competition_active():
 		return
 	if ai_state == "hotspot_stalk":
 		var active_event: Dictionary = game.world.get_active_ecology_event() if game.world != null else {}
@@ -1913,6 +1984,8 @@ func _think() -> void:
 			if is_instance_valid(intruder):
 				_switch_state("hunt", intruder)
 				return
+	if _begin_danger_memory_avoidance():
+		return
 
 	if hunger > 42.0:
 		var resource := _best_food_resource()
@@ -1927,6 +2000,8 @@ func _think() -> void:
 	var hunting_motivation := hunger / 100.0 + float(data["aggression"]) * 0.56
 	if is_instance_valid(prey) and hunting_motivation > 0.44:
 		_switch_state("hunt", prey)
+		return
+	if _begin_ecology_trace_investigation():
 		return
 	if _begin_ecology_hotspot_stalk():
 		return
@@ -2004,6 +2079,12 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 	if new_state != "hotspot_stalk":
 		hotspot_event_sequence = -1
 		hotspot_stalk_position = Vector3(INF, 0.0, INF)
+	if new_state != "trace_investigate":
+		trace_investigation_timer = 0.0
+		trace_investigation_position = Vector3(INF, 0.0, INF)
+	if new_state != "danger_avoid":
+		danger_memory_timer = 0.0
+		danger_memory_position = Vector3(INF, 0.0, INF)
 	if new_state == "hunt" and is_instance_valid(target):
 		last_known_target_position = target.global_position
 		has_last_known_target_position = true
@@ -2136,6 +2217,54 @@ func _best_wild_food(search_range: float) -> Node3D:
 		return candidate
 	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false)
 	return safer_food if is_instance_valid(safer_food) else null
+
+
+func _begin_ecology_trace_investigation() -> bool:
+	if game.world == null or game.world.collapse_active:
+		return false
+	var origin := global_position if is_inside_tree() else position
+	var search_range := 22.0 + float(data["aggression"]) * 11.0
+	if Catalog.has_trait(species_id, "finisher") or Catalog.has_trait(species_id, "scavenger"):
+		search_range += 7.0
+	var trace: Dictionary = game.world.best_prey_trace(actor_id, species_id, origin, search_range, last_investigated_trace_sequence)
+	if trace.is_empty():
+		return false
+	var trace_position: Vector3 = trace.get("position", origin)
+	var territory_restricted := Catalog.has_trait(species_id, "territorial") and territory_radius > 0.0 and territory_center.distance_to(trace_position) > territory_radius * 1.35
+	if not should_investigate_ecology_trace(hunger, float(data["aggression"]), health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), Catalog.has_trait(species_id, "scavenger"), territory_restricted):
+		return false
+	ai_state = "trace_investigate"
+	ai_target = null
+	resource_target = null
+	trace_investigation_position = trace_position
+	trace_investigation_timer = ECOLOGY_TRACE_INVESTIGATION_SECONDS
+	last_investigated_trace_sequence = int(trace.get("sequence", last_investigated_trace_sequence))
+	state_commit_timer = 0.65
+	if game.has_method("on_ecology_trace_investigation"):
+		game.on_ecology_trace_investigation(self, trace)
+	return true
+
+
+func _begin_danger_memory_avoidance() -> bool:
+	if game.world == null or game.world.collapse_active:
+		return false
+	if not should_avoid_danger_memory(float(data["courage"]), hunger, health / maxf(max_health, 1.0), int(data["size"]), Catalog.has_trait(species_id, "scavenger")):
+		return false
+	var origin := global_position if is_inside_tree() else position
+	var awareness_range := 10.0 + float(3 - mini(int(data["size"]), 3)) * 2.2
+	var memory: Dictionary = game.world.nearest_danger_memory(origin, awareness_range, avoided_danger_sequences)
+	if memory.is_empty():
+		return false
+	avoided_danger_sequences[str(int(memory.get("sequence", 0)))] = true
+	danger_memory_position = memory.get("position", origin)
+	danger_memory_timer = DANGER_MEMORY_AVOID_SECONDS
+	ai_state = "danger_avoid"
+	ai_target = null
+	resource_target = null
+	state_commit_timer = 0.55
+	if game.has_method("on_danger_memory_avoidance"):
+		game.on_danger_memory_avoidance(self, memory)
+	return true
 
 
 func _begin_ecology_hotspot_stalk() -> bool:
@@ -2350,6 +2479,24 @@ func _apply_movement(delta: float) -> void:
 	_update_exhaustion_state()
 	if is_player:
 		stamina_changed.emit(stamina, max_stamina)
+	_update_ecology_trace(delta, sprinting, flat_direction)
+
+
+func _update_ecology_trace(delta: float, sprinting: bool, move_direction: Vector3) -> void:
+	if game.world == null:
+		return
+	ecology_trace_emit_timer -= delta
+	if ecology_trace_emit_timer > 0.0:
+		return
+	var moved_distance := global_position.distance_to(ecology_trace_last_position)
+	var injured := health / maxf(max_health, 1.0) < 0.65 or poison_timer > 0.0
+	var scent_marked := scent_mark_timer > 0.0
+	var concealed := is_cover_concealed()
+	var airborne := is_airborne()
+	if WorldRules.should_record_ecology_trace(moved_distance, concealed, sprinting, injured, scent_marked, airborne):
+		game.world.record_movement_trace(actor_id, species_id, global_position, move_direction, injured, sprinting, scent_marked)
+	ecology_trace_last_position = global_position
+	ecology_trace_emit_timer = ECOLOGY_TRACE_INTERVAL + fmod(float(actor_id) * 0.071, 0.34)
 
 
 func _try_attack() -> void:
