@@ -27,6 +27,10 @@ const ECOLOGY_LEVERAGE_RADIUS := 10.5
 const ECOLOGY_LEVERAGE_COOLDOWN := 9.0
 const ECOLOGY_LEVERAGE_COMMIT := 4.8
 const ECOLOGY_LEVERAGE_INFLUENCE := 12.0
+const COUNTERPLAY_CHAIN_WINDOW := 18.0
+const COUNTERPLAY_MASTERY_HEALTH_RATIO := 0.06
+const COUNTERPLAY_MASTERY_STAMINA_RATIO := 0.18
+const COUNTERPLAY_MASTERY_VISUAL_TIME := 3.2
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -146,6 +150,14 @@ var wing_pivots: Array[Node3D] = []
 var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
+var tactical_actions: int = 0
+var counterplay_route_awards: Dictionary = {}
+var counterplay_xp_by_target: Dictionary = {}
+var counterplay_mastered_targets: Dictionary = {}
+var counterplay_chain_target_id: int = -1
+var counterplay_chain_flags: int = 0
+var counterplay_chain_timer: float = 0.0
+var counterplay_mastery_timer: float = 0.0
 var spawn_protection: float = 0.0
 var health_bar_root: Node3D
 var health_bar_fill: MeshInstance3D
@@ -1355,6 +1367,11 @@ func _update_timers(delta: float) -> void:
 	terrain_counter_cooldown = maxf(terrain_counter_cooldown - delta, 0.0)
 	terrain_hint_cooldown = maxf(terrain_hint_cooldown - delta, 0.0)
 	ecology_leverage_cooldown = maxf(ecology_leverage_cooldown - delta, 0.0)
+	counterplay_chain_timer = maxf(counterplay_chain_timer - delta, 0.0)
+	counterplay_mastery_timer = maxf(counterplay_mastery_timer - delta, 0.0)
+	if counterplay_chain_timer <= 0.0:
+		counterplay_chain_target_id = -1
+		counterplay_chain_flags = 0
 	search_timer = maxf(search_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
@@ -1487,11 +1504,12 @@ func _break_cover(reveal_duration: float = COVER_REVEAL_SECONDS) -> void:
 func _update_cover_visual() -> void:
 	if not is_player or selection_ring == null:
 		return
-	var next_state := "ambush" if has_cover_ambush() else ("terrain" if has_terrain_momentum() else ("ecology" if ecology_leverage_status_text() != "" and ecology_leverage_cooldown <= 0.0 else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open")))
+	var next_state := "mastery" if counterplay_mastery_timer > 0.0 else ("ambush" if has_cover_ambush() else ("terrain" if has_terrain_momentum() else ("ecology" if ecology_leverage_status_text() != "" and ecology_leverage_cooldown <= 0.0 else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open"))))
 	if next_state == cover_visual_state:
 		return
 	cover_visual_state = next_state
 	var tint: Color = {
+		"mastery": Color("#ffb86b"),
 		"ambush": Color("#f1d46b"),
 		"terrain": Color("#70cfe8"),
 		"ecology": Color("#d7a2f2"),
@@ -2894,6 +2912,9 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		_trigger_ecology_intervention(source)
 	if opportunity_strike and game.has_method("on_opportunity_strike"):
 		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus, ambush_strike, terrain_strike)
+	if opportunity_strike and is_instance_valid(source):
+		var route_id := "ambush" if ambush_strike else ("terrain" if terrain_strike else "opportunity")
+		source.register_counterplay(self, route_id)
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
 		rage_timer = 4.0
 		rage_cooldown_timer = 8.0
@@ -2989,8 +3010,78 @@ func _trigger_ecology_intervention(threat: EcoActor) -> EcoActor:
 		SkillVFX.ring(responder._skill_effect_parent(), threat.global_position, leverage_color.darkened(0.12), 0.56, 2.8, 0.44)
 	if game.has_method("on_ecology_intervention"):
 		game.on_ecology_intervention(self, threat, responder)
+	register_counterplay(threat, "ecology")
 	_update_cover_visual()
 	return responder
+
+
+func register_counterplay(target: EcoActor, route_id: String) -> Dictionary:
+	var result: Dictionary = {"xp": 0, "chain": 0, "mastery": false, "health": 0.0, "stamina": 0.0}
+	if dead or not is_instance_valid(target) or target == self or target.dead:
+		return result
+	if Catalog.opportunity_threat_gap(species_id, target.species_id) <= 0:
+		return result
+	var route_flag: int = int({"opportunity": 1, "ambush": 2, "terrain": 4, "ecology": 8}.get(route_id, 0))
+	if route_flag == 0:
+		return result
+	var target_key := str(target.actor_id)
+	var award_key := "%s:%s" % [target_key, route_id]
+	if not counterplay_route_awards.has(award_key):
+		counterplay_route_awards[award_key] = true
+		tactical_actions += 1
+		var earned := int(counterplay_xp_by_target.get(target_key, 0))
+		var cap: int = Catalog.counterplay_experience_cap(target.species_id, target.level)
+		var xp_award: int = mini(Catalog.counterplay_experience_reward(target.species_id, target.level), maxi(cap - earned, 0))
+		if level >= MAX_LEVEL:
+			xp_award = 0
+		if xp_award > 0:
+			counterplay_xp_by_target[target_key] = earned + xp_award
+			gain_experience(xp_award, target.species_id, "战术成长")
+		result["xp"] = xp_award
+	if counterplay_chain_target_id != target.actor_id or counterplay_chain_timer <= 0.0:
+		counterplay_chain_target_id = target.actor_id
+		counterplay_chain_flags = 0
+	counterplay_chain_flags |= route_flag
+	counterplay_chain_timer = COUNTERPLAY_CHAIN_WINDOW
+	var chain_count: int = _counterplay_bit_count(counterplay_chain_flags)
+	result["chain"] = chain_count
+	if chain_count >= 2 and not counterplay_mastered_targets.has(target_key):
+		counterplay_mastered_targets[target_key] = true
+		var health_before := health
+		var stamina_before := stamina
+		health = minf(max_health, health + max_health * COUNTERPLAY_MASTERY_HEALTH_RATIO)
+		stamina = minf(max_stamina, stamina + max_stamina * COUNTERPLAY_MASTERY_STAMINA_RATIO)
+		_update_exhaustion_state()
+		result["health"] = health - health_before
+		result["stamina"] = stamina - stamina_before
+		result["mastery"] = true
+		counterplay_mastery_timer = COUNTERPLAY_MASTERY_VISUAL_TIME
+		health_changed.emit(health, max_health)
+		stamina_changed.emit(stamina, max_stamina)
+		_update_health_bar()
+		_update_cover_visual()
+	if game != null and game.has_method("on_counterplay_progress"):
+		game.on_counterplay_progress(self, target, route_id, int(result["xp"]), chain_count, bool(result["mastery"]), float(result["health"]), float(result["stamina"]))
+	return result
+
+
+func counterplay_chain_status_text(target: EcoActor = null) -> String:
+	if is_instance_valid(target) and target.actor_id != counterplay_chain_target_id:
+		return ""
+	if counterplay_mastery_timer > 0.0:
+		return "生态掌控 · 生命与耐力已恢复"
+	if counterplay_chain_timer <= 0.0 or counterplay_chain_flags == 0:
+		return ""
+	return "战术连携 %d/2 · %.1fs" % [mini(_counterplay_bit_count(counterplay_chain_flags), 2), counterplay_chain_timer]
+
+
+func _counterplay_bit_count(value: int) -> int:
+	var remaining := value
+	var count := 0
+	while remaining > 0:
+		count += remaining & 1
+		remaining >>= 1
+	return count
 
 
 func apply_knockback(direction: Vector3, strength: float) -> void:

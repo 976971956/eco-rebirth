@@ -487,12 +487,13 @@ func _finish_loss(killer: EcoActor) -> void:
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		_format_time(seconds),
 		player.kills if is_instance_valid(player) else 0,
 		player.assists if is_instance_valid(player) else 0,
+		player.tactical_actions if is_instance_valid(player) else 0,
 		pressure_text
 	]
 	ui.show_result("本次生命结束", body, "重新自由挑战" if run_uses_free_mode else "轮回重生")
@@ -508,11 +509,12 @@ func _finish_victory() -> void:
 		return
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
-	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		_format_time(seconds),
 		player.kills,
 		player.assists,
+		player.tactical_actions,
 		total_deaths,
 		world_seed,
 		progression_text
@@ -802,12 +804,30 @@ func on_ecology_intervention(bait: EcoActor, aggressor: EcoActor, responder: Eco
 		ui.add_battle_report("%s把%s引向%s，附近形成第三方冲突" % [bait_name, aggressor_name, responder_name], "借力", "#c49be0")
 
 
+func on_counterplay_progress(actor: EcoActor, target: EcoActor, route_id: String, xp_award: int, chain_count: int, mastery_triggered: bool, health_restored: float, stamina_restored: float) -> void:
+	if ui == null or batch_mode or not is_instance_valid(actor) or not is_instance_valid(target):
+		return
+	var route_names := {"opportunity": "破绽逆袭", "ambush": "草丛伏击", "terrain": "主场反制", "ecology": "生态借力"}
+	var route_colors := {"opportunity": "#f1d46b", "ambush": "#8fe8b7", "terrain": "#70cfe8", "ecology": "#d7a2f2"}
+	var route_name := str(route_names.get(route_id, "战术行动"))
+	var route_color := str(route_colors.get(route_id, "#f0cf78"))
+	if actor == player:
+		if mastery_triggered:
+			ui.show_hint("生态掌控！两种战术完成连携，恢复 %d 生命 / %d 耐力" % [roundi(health_restored), roundi(stamina_restored)])
+			ui.add_event("生态掌控 · 对%s完成战术连携" % Catalog.display_name(target.species_id), "#ffb86b")
+			ui.add_battle_report("你用不同战术掌控%s · 恢复生命与耐力" % Catalog.display_name(target.species_id), "掌控", "#ffb86b")
+		elif xp_award > 0:
+			ui.add_battle_report("你对%s完成%s · 连携%d/2 · +%d经验" % [Catalog.display_name(target.species_id), route_name, mini(chain_count, 2), xp_award], "战术", route_color)
+	elif mastery_triggered and is_instance_valid(player) and player.global_position.distance_to(actor.global_position) <= 28.0:
+		ui.add_battle_report("%s以不同战术掌控%s，恢复战斗节奏" % [Catalog.display_name(actor.species_id), Catalog.display_name(target.species_id)], "掌控", "#ffb86b")
+
+
 func on_player_experience_gained(amount: int, defeated_species: String, reason: String = "击杀") -> void:
 	if ui == null or batch_mode:
 		return
 	var action_text := "击倒" if reason == "击杀" else "%s ·" % reason
 	ui.add_event("%s%s · 获得 %d 经验" % [action_text, Catalog.display_name(defeated_species), amount], "#8fe0b0" if reason == "击杀" else "#f0cf78")
-	if reason != "击杀":
+	if reason != "击杀" and reason != "战术成长":
 		ui.add_battle_report("你对%s形成%s，获得%d经验" % [Catalog.display_name(defeated_species), reason, amount], "助攻", "#f0cf78")
 
 

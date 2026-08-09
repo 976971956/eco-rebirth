@@ -25,8 +25,9 @@ func _init() -> void:
 	_validate_cover_ambush_contract()
 	_validate_terrain_counter_contract()
 	_validate_ecology_leverage_contract()
+	_validate_counterplay_mastery_contract()
 	if failures.is_empty():
-		print("[release] V1.9 发布校验通过：生态借力、AI 第三方选路、主场反制、草丛伏击、移动安全区与三端规则正常")
+		print("[release] V1.10 发布校验通过：战术连携、生态掌控、防刷经验、AI 第三方选路与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -292,7 +293,26 @@ func _validate_ecology_leverage_contract() -> void:
 	_expect(main_source.contains("func on_ecology_intervention"), "主流程没有接收生态借力战况")
 	_expect(main_source.contains("influence_source.assists += 1"), "生态助攻仍只奖励玩家而没有统一到所有物种")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
-	_expect(ui_source.contains("生态借力：") and ui_source.contains("可生态借力"), "HUD 和敌方血条没有生态借力提示")
+	_expect(ui_source.contains("counterplay_plan") and ui_source.contains("可生态借力"), "HUD 和敌方血条没有生态借力提示")
+
+
+func _validate_counterplay_mastery_contract() -> void:
+	_expect(is_equal_approx(Catalog.COUNTERPLAY_ROUTE_XP_RATIO, 0.10), "单条反制路线经验不是目标价值的 10%")
+	_expect(is_equal_approx(Catalog.COUNTERPLAY_TARGET_XP_CAP_RATIO, 0.32), "单目标战术经验上限不是目标价值的 32%")
+	_expect(Catalog.counterplay_experience_reward("elephant", 1) < Catalog.counterplay_experience_cap("elephant", 1), "战术经验单次奖励没有受到总上限约束")
+	for species_id in Catalog.ORDER:
+		_expect(Catalog.counterplay_plan(species_id).length() >= 24, "%s 缺少反制组合攻略" % species_id)
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("COUNTERPLAY_CHAIN_WINDOW := 18.0"), "战术连携窗口不是 18 秒")
+	_expect(actor_source.contains("COUNTERPLAY_MASTERY_HEALTH_RATIO := 0.06"), "生态掌控生命恢复不是 6%")
+	_expect(actor_source.contains("COUNTERPLAY_MASTERY_STAMINA_RATIO := 0.18"), "生态掌控耐力恢复不是 18%")
+	_expect(actor_source.contains("counterplay_route_awards.has(award_key)"), "同目标同路线缺少防刷记录")
+	_expect(actor_source.contains("counterplay_mastered_targets.has(target_key)"), "同目标缺少一次性掌控限制")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("func on_counterplay_progress"), "主流程没有接收战术连携战况")
+	_expect(main_source.contains("战术行动：%d"), "结算页没有展示战术行动数")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("反制组合：%s") and ui_source.contains("counterplay_chain_status_text"), "物种简报与 HUD 没有解释战术连携")
 
 
 func _expect(condition: bool, message: String) -> void:

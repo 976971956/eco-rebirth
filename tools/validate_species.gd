@@ -12,6 +12,7 @@ class ValidationGame:
 	var player: EcoActor
 	var world: Node
 	var interventions: Array[Dictionary] = []
+	var counterplay_events: Array[Dictionary] = []
 
 	func get_living_actors() -> Array[EcoActor]:
 		return actors.filter(func(actor: EcoActor) -> bool: return is_instance_valid(actor) and not actor.dead)
@@ -27,6 +28,9 @@ class ValidationGame:
 
 	func on_ecology_intervention(bait: EcoActor, aggressor: EcoActor, responder: EcoActor) -> void:
 		interventions.append({"bait": bait, "aggressor": aggressor, "responder": responder})
+
+	func on_counterplay_progress(actor: EcoActor, target: EcoActor, route_id: String, xp_award: int, chain_count: int, mastery: bool, health_restored: float, stamina_restored: float) -> void:
+		counterplay_events.append({"actor": actor, "target": target, "route": route_id, "xp": xp_award, "chain": chain_count, "mastery": mastery, "health": health_restored, "stamina": stamina_restored})
 
 	func nearest_corpse(_origin: Vector3, _max_distance: float) -> Node3D:
 		return null
@@ -75,6 +79,8 @@ func _run_validation() -> void:
 			failures.append("%s 缺少完整获胜攻略" % species_id)
 		if not Catalog.habitat_description(species_id).contains("主场"):
 			failures.append("%s 缺少可读的环境主场说明" % species_id)
+		if Catalog.counterplay_plan(species_id).length() < 24:
+			failures.append("%s 缺少完整反制组合攻略" % species_id)
 		var growth := Catalog.growth_profile(species_id)
 		for growth_key in ["health", "attack", "speed", "stamina", "armor", "regen"]:
 			if not growth.has(growth_key) or float(growth[growth_key]) <= 0.0:
@@ -125,10 +131,38 @@ func _run_validation() -> void:
 		failures.append("逆袭命中后没有进入防止连续触发的冷却")
 	if elephant_opportunity.stamina >= opportunity_stamina_before:
 		failures.append("逆袭命中没有削减强敌耐力")
+	var expected_tactical_xp := Catalog.counterplay_experience_reward("elephant", 1)
+	if rabbit_opportunity.experience != expected_tactical_xp or rabbit_opportunity.tactical_actions != 1:
+		failures.append("首次弱打强战术没有获得限定战术经验")
 	var second_health_before := elephant_opportunity.health
 	elephant_opportunity.take_damage(float(rabbit_opportunity.data["attack"]), rabbit_opportunity)
 	if second_health_before - elephant_opportunity.health >= first_opportunity_damage * 0.50:
 		failures.append("逆袭冷却期间仍重复结算百分比伤害")
+	rabbit_opportunity.opportunity_strike_timer = 0.0
+	elephant_opportunity.exposed_timer = 1.0
+	var repeat_xp_before := rabbit_opportunity.experience
+	elephant_opportunity.take_damage(float(rabbit_opportunity.data["attack"]), rabbit_opportunity)
+	if rabbit_opportunity.experience != repeat_xp_before or rabbit_opportunity.tactical_actions != 1:
+		failures.append("同一目标的同一路线可以重复刷战术经验")
+	rabbit_opportunity.health = rabbit_opportunity.max_health * 0.50
+	rabbit_opportunity.stamina = rabbit_opportunity.max_stamina * 0.20
+	var mastery_result: Dictionary = rabbit_opportunity.register_counterplay(elephant_opportunity, "ambush")
+	if not bool(mastery_result["mastery"]) or int(mastery_result["chain"]) < 2:
+		failures.append("两种不同反制路线没有触发生态掌控")
+	if not is_equal_approx(float(mastery_result["health"]), rabbit_opportunity.max_health * ActorScript.COUNTERPLAY_MASTERY_HEALTH_RATIO):
+		failures.append("生态掌控生命恢复不等于最大生命 6%")
+	if not is_equal_approx(float(mastery_result["stamina"]), rabbit_opportunity.max_stamina * ActorScript.COUNTERPLAY_MASTERY_STAMINA_RATIO):
+		failures.append("生态掌控耐力恢复不等于最大耐力 18%")
+	var repeated_mastery: Dictionary = rabbit_opportunity.register_counterplay(elephant_opportunity, "terrain")
+	if bool(repeated_mastery["mastery"]) or float(repeated_mastery["health"]) > 0.0 or float(repeated_mastery["stamina"]) > 0.0:
+		failures.append("同一强敌可以重复触发生态掌控恢复")
+	rabbit_opportunity.register_counterplay(elephant_opportunity, "ecology")
+	var target_tactical_xp := int(rabbit_opportunity.counterplay_xp_by_target.get(str(elephant_opportunity.actor_id), 0))
+	if target_tactical_xp != Catalog.counterplay_experience_cap("elephant", 1):
+		failures.append("四种路线累计战术经验没有限制到目标价值的 32%")
+	var strong_result: Dictionary = elephant_opportunity.register_counterplay(rabbit_opportunity, "opportunity")
+	if int(strong_result["xp"]) != 0 or elephant_opportunity.tactical_actions != 0:
+		failures.append("强物种攻击弱物种错误获得战术补偿")
 	elephant_opportunity.stamina = elephant_opportunity.max_stamina * 0.09
 	elephant_opportunity._update_exhaustion_state()
 	if not elephant_opportunity.exhausted:
@@ -373,6 +407,8 @@ func _run_validation() -> void:
 		failures.append("生态借力没有登记后续助攻归属")
 	if leverage_rabbit.ecology_leverage_cooldown < ActorScript.ECOLOGY_LEVERAGE_COOLDOWN - 0.01 or game_stub.interventions.size() != 1:
 		failures.append("生态借力没有进入冷却或发送唯一战况事件")
+	if leverage_rabbit.tactical_actions != 1 or int(leverage_rabbit.counterplay_xp_by_target.get(str(leverage_elephant.actor_id), 0)) <= 0:
+		failures.append("生态借力没有登记战术行动与经验")
 	leverage_rabbit.ecology_leverage_cooldown = 0.0
 	leverage_rabbit.ai_state = "wander"
 	leverage_rabbit.ai_target = null
@@ -410,7 +446,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, ecological leverage/AI third-party routing, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, tactical counterplay mastery/anti-farming, ecological leverage/AI third-party routing, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

@@ -4,6 +4,8 @@ extends RefCounted
 const OPPORTUNITY_BASE_HEALTH_RATIO := 0.02
 const OPPORTUNITY_RATIO_PER_GAP := 0.01
 const OPPORTUNITY_MAX_GAP := 4
+const COUNTERPLAY_ROUTE_XP_RATIO := 0.10
+const COUNTERPLAY_TARGET_XP_CAP_RATIO := 0.32
 
 const BIOME_DISPLAY_NAMES := {
 	"forest": "古木林地",
@@ -1154,6 +1156,26 @@ static func victory_guide(species_id: String) -> String:
 	return str(VICTORY_GUIDES.get(species_id, "优先获取食物和经验，观察其他动物互斗，在终局保留耐力与技能完成最后一战。"))
 
 
+static func counterplay_plan(species_id: String) -> String:
+	var traits: Array = TRAITS.get(species_id, [])
+	var regions: Array[String] = preferred_regions(species_id)
+	var home_name: String = str(BIOME_DISPLAY_NAMES.get(regions[0], "适应区域")) if not regions.is_empty() else "适应区域"
+	var skill_name: String = str(DATA.get(species_id, DATA["rabbit"]).get("skill", "主动技能"))
+	if "ambusher" in traits:
+		return "草丛伏击 → %s反制；用「%s」脱战重置，等待第二种路线" % [home_name, skill_name]
+	if "flying" in traits:
+		return "高空观察后摇 → 用「%s」抓破绽；落地后借第三方换位" % skill_name
+	if "canopy_mover" in traits or "escape" in traits:
+		return "诱导追兵耗尽耐力 → %s反制；用「%s」脱战后再借力" % [home_name, skill_name]
+	if "pack_hunter" in traits or "leader" in traits:
+		return "群体施压制造破绽 → 用「%s」分割战场；再借第三方完成连携" % skill_name
+	if "charger" in traits or "straight_runner" in traits:
+		return "%s持续移动蓄势 → 用「%s」抓后摇；保留耐力完成第二种路线" % [home_name, skill_name]
+	if "territorial" in traits or "retaliator" in traits:
+		return "守住%s诱敌先手 → 用「%s」反击；必要时把追兵引向第三方" % [home_name, skill_name]
+	return "%s周旋 → 用「%s」制造破绽 → 生态借力，完成两种路线" % [home_name, skill_name]
+
+
 static func display_name(species_id: String) -> String:
 	return str(DATA.get(species_id, DATA["rabbit"])["name"])
 
@@ -1169,6 +1191,14 @@ static func get_color(species_id: String) -> Color:
 static func experience_reward(species_id: String, victim_level: int = 1) -> int:
 	var base_reward := int(DATA.get(species_id, DATA["rabbit"]).get("xp_reward", 20))
 	return maxi(int(round(base_reward * (1.0 + maxi(victim_level - 1, 0) * 0.14))), 1)
+
+
+static func counterplay_experience_reward(target_id: String, target_level: int = 1) -> int:
+	return maxi(int(round(experience_reward(target_id, target_level) * COUNTERPLAY_ROUTE_XP_RATIO)), 1)
+
+
+static func counterplay_experience_cap(target_id: String, target_level: int = 1) -> int:
+	return maxi(int(round(experience_reward(target_id, target_level) * COUNTERPLAY_TARGET_XP_CAP_RATIO)), 1)
 
 
 static func combat_tier(species_id: String) -> int:
