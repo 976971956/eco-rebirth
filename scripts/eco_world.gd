@@ -55,6 +55,8 @@ var food_patches: Array[Node] = []
 var active_ecology_event: Dictionary = {}
 var active_event_patches: Array[Node] = []
 var active_event_visual: Node3D
+var active_event_title_label: Label3D
+var active_event_ring_material: StandardMaterial3D
 var ecology_event_timer: float = 0.0
 var ecology_event_sequence: int = 0
 var last_ecology_event_id: String = ""
@@ -793,6 +795,24 @@ static func compass_direction(origin: Vector3, target: Vector3) -> String:
 	return east_west + north_south
 
 
+static func ecology_activity_risk(migrants: int, hunters: int) -> String:
+	if hunters <= 0:
+		return "平稳"
+	if hunters >= 3 or hunters * 2 >= maxi(migrants, 1):
+		return "高危"
+	return "警戒"
+
+
+static func ecology_activity_status(migrants: int, hunters: int) -> String:
+	return "迁徙 %d · 猎手 %d · 风险：%s" % [migrants, hunters, ecology_activity_risk(migrants, hunters)]
+
+
+static func ecology_ambush_offset(radius: float, actor_id: int, event_sequence: int) -> Vector3:
+	var angle := fmod(float(actor_id) * 2.399963 + float(event_sequence) * 0.83, TAU)
+	var distance := radius + 3.2 + float(posmod(actor_id, 3)) * 1.1
+	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)
+
+
 func _process_ecology_events(delta: float) -> void:
 	if collapse_active:
 		return
@@ -836,6 +856,7 @@ func start_ecology_event(forced_event_id: String = "") -> Dictionary:
 		"region": region_id,
 		"region_name": str(REGION_NAMES[region_id]),
 		"description": str(profile["description"]),
+		"foods": foods_for_event(profile),
 		"color": str(profile["color"]),
 		"position": center,
 		"radius": radius,
@@ -846,6 +867,13 @@ func start_ecology_event(forced_event_id: String = "") -> Dictionary:
 	_build_ecology_event_visual(center, str(profile["title"]), Color.from_string(str(profile["color"]), Color("#e6c66f")), radius)
 	ecology_event_started.emit(active_ecology_event.duplicate(true))
 	return active_ecology_event.duplicate(true)
+
+
+func foods_for_event(profile: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for food_kind in profile.get("foods", []):
+		result.append(str(food_kind))
+	return result
 
 
 func _build_ecology_event_food(profile: Dictionary, center: Vector3) -> void:
@@ -885,9 +913,9 @@ func _build_ecology_event_visual(center: Vector3, title: String, color: Color, r
 	ground_ring.position = Vector3(0.0, 0.08, 0.0)
 	ground_ring.scale = Vector3(radius, 0.22, radius)
 	ground_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var ring_material := Factory.material(Color(color, 0.68), 0.72, color.darkened(0.18))
-	ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ground_ring.material_override = ring_material
+	active_event_ring_material = Factory.material(Color(color, 0.68), 0.72, color.darkened(0.18))
+	active_event_ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ground_ring.material_override = active_event_ring_material
 	active_event_visual.add_child(ground_ring)
 	for index in range(8):
 		var angle := TAU * float(index) / 8.0
@@ -895,15 +923,15 @@ func _build_ecology_event_visual(center: Vector3, title: String, color: Color, r
 		marker.rotation.z = sin(angle) * 0.32
 		marker.rotation.x = cos(angle) * 0.32
 		active_event_visual.add_child(marker)
-	var title_label := Label3D.new()
-	title_label.text = title
-	title_label.position = Vector3(0.0, 2.4, 0.0)
-	title_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	title_label.font_size = 34
-	title_label.outline_size = 8
-	title_label.modulate = color.lightened(0.18)
-	title_label.outline_modulate = Color(0.02, 0.08, 0.06, 0.92)
-	active_event_visual.add_child(title_label)
+	active_event_title_label = Label3D.new()
+	active_event_title_label.text = title
+	active_event_title_label.position = Vector3(0.0, 2.4, 0.0)
+	active_event_title_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	active_event_title_label.font_size = 34
+	active_event_title_label.outline_size = 8
+	active_event_title_label.modulate = color.lightened(0.18)
+	active_event_title_label.outline_modulate = Color(0.02, 0.08, 0.06, 0.92)
+	active_event_visual.add_child(active_event_title_label)
 
 
 func _end_ecology_event(reason: String) -> void:
@@ -921,6 +949,8 @@ func _end_ecology_event(reason: String) -> void:
 	if is_instance_valid(active_event_visual):
 		active_event_visual.queue_free()
 	active_event_visual = null
+	active_event_title_label = null
+	active_event_ring_material = null
 	active_ecology_event.clear()
 	ecology_event_timer = ecology_event_repeat_delay(campaign_level, event_rng.randf())
 	ecology_event_ended.emit(ended_event)
@@ -936,6 +966,37 @@ func ecology_event_position(region_id: String) -> Vector3:
 
 func get_active_ecology_event() -> Dictionary:
 	return active_ecology_event.duplicate(true)
+
+
+func species_can_feed_at_active_event(species_id: String) -> bool:
+	for patch in active_event_patches:
+		if is_instance_valid(patch) and patch.can_be_eaten_by(species_id):
+			return true
+	return false
+
+
+func ecology_ambush_position(actor_id: int) -> Vector3:
+	if active_ecology_event.is_empty():
+		return Vector3(INF, 0.0, INF)
+	var center: Vector3 = active_ecology_event["position"]
+	var radius := float(active_ecology_event.get("radius", 7.0))
+	var sequence := int(active_ecology_event.get("sequence", 0))
+	var candidate := center + ecology_ambush_offset(radius, actor_id, sequence)
+	return _nearest_clear_point_in_region(candidate, str(active_ecology_event.get("region", "forest")), 0.72)
+
+
+func update_ecology_event_activity(migrants: int, hunters: int) -> void:
+	if active_ecology_event.is_empty():
+		return
+	var risk := ecology_activity_risk(migrants, hunters)
+	var base_color := Color.from_string(str(active_ecology_event.get("color", "#e6c66f")), Color("#e6c66f"))
+	var signal_color := Color("#ef7d68") if risk == "高危" else (Color("#f0cf78") if risk == "警戒" else base_color.lightened(0.18))
+	if is_instance_valid(active_event_title_label):
+		active_event_title_label.text = "%s\n%s" % [str(active_ecology_event.get("title", "生态热点")), ecology_activity_status(migrants, hunters)]
+		active_event_title_label.modulate = signal_color
+	if active_event_ring_material != null:
+		active_event_ring_material.albedo_color = Color(signal_color, 0.72)
+		active_event_ring_material.emission = signal_color.darkened(0.12)
 
 
 func ecology_event_attraction_radius() -> float:

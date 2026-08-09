@@ -2,6 +2,7 @@ extends SceneTree
 
 const MainScript = preload("res://scripts/main.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
+const ActorScript = preload("res://scripts/eco_actor.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
@@ -28,7 +29,7 @@ func _init() -> void:
 	_validate_counterplay_mastery_contract()
 	_validate_ecology_hotspot_contract()
 	if failures.is_empty():
-		print("[release] V1.11 发布校验通过：生态热点、真实资源迁徙、战术连携、移动 HUD 与三端规则正常")
+		print("[release] V1.12 发布校验通过：食物链迁徙、猎手围猎、风险判断、生态热点与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -339,15 +340,66 @@ func _validate_ecology_hotspot_contract() -> void:
 	var migrant_food := main.nearest_food(event_position + Vector3(30.0, 0.0, 0.0), 8.0, "crocodile")
 	_expect(is_instance_valid(migrant_food) and bool(migrant_food.ecology_hotspot), "远处 AI 无法循生态信号迁徙到真实可食资源")
 	_expect(world.ecology_event_status(event_position + Vector3(20.0, 0.0, 20.0)).contains("鱼群洄游"), "HUD 热点状态缺少标题、方向或距离")
+	_expect(WorldScript.ecology_activity_risk(4, 0) == "平稳" and WorldScript.ecology_activity_risk(2, 2) == "高危", "热点迁徙风险分级不符合猎手压力")
+	_expect(WorldScript.ecology_activity_status(5, 2).contains("迁徙 5") and WorldScript.ecology_activity_status(5, 2).contains("猎手 2"), "热点活动摘要缺少迁徙或猎手数")
+	var ambush_a := WorldScript.ecology_ambush_offset(7.0, 2, 1)
+	var ambush_b := WorldScript.ecology_ambush_offset(7.0, 3, 1)
+	_expect(ambush_a.length() > 9.5 and not ambush_a.is_equal_approx(ambush_b), "猎手没有分散到热点外围不同伏击位")
+	_expect(ActorScript.should_follow_hotspot_signal(62.0, 0.82, 1.0, 0.9, 3, false, false, 4, 2), "健康高攻击性猎手不会响应迁徙猎物信号")
+	_expect(not ActorScript.should_follow_hotspot_signal(62.0, 0.82, 1.0, 0.9, 3, true, false, 4, 2), "能直接进食的物种被错误归类为外围猎手")
+	_expect(not ActorScript.should_follow_hotspot_signal(62.0, 0.82, 0.30, 0.9, 3, false, false, 4, 2), "重伤猎手仍会贸然离开安全区围猎")
+	world._end_ecology_event("自动测试切换信号")
+	var fruit_event: Dictionary = world.start_ecology_event("fruit_fall")
+	var migrant := ActorScript.new()
+	migrant.actor_id = 1
+	migrant.species_id = "fox"
+	migrant.data = Catalog.get_data("fox")
+	migrant.game = main
+	migrant.ai_state = "food"
+	migrant.resource_target = world.active_event_patches[0]
+	migrant.position = fruit_event.get("position", Vector3.ZERO)
+	migrant.max_health = 100.0
+	migrant.health = 100.0
+	migrant.max_stamina = 100.0
+	migrant.stamina = 100.0
+	migrant.hunger = 52.0
+	var ordinary_resource := Node3D.new()
+	migrant.resource_target = ordinary_resource
+	_expect(not migrant.is_migrating_to_ecology_hotspot(int(fruit_event.get("sequence", -1)), fruit_event.get("position", Vector3.ZERO) + Vector3(40.0, 0.0, 0.0), 7.0), "普通资源目标被错误当作生态热点并触发布尔转换")
+	migrant.resource_target = world.active_event_patches[0]
+	var hunter := ActorScript.new()
+	hunter.actor_id = 4
+	hunter.species_id = "wolf"
+	hunter.data = Catalog.get_data("wolf")
+	hunter.game = main
+	hunter.max_health = 100.0
+	hunter.health = 100.0
+	hunter.max_stamina = 100.0
+	hunter.stamina = 100.0
+	hunter.hunger = 70.0
+	main.actors = [migrant, hunter]
+	_expect(main.ecology_hotspot_prey_signal_count(hunter) == 1, "猎手无法读取正在迁徙的可捕食物种")
+	_expect(hunter._begin_ecology_hotspot_stalk() and hunter.is_stalking_ecology_hotspot(int(fruit_event.get("sequence", -1))), "猎手未前往热点外围伏击位")
+	main._refresh_ecology_hotspot_activity(1.0)
+	_expect(main.ecology_hotspot_risk_level() == "高危" and main.ecology_hotspot_activity_status().contains("猎手 1"), "世界没有汇总真实迁徙和猎手压力")
+	_expect(not is_instance_valid(migrant._best_wild_food(30.0)), "非紧急的胆小小型物种不会避开高危热点")
+	migrant.hunger = 82.0
+	_expect(is_instance_valid(migrant._best_wild_food(30.0)), "极度饥饿物种被风险判断永久阻止进食")
 	world.trigger_collapse()
 	_expect(world.get_active_ecology_event().is_empty(), "栖息地收束后生态热点仍在继续刷新")
+	main.actors.clear()
+	ordinary_resource.free()
+	migrant.free()
+	hunter.free()
 	main.world = null
 	main.free()
 	world.free()
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("player_hotspots_visited") and main_source.contains("_update_player_ecology_hotspot"), "主流程没有记录玩家抵达生态热点")
+	_expect(main_source.contains("ecology_hotspot_prey_signal_count") and main_source.contains("_actor_is_hotspot_hunter"), "主流程没有汇总迁徙猎物和围猎者")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("ecology_event_label") and ui_source.contains("生态热点 · 正在等待迁徙信号"), "移动 HUD 没有持续显示生态热点状态")
+	_expect(ui_source.contains("ecology_activity_label") and ui_source.contains("迁徙监测 · 尚无活动"), "移动 HUD 没有显示迁徙数、猎手数和风险")
 
 
 func _expect(condition: bool, message: String) -> void:

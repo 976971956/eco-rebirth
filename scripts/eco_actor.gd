@@ -133,6 +133,8 @@ var cover_visual_state: String = "open"
 var ai_state: String = "wander"
 var ai_target: EcoActor
 var resource_target: Node3D
+var hotspot_stalk_position := Vector3(INF, 0.0, INF)
+var hotspot_event_sequence: int = -1
 var wander_direction := Vector3.FORWARD
 var desired_direction := Vector3.ZERO
 var wants_sprint: bool = false
@@ -194,6 +196,16 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	decision_timer = fmod(float(actor_id) * 0.073, 0.33) + 0.05
 	wander_timer = 0.1
 	last_sample_position = global_position
+
+
+static func should_follow_hotspot_signal(hunger_value: float, aggression: float, health_ratio: float, stamina_ratio: float, prey_signals: int, can_feed: bool, territory_restricted: bool, actor_value: int, event_sequence: int) -> bool:
+	if prey_signals <= 0 or can_feed or hunger_value < 20.0 or health_ratio < 0.46 or stamina_ratio < 0.30:
+		return false
+	if territory_restricted and hunger_value < 68.0:
+		return false
+	var signal_score := hunger_value / 100.0 * 0.45 + clampf(aggression, 0.0, 1.0) * 0.48 + float(mini(prey_signals, 4)) * 0.08
+	var threshold := 0.62 + float(posmod(actor_value + event_sequence, 4)) * 0.025
+	return signal_score >= threshold
 
 
 func _build_collision() -> void:
@@ -1743,6 +1755,25 @@ func _update_ai(delta: float) -> void:
 					use_skill(ai_target)
 			else:
 				ai_state = "wander"
+		"hotspot_stalk":
+			var event: Dictionary = game.world.get_active_ecology_event() if game.world != null else {}
+			if event.is_empty() or int(event.get("sequence", -1)) != hotspot_event_sequence or hotspot_stalk_position.x == INF:
+				ai_state = "wander"
+				hotspot_event_sequence = -1
+				hotspot_stalk_position = Vector3(INF, 0.0, INF)
+				desired_direction = Vector3.ZERO
+			else:
+				var stalk_offset := hotspot_stalk_position - global_position
+				var stalk_distance := Vector2(stalk_offset.x, stalk_offset.z).length()
+				if stalk_distance > 1.45:
+					desired_direction = Vector3(stalk_offset.x, 0.0, stalk_offset.z).normalized()
+					wants_sprint = stalk_distance > 13.0 and stamina > max_stamina * 0.52 and not exhausted
+				else:
+					var center: Vector3 = event.get("position", global_position)
+					var outward := Vector3(global_position.x - center.x, 0.0, global_position.z - center.z).normalized()
+					var tangent := Vector3(-outward.z, 0.0, outward.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
+					desired_direction = tangent * 0.34
+					wants_sprint = false
 		"food":
 			if is_instance_valid(resource_target) and (not resource_target is FoodPatch or resource_target.active):
 				var to_food := resource_target.global_position - global_position
@@ -1839,13 +1870,26 @@ func _think() -> void:
 		_switch_state("flee", last_attacker)
 		return
 
-	if state_commit_timer > 0.0 and ai_state != "wander":
+	if state_commit_timer > 0.0 and ai_state not in ["wander", "hotspot_stalk"]:
 		return
 
 	var flee_health_threshold := 0.38 if Catalog.has_trait(species_id, "brave_vs_large") else 0.72
 	if is_instance_valid(nearest_threat) and threat_distance < flee_distance and (health < max_health * flee_health_threshold or float(data["courage"]) < 0.4):
 		_switch_state("flee", nearest_threat)
 		return
+	if ai_state == "hotspot_stalk":
+		var active_event: Dictionary = game.world.get_active_ecology_event() if game.world != null else {}
+		if active_event.is_empty() or int(active_event.get("sequence", -1)) != hotspot_event_sequence:
+			ai_state = "wander"
+			hotspot_event_sequence = -1
+			hotspot_stalk_position = Vector3(INF, 0.0, INF)
+		elif health < max_health * 0.46:
+			ai_state = "wander"
+		else:
+			var visible_hotspot_prey := _best_prey()
+			if is_instance_valid(visible_hotspot_prey):
+				_switch_state("hunt", visible_hotspot_prey)
+			return
 
 	if calm_timer > 0.0 and hunger < 70.0:
 		if hunger > 42.0:
@@ -1884,8 +1928,10 @@ func _think() -> void:
 	if is_instance_valid(prey) and hunting_motivation > 0.44:
 		_switch_state("hunt", prey)
 		return
+	if _begin_ecology_hotspot_stalk():
+		return
 	if hunger > 25.0 and Catalog.can_eat_food(species_id):
-		var plant: Node3D = game.nearest_food(global_position, 28.0, species_id)
+		var plant: Node3D = _best_wild_food(28.0)
 		if is_instance_valid(plant):
 			if ai_state != "food":
 				state_commit_timer = 1.4
@@ -1955,6 +2001,9 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 		escape_habitat_position = Vector3(INF, 0.0, INF)
 	ai_state = new_state
 	ai_target = target
+	if new_state != "hotspot_stalk":
+		hotspot_event_sequence = -1
+		hotspot_stalk_position = Vector3(INF, 0.0, INF)
 	if new_state == "hunt" and is_instance_valid(target):
 		last_known_target_position = target.global_position
 		has_last_known_target_position = true
@@ -2069,11 +2118,62 @@ func _best_food_resource() -> Node3D:
 	if is_instance_valid(corpse):
 		return corpse
 	if Catalog.can_eat_food(species_id):
-		return game.nearest_food(global_position, 30.0, species_id)
-	var wild_meat: Node3D = game.nearest_food(global_position, 26.0, species_id)
+		return _best_wild_food(30.0)
+	var wild_meat: Node3D = _best_wild_food(26.0)
 	if is_instance_valid(wild_meat):
 		return wild_meat
 	return null
+
+
+func _best_wild_food(search_range: float) -> Node3D:
+	var origin := global_position if is_inside_tree() else position
+	var candidate: Node3D = game.nearest_food(origin, search_range, species_id)
+	if not is_instance_valid(candidate) or not candidate is FoodPatch or not candidate.ecology_hotspot:
+		return candidate
+	var risk := str(game.ecology_hotspot_risk_level()) if game.has_method("ecology_hotspot_risk_level") else "平稳"
+	var risk_averse := int(data["size"]) <= 3 and float(data["courage"]) < 0.50 and hunger < 78.0
+	if risk != "高危" or not risk_averse:
+		return candidate
+	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false)
+	return safer_food if is_instance_valid(safer_food) else null
+
+
+func _begin_ecology_hotspot_stalk() -> bool:
+	if game.world == null or game.world.collapse_active or not game.has_method("ecology_hotspot_prey_signal_count"):
+		return false
+	var event: Dictionary = game.world.get_active_ecology_event()
+	if event.is_empty():
+		return false
+	var sequence := int(event.get("sequence", -1))
+	var prey_signals := int(game.ecology_hotspot_prey_signal_count(self))
+	var can_feed: bool = game.world.species_can_feed_at_active_event(species_id)
+	var event_position: Vector3 = event.get("position", position)
+	var territory_restricted := Catalog.has_trait(species_id, "territorial") and territory_radius > 0.0 and territory_center.distance_to(event_position) > territory_radius * 1.35
+	if not should_follow_hotspot_signal(hunger, float(data["aggression"]), health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), prey_signals, can_feed, territory_restricted, actor_id, sequence):
+		return false
+	var ambush_position: Vector3 = game.world.ecology_ambush_position(actor_id)
+	if ambush_position.x == INF:
+		return false
+	ai_state = "hotspot_stalk"
+	ai_target = null
+	resource_target = null
+	hotspot_event_sequence = sequence
+	hotspot_stalk_position = ambush_position
+	state_commit_timer = 0.65
+	return true
+
+
+func is_migrating_to_ecology_hotspot(event_sequence: int, event_position: Vector3, event_radius: float) -> bool:
+	if dead:
+		return false
+	if ai_state == "food" and is_instance_valid(resource_target) and resource_target is FoodPatch and resource_target.ecology_hotspot and resource_target.ecology_event_id == event_sequence:
+		return true
+	var origin := global_position if is_inside_tree() else position
+	return origin.distance_to(event_position) <= event_radius + 3.0 and game.world != null and game.world.species_can_feed_at_active_event(species_id)
+
+
+func is_stalking_ecology_hotspot(event_sequence: int) -> bool:
+	return not dead and ai_state == "hotspot_stalk" and hotspot_event_sequence == event_sequence
 
 
 func _best_prey() -> EcoActor:

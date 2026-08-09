@@ -69,6 +69,7 @@ func _render() -> void:
 	ui.threat_label.text = "第2关 · 世界威胁 1"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.ecology_event_label.text = "生态热点 · 下一次信号 26s"
+	ui.ecology_activity_label.text = "迁徙监测 · 尚无活动"
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
 	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
@@ -170,6 +171,13 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var ecology_hotspot_result := root.get_texture().get_image().save_png("res://docs/images/v23-ecology-hotspot.png")
+	ui.ecology_activity_label.text = "迁徙 6 · 猎手 2 · 风险：高危"
+	ui.ecology_activity_label.add_theme_color_override("font_color", Color("#ef7d68"))
+	ui.battle_ticker_button.text = "战报 [展开] · 2名猎手正在落果潮外围追踪猎物"
+	ui.show_hint("落果潮已成高危围猎区：绕行、等待混战，或寻找其他食物")
+	for _frame in range(5):
+		await process_frame
+	var food_chain_migration_result := root.get_texture().get_image().save_png("res://docs/images/v24-food-chain-migration.png")
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
@@ -209,7 +217,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

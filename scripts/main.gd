@@ -60,6 +60,11 @@ var collapse_triggered: bool = false
 var ecology_events_started: int = 0
 var player_hotspots_visited: int = 0
 var visited_ecology_events: Dictionary = {}
+var ecology_activity_timer: float = 0.0
+var ecology_hotspot_snapshot: Dictionary = {}
+var ecology_hunter_peak: int = 0
+var reported_hotspot_hunter_sequence: int = -1
+var reported_hotspot_danger_sequence: int = -1
 var batch_deaths: Array = []
 var batch_results: Array = []
 var batch_log_file: FileAccess
@@ -116,7 +121,7 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,winner,duration_s,death_count,event_count,outcome")
+			batch_log_file.store_line("run,level,winner,duration_s,death_count,event_count,hunter_peak,outcome")
 		batch_death_log_file = FileAccess.open("user://batch_deaths.csv", FileAccess.WRITE)
 		if batch_death_log_file != null:
 			batch_death_log_file.store_line("run,victim,killer")
@@ -130,6 +135,7 @@ func _process(delta: float) -> void:
 		level_elapsed += delta
 		if not collapse_triggered:
 			_check_collapse_trigger()
+		_refresh_ecology_hotspot_activity(delta)
 	if batch_mode and state == "playing":
 		var living := get_living_actors()
 		if living.size() <= 1 or level_elapsed > 900.0:
@@ -143,7 +149,8 @@ func _process(delta: float) -> void:
 		var adaptation_suffix := " · %s" % player.environment_region_status_text() if player.has_method("environment_region_status_text") else ""
 		var region_name := "%s · %s%s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix, adaptation_suffix] if is_instance_valid(world) else "未知区域"
 		var ecology_status := world.ecology_event_status(player.global_position) if is_instance_valid(world) else ""
-		ui.update_hud(player, living_count, roster_size, region_name, ecology_status)
+		var ecology_activity := ecology_hotspot_activity_status()
+		ui.update_hud(player, living_count, roster_size, region_name, ecology_status, ecology_activity)
 		_update_player_ecology_hotspot()
 		leaderboard_refresh_remaining -= delta
 		if leaderboard_refresh_remaining <= 0.0:
@@ -256,6 +263,11 @@ func _start_new_world(free_mode: bool = false) -> void:
 	ecology_events_started = 0
 	player_hotspots_visited = 0
 	visited_ecology_events.clear()
+	ecology_activity_timer = 0.0
+	ecology_hotspot_snapshot.clear()
+	ecology_hunter_peak = 0
+	reported_hotspot_hunter_sequence = -1
+	reported_hotspot_danger_sequence = -1
 	world_seed = int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
 	rng.seed = world_seed
 
@@ -497,7 +509,7 @@ func _finish_loss(killer: EcoActor) -> void:
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		_format_time(seconds),
@@ -506,6 +518,7 @@ func _finish_loss(killer: EcoActor) -> void:
 		player.tactical_actions if is_instance_valid(player) else 0,
 		player_hotspots_visited,
 		ecology_events_started,
+		ecology_hunter_peak,
 		pressure_text
 	]
 	ui.show_result("本次生命结束", body, "重新自由挑战" if run_uses_free_mode else "轮回重生")
@@ -521,7 +534,7 @@ func _finish_victory() -> void:
 		return
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
-	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		_format_time(seconds),
 		player.kills,
@@ -529,6 +542,7 @@ func _finish_victory() -> void:
 		player.tactical_actions,
 		player_hotspots_visited,
 		ecology_events_started,
+		ecology_hunter_peak,
 		total_deaths,
 		world_seed,
 		progression_text
@@ -565,6 +579,7 @@ func _check_collapse_trigger() -> void:
 
 func _on_ecology_event_started(event: Dictionary) -> void:
 	ecology_events_started += 1
+	ecology_activity_timer = 0.0
 	if batch_mode or ui == null:
 		return
 	var title := str(event.get("title", "生态热点"))
@@ -579,6 +594,7 @@ func _on_ecology_event_started(event: Dictionary) -> void:
 
 
 func _on_ecology_event_ended(event: Dictionary) -> void:
+	ecology_hotspot_snapshot.clear()
 	if batch_mode or ui == null:
 		return
 	var title := str(event.get("title", "生态热点"))
@@ -607,6 +623,87 @@ func _update_player_ecology_hotspot() -> void:
 	ui.add_battle_report("你·%s抵达%s，进入资源争夺区" % [Catalog.display_name(player.species_id), title], "探索", "#f0cf78")
 
 
+func _refresh_ecology_hotspot_activity(delta: float) -> void:
+	ecology_activity_timer -= delta
+	if ecology_activity_timer > 0.0:
+		return
+	ecology_activity_timer = 0.45
+	if not is_instance_valid(world):
+		ecology_hotspot_snapshot.clear()
+		return
+	var event := world.get_active_ecology_event()
+	if event.is_empty():
+		ecology_hotspot_snapshot.clear()
+		return
+	var sequence := int(event.get("sequence", -1))
+	var migrants := 0
+	var hunters := 0
+	for actor in get_living_actors():
+		if _actor_is_hotspot_migrant(actor, event):
+			migrants += 1
+		if _actor_is_hotspot_hunter(actor, event):
+			hunters += 1
+	var risk := WorldScript.ecology_activity_risk(migrants, hunters)
+	ecology_hotspot_snapshot = {"sequence": sequence, "migrants": migrants, "hunters": hunters, "risk": risk}
+	ecology_hunter_peak = maxi(ecology_hunter_peak, hunters)
+	world.update_ecology_event_activity(migrants, hunters)
+	if batch_mode or ui == null:
+		return
+	var title := str(event.get("title", "生态热点"))
+	if hunters > 0 and reported_hotspot_hunter_sequence != sequence:
+		reported_hotspot_hunter_sequence = sequence
+		ui.add_event("%s出现猎手 · 补给点转为围猎区" % title, "#f0b46f")
+		ui.add_battle_report("%d名猎手正在%s外围追踪迁徙猎物" % [hunters, title], "围猎", "#f0b46f")
+	if risk == "高危" and reported_hotspot_danger_sequence != sequence:
+		reported_hotspot_danger_sequence = sequence
+		ui.show_hint("%s已成高危围猎区：弱小物种应绕行、等待混战或寻找其他食物" % title)
+		ui.add_battle_report("%s猎手密度过高，谨慎迁徙" % title, "高危", "#ef7d68")
+
+
+func _actor_is_hotspot_migrant(actor: EcoActor, event: Dictionary) -> bool:
+	if not is_instance_valid(actor) or actor.dead:
+		return false
+	return actor.is_migrating_to_ecology_hotspot(int(event.get("sequence", -1)), event.get("position", Vector3.ZERO), float(event.get("radius", 7.0)))
+
+
+func _actor_is_hotspot_hunter(actor: EcoActor, event: Dictionary) -> bool:
+	if not is_instance_valid(actor) or actor.dead:
+		return false
+	var sequence := int(event.get("sequence", -1))
+	if actor.is_stalking_ecology_hotspot(sequence):
+		return true
+	if actor.ai_state != "hunt" or not is_instance_valid(actor.ai_target):
+		return false
+	var center: Vector3 = event.get("position", Vector3.ZERO)
+	var hunt_radius := float(event.get("radius", 7.0)) + 12.0
+	return actor.global_position.distance_to(center) <= hunt_radius and actor.ai_target.global_position.distance_to(center) <= hunt_radius
+
+
+func ecology_hotspot_prey_signal_count(hunter: EcoActor) -> int:
+	if not is_instance_valid(world) or not is_instance_valid(hunter):
+		return 0
+	var event := world.get_active_ecology_event()
+	if event.is_empty():
+		return 0
+	var count := 0
+	for candidate in get_living_actors():
+		if candidate == hunter or not Catalog.considers_prey(hunter.species_id, candidate.species_id):
+			continue
+		if _actor_is_hotspot_migrant(candidate, event):
+			count += 1
+	return count
+
+
+func ecology_hotspot_risk_level() -> String:
+	return str(ecology_hotspot_snapshot.get("risk", "平稳"))
+
+
+func ecology_hotspot_activity_status() -> String:
+	if ecology_hotspot_snapshot.is_empty():
+		return "迁徙监测 · 尚无活动"
+	return WorldScript.ecology_activity_status(int(ecology_hotspot_snapshot.get("migrants", 0)), int(ecology_hotspot_snapshot.get("hunters", 0)))
+
+
 func _start_batch_run() -> void:
 	current_level = batch_level
 	threat_level = 0
@@ -626,15 +723,16 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"duration": level_elapsed,
 		"deaths": batch_deaths.duplicate(),
 		"events": ecology_events_started,
+		"hunter_peak": ecology_hunter_peak,
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), ecology_events_started, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
 			batch_death_log_file.store_line("%d,%s,%s" % [run_index, death["victim"], death["killer"]])
-	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d events=%d%s" % [
-		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), ecology_events_started, " (超时)" if timed_out else ""
+	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d events=%d hunter_peak=%d%s" % [
+		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -663,12 +761,14 @@ func _print_batch_report() -> void:
 	var combat_deaths := 0
 	var total_duration := 0.0
 	var total_events := 0
+	var total_hunter_peak := 0
 	var timeout_runs := 0
 	for result in batch_results:
 		var winner: String = result["winner"]
 		win_counts[winner] = int(win_counts.get(winner, 0)) + 1
 		total_duration += float(result["duration"])
 		total_events += int(result.get("events", 0))
+		total_hunter_peak += int(result.get("hunter_peak", 0))
 		if result["timeout"]:
 			timeout_runs += 1
 		for death in result["deaths"]:
@@ -680,6 +780,7 @@ func _print_batch_report() -> void:
 				combat_deaths += 1
 	print("平均局长：%.1fs　超时未分胜负：%d/%d" % [total_duration / maxf(float(batch_results.size()), 1.0), timeout_runs, batch_total_runs])
 	print("平均生态热点：%.1f 次/局" % [float(total_events) / maxf(float(batch_results.size()), 1.0)])
+	print("平均热点猎手峰值：%.1f" % [float(total_hunter_peak) / maxf(float(batch_results.size()), 1.0)])
 	print("死因：战斗击杀 %d　饥饿 %d" % [combat_deaths, starvation_deaths])
 	print("胜率（按物种）：")
 	for species_id in win_counts.keys():
@@ -768,7 +869,7 @@ func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
 	return nearest
 
 
-func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "") -> Node3D:
+func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true) -> Node3D:
 	if not is_instance_valid(world):
 		return null
 	var nearest: Node3D
@@ -776,11 +877,13 @@ func nearest_food(origin: Vector3, max_distance: float, eater_species: String = 
 	for patch in world.food_patches:
 		if not is_instance_valid(patch) or patch.is_queued_for_deletion() or not patch.active:
 			continue
+		if not include_hotspots and patch.ecology_hotspot:
+			continue
 		if eater_species != "" and not patch.can_be_eaten_by(eater_species):
 			continue
 		var patch_position: Vector3 = patch.global_position if patch.is_inside_tree() else patch.position
 		var distance := origin.distance_to(patch_position)
-		var search_distance := world.ecology_event_attraction_radius() if bool(patch.ecology_hotspot) else max_distance
+		var search_distance := world.ecology_event_attraction_radius() if patch.ecology_hotspot else max_distance
 		if distance <= search_distance and distance < nearest_distance:
 			nearest_distance = distance
 			nearest = patch
