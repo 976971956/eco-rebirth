@@ -11,6 +11,13 @@ const EXHAUSTION_EXIT_RATIO := 0.25
 const OPPORTUNITY_ARMOR_FACTOR := 0.50
 const OPPORTUNITY_STAMINA_DAMAGE_RATIO := 0.08
 const OPPORTUNITY_COOLDOWN := 3.0
+const COVER_CONCEAL_THRESHOLD := 0.58
+const COVER_HIDE_DELAY := 0.72
+const COVER_AMBUSH_GRACE := 0.90
+const COVER_REVEAL_SECONDS := 2.20
+const COVER_CLOSE_REVEAL_DISTANCE := 4.60
+const SEARCH_MEMORY_SECONDS := 2.60
+const AMBUSH_CREATED_EXPOSURE := 1.65
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -65,6 +72,13 @@ var burst_exhaustion_timer: float = 0.0
 var exposed_timer: float = 0.0
 var opportunity_strike_timer: float = 0.0
 var exhausted: bool = false
+var cover_strength: float = 0.0
+var cover_dwell_timer: float = 0.0
+var cover_sample_timer: float = 0.0
+var cover_reveal_timer: float = 0.0
+var cover_ambush_timer: float = 0.0
+var cover_hint_cooldown: float = 0.0
+var ambush_attack_armed: bool = false
 var canopy_timer: float = 0.0
 var canopy_anchor := Vector3.ZERO
 var calm_timer: float = 0.0
@@ -84,6 +98,12 @@ var last_sample_position := Vector3.ZERO
 var recovery_timer: float = 0.0
 var recovery_direction := Vector3.ZERO
 var smoothed_move_direction := Vector3.ZERO
+var search_timer: float = 0.0
+var search_position := Vector3.ZERO
+var last_known_target_position := Vector3.ZERO
+var has_last_known_target_position: bool = false
+var escape_cover_position := Vector3(INF, 0.0, INF)
+var cover_visual_state: String = "open"
 
 var ai_state: String = "wander"
 var ai_target: EcoActor
@@ -290,7 +310,23 @@ func _health_bar_color(ratio: float) -> Color:
 
 
 func is_stealthed() -> bool:
-	return not dead and (hidden_timer > 0.0 or (Catalog.has_trait(species_id, "ambusher") and still_timer > 1.5))
+	return not dead and (hidden_timer > 0.0 or is_cover_concealed() or (Catalog.has_trait(species_id, "ambusher") and still_timer > 1.5))
+
+
+func is_cover_concealed() -> bool:
+	return not dead and not _collapse_competition_active() and cover_strength >= COVER_CONCEAL_THRESHOLD and cover_reveal_timer <= 0.0 and cover_ambush_timer > 0.0 and scent_mark_timer <= 0.0 and not wants_sprint
+
+
+func has_cover_ambush() -> bool:
+	return not dead and not _collapse_competition_active() and cover_ambush_timer > 0.0 and cover_reveal_timer <= 0.0 and scent_mark_timer <= 0.0
+
+
+func tactical_cover_status_text() -> String:
+	if has_cover_ambush():
+		return "伏击就绪"
+	if cover_strength >= COVER_CONCEAL_THRESHOLD and cover_reveal_timer <= 0.0:
+		return "草丛掩护 · 停下蓄势"
+	return ""
 
 
 func _build_rabbit() -> void:
@@ -1150,6 +1186,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_update_ai(delta)
 	_apply_movement(delta)
+	_update_cover_state(delta)
 	_try_attack()
 	_update_visual_lod(delta)
 	_update_health_bar_visibility(delta)
@@ -1173,6 +1210,10 @@ func _update_timers(delta: float) -> void:
 	burst_exhaustion_timer = maxf(burst_exhaustion_timer - delta, 0.0)
 	exposed_timer = maxf(exposed_timer - delta, 0.0)
 	opportunity_strike_timer = maxf(opportunity_strike_timer - delta, 0.0)
+	cover_reveal_timer = maxf(cover_reveal_timer - delta, 0.0)
+	cover_ambush_timer = maxf(cover_ambush_timer - delta, 0.0)
+	cover_hint_cooldown = maxf(cover_hint_cooldown - delta, 0.0)
+	search_timer = maxf(search_timer - delta, 0.0)
 	var canopy_was_active := canopy_timer > 0.0
 	canopy_timer = maxf(canopy_timer - delta, 0.0)
 	if Catalog.has_trait(species_id, "flying"):
@@ -1232,6 +1273,61 @@ func opportunity_status_text() -> String:
 	if exposed_timer > 0.0:
 		return "技能破绽 %.1fs" % exposed_timer
 	return ""
+
+
+func _update_cover_state(delta: float) -> void:
+	cover_sample_timer -= delta
+	if cover_sample_timer <= 0.0:
+		cover_sample_timer = 0.16 + fmod(float(maxi(actor_id, 0)) * 0.013, 0.07)
+		cover_strength = 0.0
+		if game != null and game.world != null and game.world.has_method("cover_strength_at"):
+			cover_strength = game.world.cover_strength_at(global_position, species_id)
+	if wants_sprint and (cover_dwell_timer > 0.0 or cover_ambush_timer > 0.0):
+		_break_cover(0.85)
+		_update_cover_visual()
+		return
+	var can_prepare := cover_strength >= COVER_CONCEAL_THRESHOLD and cover_reveal_timer <= 0.0 and scent_mark_timer <= 0.0 and not is_airborne()
+	var flat_speed := Vector2(velocity.x, velocity.z).length()
+	if can_prepare and flat_speed <= 0.58:
+		cover_dwell_timer = minf(cover_dwell_timer + delta, COVER_HIDE_DELAY)
+		if cover_dwell_timer >= COVER_HIDE_DELAY:
+			var newly_ready := cover_ambush_timer <= 0.0
+			cover_ambush_timer = maxf(cover_ambush_timer, COVER_AMBUSH_GRACE)
+			if newly_ready and is_player and cover_hint_cooldown <= 0.0 and game.has_method("show_hint"):
+				cover_hint_cooldown = 6.0
+				game.show_hint("伏击就绪：走出草丛后的首次普通攻击可直接触发强敌破绽")
+	elif not can_prepare:
+		cover_dwell_timer = 0.0
+		if cover_reveal_timer > 0.0 or scent_mark_timer > 0.0:
+			cover_ambush_timer = 0.0
+	else:
+		cover_dwell_timer = maxf(cover_dwell_timer - delta * 0.45, 0.0)
+	_update_cover_visual()
+
+
+func _break_cover(reveal_duration: float = COVER_REVEAL_SECONDS) -> void:
+	cover_reveal_timer = maxf(cover_reveal_timer, reveal_duration)
+	cover_dwell_timer = 0.0
+	cover_ambush_timer = 0.0
+	_update_cover_visual()
+
+
+func _update_cover_visual() -> void:
+	if not is_player or selection_ring == null:
+		return
+	var next_state := "ambush" if has_cover_ambush() else ("cover" if cover_strength >= COVER_CONCEAL_THRESHOLD else "open")
+	if next_state == cover_visual_state:
+		return
+	cover_visual_state = next_state
+	var tint: Color = {
+		"ambush": Color("#f1d46b"),
+		"cover": Color("#65d8b2"),
+		"open": Color("#8ff0b1"),
+	}.get(next_state, Color("#8ff0b1"))
+	var material := selection_ring.material_override as StandardMaterial3D
+	if material != null:
+		material.albedo_color = Color(tint, 0.82)
+		material.emission = tint
 
 
 func _update_needs(delta: float) -> void:
@@ -1364,13 +1460,38 @@ func _update_ai(delta: float) -> void:
 			if is_instance_valid(ai_target) and not ai_target.dead:
 				var away := (global_position - ai_target.global_position).normalized()
 				var evade_side := Vector3(-away.z, 0.0, away.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
-				desired_direction = (away + evade_side * 0.26).normalized()
-				wants_sprint = stamina > max_stamina * 0.16
+				var cover_offset := escape_cover_position - global_position
+				if _has_escape_cover() and Vector2(cover_offset.x, cover_offset.z).length() > 1.15:
+					var toward_cover := Vector3(cover_offset.x, 0.0, cover_offset.z).normalized()
+					desired_direction = (toward_cover * 0.86 + away * 0.48 + evade_side * 0.16).normalized()
+					wants_sprint = stamina > max_stamina * 0.16
+				elif _has_escape_cover():
+					desired_direction = Vector3.ZERO
+					wants_sprint = false
+				else:
+					desired_direction = (away + evade_side * 0.26).normalized()
+					wants_sprint = stamina > max_stamina * 0.16
 				var flee_skill_range := _skill_engage_range()
 				var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
 				if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and global_position.distance_to(ai_target.global_position) < flee_skill_range:
 					use_skill(ai_target)
 			else:
+				ai_state = "wander"
+		"search":
+			var search_offset := search_position - global_position
+			if search_timer <= 0.0:
+				ai_state = "wander"
+				desired_direction = Vector3.ZERO
+			elif Vector2(search_offset.x, search_offset.z).length() > 1.4:
+				desired_direction = Vector3(search_offset.x, 0.0, search_offset.z).normalized()
+				wants_sprint = stamina > max_stamina * 0.42
+			else:
+				var search_angle := fmod(float(actor_id) * 1.71 + search_timer * 2.2, TAU)
+				desired_direction = Vector3(cos(search_angle), 0.0, sin(search_angle)) * 0.34
+		"hide":
+			desired_direction = Vector3.ZERO
+			wants_sprint = false
+			if not is_cover_concealed():
 				ai_state = "wander"
 		"hunt":
 			if is_instance_valid(ai_target) and not ai_target.dead:
@@ -1390,7 +1511,7 @@ func _update_ai(delta: float) -> void:
 				# Weak animals normally kite a stronger target until it exposes itself.
 				# The fully collapsed habitat is the final duel, so continued kiting
 				# there would prevent the level from ever selecting one survivor.
-				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not _collapse_competition_active():
+				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not has_cover_ambush() and not _collapse_competition_active():
 					var away_from_stronger := Vector3(global_position.x - ai_target.global_position.x, 0.0, global_position.z - ai_target.global_position.z).normalized()
 					var orbit_side := Vector3(-away_from_stronger.z, 0.0, away_from_stronger.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 					desired_direction = (away_from_stronger * 0.78 + orbit_side * 0.62).normalized()
@@ -1410,7 +1531,7 @@ func _update_ai(delta: float) -> void:
 					desired_direction = (desired_direction + flank * (0.32 if Catalog.has_trait(species_id, "pack_hunter") else 0.20)).normalized()
 				elif distance < float(data["attack_range"]) * 0.72:
 					desired_direction = Vector3.ZERO
-				wants_sprint = distance > float(data["attack_range"]) * 0.9 and stamina > max_stamina * 0.28
+				wants_sprint = distance > float(data["attack_range"]) * 0.9 and stamina > max_stamina * 0.28 and not has_cover_ambush()
 				attack_intent = distance <= float(data["attack_range"]) + 0.65
 				if skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range():
 					use_skill(ai_target)
@@ -1471,6 +1592,34 @@ func _think() -> void:
 	var collapse_competitor := _best_collapse_competitor()
 	if is_instance_valid(collapse_competitor):
 		_switch_state("hunt", collapse_competitor)
+		return
+	if ai_state == "hunt" and is_instance_valid(ai_target) and not ai_target.dead:
+		if _can_detect_actor(ai_target):
+			last_known_target_position = ai_target.global_position
+			has_last_known_target_position = true
+		else:
+			search_position = last_known_target_position if has_last_known_target_position else ai_target.global_position
+			search_timer = SEARCH_MEMORY_SECONDS + float(int(data["size"])) * 0.16
+			ai_target = null
+			ai_state = "search"
+			state_commit_timer = 0.45
+			return
+	if ai_state == "search" and search_timer > 0.0:
+		var reacquired := _best_prey()
+		if is_instance_valid(reacquired):
+			_switch_state("hunt", reacquired)
+		return
+	if ai_state == "hide" and is_cover_concealed():
+		if is_instance_valid(nearest_threat):
+			var hidden_threat_gap := Catalog.opportunity_threat_gap(species_id, nearest_threat.species_id)
+			var ambush_reach := float(data["speed"]) * COVER_AMBUSH_GRACE * 0.78 + float(data["attack_range"]) + 0.8
+			if hidden_threat_gap > 0 and threat_distance <= ambush_reach:
+				_switch_state("hunt", nearest_threat)
+				return
+		if not is_instance_valid(nearest_threat) or threat_distance > COVER_CLOSE_REVEAL_DISTANCE + 1.2:
+			return
+	if ai_state == "flee" and is_cover_concealed() and threat_distance > COVER_CLOSE_REVEAL_DISTANCE + 1.2:
+		_switch_state("hide", null)
 		return
 	var flee_distance := 10.0 + int(data["size"]) * 1.5
 	if species_id == "rabbit":
@@ -1581,10 +1730,51 @@ func _best_territory_intruder() -> EcoActor:
 
 
 func _switch_state(new_state: String, target: EcoActor) -> void:
+	var changed_target := ai_target != target
 	if ai_state != new_state:
 		state_commit_timer = 1.4
+	if new_state == "flee" and is_instance_valid(target) and (ai_state != "flee" or changed_target):
+		_prepare_escape_cover(target)
+	elif new_state != "flee":
+		escape_cover_position = Vector3(INF, 0.0, INF)
 	ai_state = new_state
 	ai_target = target
+	if new_state == "hunt" and is_instance_valid(target):
+		last_known_target_position = target.global_position
+		has_last_known_target_position = true
+
+
+func _has_escape_cover() -> bool:
+	return escape_cover_position.x != INF and not _collapse_competition_active()
+
+
+func _prepare_escape_cover(threat: EcoActor) -> void:
+	escape_cover_position = Vector3(INF, 0.0, INF)
+	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_escape_cover") or int(data["size"]) > 3 or _collapse_competition_active():
+		return
+	var search_radius := 12.0 + float(3 - mini(int(data["size"]), 3)) * 1.8
+	escape_cover_position = game.world.best_escape_cover(global_position, threat.global_position, species_id, search_radius)
+
+
+func _can_detect_actor(other: EcoActor, base_range: float = 27.0) -> bool:
+	if not is_instance_valid(other) or other.dead:
+		return false
+	var distance := global_position.distance_to(other.global_position)
+	var close_reveal := COVER_CLOSE_REVEAL_DISTANCE + float(int(data["size"])) * 0.28
+	if distance <= close_reveal:
+		return true
+	var detect_range := base_range
+	if game.world != null and game.world.has_method("perception_multiplier"):
+		detect_range *= game.world.perception_multiplier(species_id)
+	if other.is_cover_concealed():
+		detect_range *= 0.36
+	elif other.is_stealthed():
+		detect_range *= 0.60
+	if other.scent_mark_timer > 0.0:
+		detect_range *= 1.65
+	if Catalog.has_trait(species_id, "finisher") and other.health / other.max_health < 0.30:
+		detect_range *= 1.6
+	return distance <= detect_range
 
 
 func _skill_engage_range() -> float:
@@ -1650,14 +1840,7 @@ func _best_prey() -> EcoActor:
 		if other.is_airborne() and not Catalog.has_trait(species_id, "flying"):
 			continue
 		var distance := global_position.distance_to(other.global_position)
-		var detect_range := 27.0 * (0.6 if other.is_stealthed() else 1.0)
-		if game.world != null and game.world.has_method("perception_multiplier"):
-			detect_range *= game.world.perception_multiplier(species_id)
-		if other.scent_mark_timer > 0.0:
-			detect_range *= 1.65
-		if Catalog.has_trait(species_id, "finisher") and other.health / other.max_health < 0.30:
-			detect_range *= 1.6
-		if distance > detect_range:
+		if not _can_detect_actor(other):
 			continue
 		var weakness: float = 1.0 + (1.0 - other.health / other.max_health) * 2.2
 		var size_risk: float = maxf(0.35, 1.0 + float(int(data["size"]) - int(other.data["size"])) * 0.22)
@@ -1855,7 +2038,10 @@ func _try_attack() -> void:
 		damage *= 1.12
 	if rage_timer > 0.0:
 		damage *= 1.1
+	ambush_attack_armed = has_cover_ambush()
 	target.take_damage(damage, self)
+	ambush_attack_armed = false
+	_break_cover()
 	if game.has_method("play_sfx_near"):
 		game.play_sfx_near("attack", global_position, is_player)
 	_play_attack_pulse()
@@ -2312,6 +2498,7 @@ func use_skill(target: EcoActor = null) -> bool:
 		if game.has_method("play_sfx_near"):
 			game.play_sfx_near("skill_%s" % species_id, global_position, is_player)
 		_play_species_skill_animation()
+		_break_cover()
 		if is_player:
 			var feedback := str(data.get("skill_feedback", data["skill_hint"]))
 			if affected_count > 0:
@@ -2418,9 +2605,11 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		return
 	var threat_gap := 0
 	var opportunity_strike := false
+	var ambush_strike := false
 	if is_instance_valid(source):
 		threat_gap = Catalog.opportunity_threat_gap(source.species_id, species_id)
-		opportunity_strike = threat_gap > 0 and is_opportunity_exposed() and source.opportunity_strike_timer <= 0.0
+		ambush_strike = threat_gap > 0 and source.ambush_attack_armed
+		opportunity_strike = threat_gap > 0 and (is_opportunity_exposed() or ambush_strike) and source.opportunity_strike_timer <= 0.0
 	var armor := float(data["armor"])
 	if opportunity_strike:
 		armor *= OPPORTUNITY_ARMOR_FACTOR
@@ -2430,11 +2619,11 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		size_scale = clampf(1.0 + (int(source.data["size"]) - int(data["size"])) * 0.12, 0.65, 1.45)
 		last_attacker = source
 		register_ecology_influence(source, 8.0)
+		_break_cover()
 		if not is_player:
-			ai_target = source
 			var source_gap := Catalog.opportunity_threat_gap(species_id, source.species_id)
 			var safe_to_counter := source_gap <= 0 or source.is_opportunity_exposed() or Catalog.has_trait(species_id, "brave_vs_large")
-			ai_state = "hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 and safe_to_counter else "flee"
+			_switch_state("hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 and safe_to_counter else "flee", source)
 	var final_damage := maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
 	var opportunity_bonus := 0.0
 	if opportunity_strike:
@@ -2442,9 +2631,11 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		final_damage += opportunity_bonus
 		stamina = maxf(stamina - max_stamina * OPPORTUNITY_STAMINA_DAMAGE_RATIO, 0.0)
 		source.opportunity_strike_timer = OPPORTUNITY_COOLDOWN
-		exposed_timer = 0.0
+		exposed_timer = maxf(exposed_timer, AMBUSH_CREATED_EXPOSURE) if ambush_strike else 0.0
 		apply_slow(0.84, 1.25)
 		_update_exhaustion_state()
+		if ambush_strike and _should_show_skill_vfx():
+			SkillVFX.radial_burst(_skill_effect_parent(), global_position, Color("#8fe8b7"), 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
 	if shell_guard_timer > 0.0:
 		final_damage *= 0.42 if _collapse_competition_active() else 0.24
 		final_damage = maxf(final_damage, 1.0)
@@ -2453,7 +2644,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			final_damage *= 1.32
 	health -= final_damage
 	if opportunity_strike and game.has_method("on_opportunity_strike"):
-		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus)
+		game.on_opportunity_strike(source, self, threat_gap, opportunity_bonus, ambush_strike)
 	if species_id == "bear" and rage_cooldown_timer <= 0.0:
 		rage_timer = 4.0
 		rage_cooldown_timer = 8.0

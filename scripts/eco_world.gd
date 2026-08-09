@@ -35,6 +35,8 @@ var obstacle_radii: Array[float] = []
 var obstacle_visuals: Array[Node3D] = []
 var obstacle_colliders: Array[StaticBody3D] = []
 var obstacle_kinds: Array[String] = []
+var cover_positions: Array[Vector3] = []
+var cover_radii: Array[float] = []
 var food_patches: Array[Node] = []
 var decoration_root: Node3D
 var obstacle_root: Node3D
@@ -565,6 +567,7 @@ func _build_bushes() -> void:
 	for i in range(bush_count):
 		var pos := _random_decor_position(3.0)
 		var bush := Node3D.new()
+		bush.name = "TacticalCover_%02d" % i
 		bush.position = pos
 		decoration_root.add_child(bush)
 		bush.rotation.y = rng.randf_range(0.0, TAU)
@@ -582,6 +585,8 @@ func _build_bushes() -> void:
 			var flower_color: Color = [Color("#e7d58c"), Color("#d7a6a0"), Color("#b9cce5")][rng.randi_range(0, 2)]
 			for flower_index in range(3):
 				bush.add_child(Factory.sphere("Wildflower", flower_color, Vector3(0.13, 0.10, 0.13), Vector3((flower_index - 1) * 0.55, 1.02 + flower_index * 0.06, rng.randf_range(-0.20, 0.20)), 7, 4))
+		cover_positions.append(pos)
+		cover_radii.append(1.72 * bush_scale)
 
 
 func _build_biome_props() -> void:
@@ -857,6 +862,46 @@ func perception_multiplier(species_id: String) -> float:
 	elif Catalog.has_trait(species_id, "day_hunter"):
 		multiplier *= 1.28 if time_phase == "day" else 0.68
 	return multiplier
+
+
+func cover_strength_at(pos: Vector3, species_id: String) -> float:
+	if pos.y > 1.30 or cover_positions.is_empty():
+		return 0.0
+	var size_level := int(Catalog.get_data(species_id).get("size", 3))
+	var size_factor: float = {1: 1.0, 2: 0.90, 3: 0.68, 4: 0.24, 5: 0.0}.get(size_level, 0.0)
+	if size_factor <= 0.0:
+		return 0.0
+	var strongest := 0.0
+	for index in range(cover_positions.size()):
+		var radius := cover_radii[index] if index < cover_radii.size() else 1.6
+		var distance := Vector2(pos.x - cover_positions[index].x, pos.z - cover_positions[index].z).length()
+		if distance >= radius:
+			continue
+		var depth := 1.0 - distance / maxf(radius, 0.1)
+		strongest = maxf(strongest, size_factor * lerpf(0.62, 1.0, depth))
+	return clampf(strongest, 0.0, 1.0)
+
+
+func best_escape_cover(origin: Vector3, threat_position: Vector3, species_id: String, max_distance: float = 15.0) -> Vector3:
+	var best := Vector3(INF, 0.0, INF)
+	var best_score := -INF
+	var current_threat_distance := Vector2(origin.x - threat_position.x, origin.z - threat_position.z).length()
+	for index in range(cover_positions.size()):
+		var candidate := cover_positions[index]
+		var route_distance := Vector2(candidate.x - origin.x, candidate.z - origin.z).length()
+		if route_distance > max_distance or cover_strength_at(candidate, species_id) < 0.58:
+			continue
+		if collapse_active and Vector2(candidate.x, candidate.z).length() > collapse_radius - 1.8:
+			continue
+		var candidate_threat_distance := Vector2(candidate.x - threat_position.x, candidate.z - threat_position.z).length()
+		var safety_gain := candidate_threat_distance - current_threat_distance
+		if safety_gain < -1.0:
+			continue
+		var score := cover_strength_at(candidate, species_id) * 6.0 + safety_gain * 0.42 - route_distance * 0.26
+		if score > best_score:
+			best_score = score
+			best = Vector3(candidate.x, 0.45, candidate.z)
+	return best
 
 
 func flight_stamina_multiplier() -> float:

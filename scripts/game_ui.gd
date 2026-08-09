@@ -537,10 +537,12 @@ func _build_hud() -> void:
 	hint_label = Label.new()
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint_label.clip_text = true
 	hint_label.set_anchors_preset(Control.PRESET_CENTER)
-	hint_label.position = Vector2(-260, 120)
-	hint_label.size = Vector2(520, 48)
-	hint_label.add_theme_font_size_override("font_size", _font_size(22, 25))
+	hint_label.position = Vector2(-270, 68) if touch_layout else Vector2(-300, 92)
+	hint_label.size = Vector2(540, 76) if touch_layout else Vector2(600, 58)
+	hint_label.add_theme_font_size_override("font_size", _font_size(19, 24))
 	hint_label.add_theme_color_override("font_color", Color("#f6f0c9"))
 	hint_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	hint_label.add_theme_constant_override("shadow_offset_x", 2)
@@ -881,9 +883,7 @@ func _reset_live_information() -> void:
 func set_player(player_actor: EcoActor) -> void:
 	var data := Catalog.get_data(player_actor.species_id)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, data["name"], data["subtitle"]]
-	var player_exposure_text := "　力竭" if player_actor.exhausted else ("　破绽" if player_actor.is_opportunity_exposed() else "")
-	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), player_exposure_text]
-	combat_stats_label.add_theme_color_override("font_color", Color("#f1d46b") if player_actor.is_opportunity_exposed() else Color("#b9d9bd"))
+	_update_player_combat_summary(player_actor)
 	hp_bar.max_value = player_actor.max_health
 	stamina_bar.max_value = player_actor.max_stamina
 	hp_bar.value = player_actor.health
@@ -907,7 +907,7 @@ func show_species_intro(species_id: String) -> void:
 	var data := Catalog.get_data(species_id)
 	var touch_layout := _uses_touch_layout()
 	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：趁更强敌人耐力不足或技能后摇时攻击"
+	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：趁更强敌人耐力不足或技能后摇时攻击\n草丛伏击：小中型物种在草丛停留蓄势，首击可直接制造强敌破绽"
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
 		Catalog.growth_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
@@ -938,9 +938,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	stamina_value_label.text = "%d / %d" % [maxi(ceili(player_actor.stamina), 0), ceili(player_actor.max_stamina)]
 	satiety_value_label.text = "%d / 100" % ceili(satiety)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, player_actor.data["name"], player_actor.data["subtitle"]]
-	var player_exposure_text := "　力竭" if player_actor.exhausted else ("　破绽" if player_actor.is_opportunity_exposed() else "")
-	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), player_exposure_text]
-	combat_stats_label.add_theme_color_override("font_color", Color("#f1d46b") if player_actor.is_opportunity_exposed() else Color("#b9d9bd"))
+	_update_player_combat_summary(player_actor)
 	var needed_xp := player_actor.experience_to_next_level()
 	xp_bar.max_value = maxf(float(needed_xp), 1.0)
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
@@ -957,6 +955,28 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	skill_button.text = "%s\n%s" % [player_actor.data["skill"], skill_state]
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
 	_update_enemy_health_display()
+
+
+func _update_player_combat_summary(player_actor: EcoActor) -> void:
+	var tactical_status := ""
+	var tactical_color := Color("#b9d9bd")
+	if player_actor.exhausted:
+		tactical_status = "力竭破绽"
+		tactical_color = Color("#f1d46b")
+	elif player_actor.is_opportunity_exposed():
+		tactical_status = player_actor.opportunity_status_text()
+		tactical_color = Color("#f1d46b")
+	elif player_actor.has_cover_ambush():
+		tactical_status = "伏击就绪 · 首击可逆袭强敌"
+		tactical_color = Color("#8fe8b7")
+	elif player_actor.tactical_cover_status_text() != "":
+		tactical_status = player_actor.tactical_cover_status_text()
+		tactical_color = Color("#73d4c0")
+	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [
+		float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]),
+		"\n%s" % tactical_status if tactical_status != "" else "",
+	]
+	combat_stats_label.add_theme_color_override("font_color", tactical_color)
 
 
 func update_leaderboard(entries: Array[Dictionary]) -> void:
@@ -1149,10 +1169,16 @@ func _refresh_enemy_health() -> void:
 		status_parts.append("减速")
 	if enemy_target.panic_timer > 0.0:
 		status_parts.append("受惊")
+	if enemy_target.is_cover_concealed():
+		status_parts.append("草丛隐蔽")
 	var player_actor := game.get("player") as EcoActor if game != null else null
-	var can_opportunity_strike := is_instance_valid(player_actor) and Catalog.opportunity_threat_gap(player_actor.species_id, enemy_target.species_id) > 0 and enemy_target.is_opportunity_exposed()
+	var threat_gap := Catalog.opportunity_threat_gap(player_actor.species_id, enemy_target.species_id) if is_instance_valid(player_actor) else 0
+	var can_ambush_strike := is_instance_valid(player_actor) and threat_gap > 0 and player_actor.has_cover_ambush()
+	var can_opportunity_strike := threat_gap > 0 and (enemy_target.is_opportunity_exposed() or can_ambush_strike)
 	if enemy_target.is_opportunity_exposed():
 		status_parts.append(("可逆袭 · " if can_opportunity_strike else "") + enemy_target.opportunity_status_text())
+	elif can_ambush_strike:
+		status_parts.append("伏击可逆袭")
 	enemy_name_label.text = "Lv.%d %s" % [enemy_target.level, target_data["name"]]
 	enemy_status_label.text = " / ".join(status_parts) if not status_parts.is_empty() else "状态稳定"
 	enemy_name_label.add_theme_color_override("font_color", Color("#ffe078") if can_opportunity_strike else Color("#fff0df"))

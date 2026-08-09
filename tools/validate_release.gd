@@ -22,8 +22,9 @@ func _init() -> void:
 	_validate_visual_kit_contract()
 	_validate_adaptive_ui_contract()
 	_validate_opportunity_contract()
+	_validate_cover_ambush_contract()
 	if failures.is_empty():
-		print("[release] V1.6 发布校验通过：生态逆袭、力竭破绽、移动安全区、安全轮回、生态地图与 Web 音频正常")
+		print("[release] V1.7 发布校验通过：草丛伏击、视野搜索、生态逆袭、移动安全区、安全轮回与 Web 音频正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -246,6 +247,20 @@ func _validate_opportunity_contract() -> void:
 	_expect(ui_source.contains("可逆袭"), "敌方血条没有可逆袭提示")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("func on_opportunity_strike"), "主流程没有接收逆袭命中反馈")
+
+
+func _validate_cover_ambush_contract() -> void:
+	var world := WorldScript.new()
+	world.cover_positions.append(Vector3.ZERO)
+	world.cover_radii.append(2.0)
+	_expect(world.cover_strength_at(Vector3(0.0, 0.45, 0.0), "rabbit") >= 0.9, "小型物种没有获得草丛掩护")
+	_expect(world.cover_strength_at(Vector3(0.0, 0.45, 0.0), "elephant") == 0.0, "巨型物种不应获得草丛隐蔽")
+	world.free()
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("ai_state = \"search\""), "AI 丢失草丛目标后没有搜索最后位置")
+	_expect(actor_source.contains("ambush_attack_armed"), "草丛首击没有连接逆袭结算")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("伏击就绪") and ui_source.contains("伏击可逆袭"), "HUD 没有完整显示草丛伏击状态")
 
 
 func _expect(condition: bool, message: String) -> void:

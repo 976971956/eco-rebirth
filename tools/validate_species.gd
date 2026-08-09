@@ -238,7 +238,56 @@ func _run_validation() -> void:
 	var landing := world_test.nearest_legal_landing(Vector3(-1.5, 0.0, -1.5), 0.55)
 	if not world_test.is_landing_clear(landing, 0.55):
 		failures.append("飞行动物没有找到避开障碍的合法落点")
+	world_test.cover_positions.append(Vector3(4.0, 0.0, 4.0))
+	world_test.cover_radii.append(2.0)
+	if world_test.cover_strength_at(Vector3(4.0, 0.45, 4.0), "rabbit") < 0.90:
+		failures.append("雪兔进入草丛中心后没有获得有效掩护")
+	if world_test.cover_strength_at(Vector3(4.0, 0.45, 4.0), "elephant") > 0.0:
+		failures.append("巨象被错误允许隐蔽在草丛")
+	var escape_cover := world_test.best_escape_cover(Vector3.ZERO, Vector3(-4.0, 0.0, 0.0), "rabbit", 10.0)
+	if escape_cover.x == INF:
+		failures.append("弱势 AI 没有找到远离威胁的草丛掩体")
 	game_stub.world = world_test
+	var cover_rabbit: EcoActor = ActorScript.new()
+	cover_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(cover_rabbit)
+	cover_rabbit.setup(game_stub, 880, "rabbit", false, Vector3(4.0, 0.45, 4.0), 0)
+	var cover_elephant: EcoActor = ActorScript.new()
+	cover_elephant.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(cover_elephant)
+	cover_elephant.setup(game_stub, 881, "elephant", false, Vector3(4.0, 0.45, 2.4), 0)
+	cover_rabbit.spawn_protection = 0.0
+	cover_elephant.spawn_protection = 0.0
+	game_stub.actors = [cover_rabbit, cover_elephant]
+	cover_rabbit._update_cover_state(0.80)
+	if not cover_rabbit.has_cover_ambush() or not cover_rabbit.is_cover_concealed():
+		failures.append("小型物种在草丛停留后没有蓄成伏击")
+	var ambush_health_before := cover_elephant.health
+	cover_rabbit.ambush_attack_armed = true
+	cover_elephant.take_damage(float(cover_rabbit.data["attack"]), cover_rabbit)
+	cover_rabbit.ambush_attack_armed = false
+	if ambush_health_before - cover_elephant.health < cover_elephant.max_health * 0.06:
+		failures.append("草丛伏击没有直接触发对强敌的逆袭伤害")
+	if cover_elephant.exposed_timer < ActorScript.AMBUSH_CREATED_EXPOSURE - 0.01:
+		failures.append("草丛伏击命中后没有为第三方制造破绽")
+	var cover_hunter: EcoActor = ActorScript.new()
+	cover_hunter.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(cover_hunter)
+	cover_hunter.setup(game_stub, 882, "wolf", false, Vector3(16.0, 0.45, 4.0), 0)
+	game_stub.actors = [cover_rabbit, cover_hunter]
+	cover_hunter._switch_state("hunt", cover_rabbit)
+	cover_hunter._think()
+	if cover_hunter.ai_state != "search" or is_instance_valid(cover_hunter.ai_target) or cover_hunter.search_timer <= 0.0:
+		failures.append("追猎者丢失草丛目标后没有搜索最后目击位置")
+	cover_hunter.global_position = Vector3(10.4, 0.45, 4.0)
+	cover_rabbit._switch_state("hide", null)
+	cover_rabbit._think()
+	if cover_rabbit.ai_state != "hunt" or cover_rabbit.ai_target != cover_hunter or not cover_rabbit.has_cover_ambush():
+		failures.append("弱势 AI 隐蔽后没有对进入伏击距离的天敌反打")
+	cover_rabbit.free()
+	cover_elephant.free()
+	cover_hunter.free()
+	game_stub.actors.clear()
 	var monkey_test: EcoActor = ActorScript.new()
 	monkey_test.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(monkey_test)
@@ -261,7 +310,7 @@ func _run_validation() -> void:
 	world_test.free()
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:
