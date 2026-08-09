@@ -1198,33 +1198,47 @@ func update_weather_focus(pos: Vector3) -> void:
 
 
 func random_spawn(avoid_positions: Array[Vector3] = [], minimum_actor_distance: float = 6.0) -> Vector3:
+	var best_position := Vector3.ZERO + Vector3.UP * 0.45
+	var best_clearance := -INF
 	for attempt in range(160):
 		var pos := _random_valid_position(7.0)
-		var valid := true
-		for other in avoid_positions:
-			if pos.distance_to(other) < minimum_actor_distance:
-				valid = false
-				break
-		if valid:
+		var clearance := minimum_spawn_distance(pos, avoid_positions)
+		if clearance > best_clearance:
+			best_clearance = clearance
+			best_position = pos
+		if clearance >= minimum_actor_distance:
 			return pos
-	return Vector3(rng.randf_range(-12.0, 12.0), 0.45, rng.randf_range(-12.0, 12.0))
+	# Dense maps may not satisfy the requested gap. Use the widest sampled point;
+	# the old central 24 m fallback piled late actors on top of one another and
+	# caused level-10 deaths on the first simulation frame.
+	return best_position
 
 
 func random_spawn_in_regions(region_ids: Array[String], avoid_positions: Array[Vector3] = [], minimum_actor_distance: float = 6.0) -> Vector3:
 	if region_ids.is_empty():
 		return random_spawn(avoid_positions, minimum_actor_distance)
+	var best_position := Vector3(INF, 0.45, INF)
+	var best_clearance := -INF
 	for attempt in range(220):
 		var pos := _random_valid_position(7.0)
 		if not region_ids.has(region_id_at(pos)):
 			continue
-		var valid := true
-		for other in avoid_positions:
-			if pos.distance_to(other) < minimum_actor_distance:
-				valid = false
-				break
-		if valid:
+		var clearance := minimum_spawn_distance(pos, avoid_positions)
+		if clearance > best_clearance:
+			best_clearance = clearance
+			best_position = pos
+		if clearance >= minimum_actor_distance:
 			return pos
+	if best_position.x != INF:
+		return best_position
 	return random_spawn(avoid_positions, minimum_actor_distance)
+
+
+static func minimum_spawn_distance(pos: Vector3, avoid_positions: Array[Vector3]) -> float:
+	var clearance := INF
+	for other in avoid_positions:
+		clearance = minf(clearance, pos.distance_to(other))
+	return clearance
 
 
 func clamp_position(pos: Vector3) -> Vector3:
@@ -1608,14 +1622,17 @@ func _random_decor_position(center_clearance: float, new_radius: float = 0.0) ->
 
 
 func _random_valid_position(edge_margin: float) -> Vector3:
+	var best_position := Vector3.ZERO + Vector3.UP * 0.45
+	var best_clearance := -INF
 	for attempt in range(100):
 		var half := world_size * 0.5 - edge_margin
 		var pos := Vector3(rng.randf_range(-half, half), 0.45, rng.randf_range(-half, half))
-		var valid := true
+		var clearance := INF
 		for index in range(obstacles.size()):
-			if pos.distance_to(obstacles[index]) < obstacle_radii[index] + 1.8:
-				valid = false
-				break
-		if valid:
+			clearance = minf(clearance, pos.distance_to(obstacles[index]) - obstacle_radii[index] - 1.8)
+		if clearance > best_clearance:
+			best_clearance = clearance
+			best_position = pos
+		if clearance >= 0.0:
 			return pos
-	return Vector3.ZERO + Vector3.UP * 0.45
+	return best_position

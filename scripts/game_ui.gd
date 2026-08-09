@@ -1208,7 +1208,7 @@ func _refresh_enemy_health() -> void:
 	if not is_instance_valid(enemy_target):
 		return
 	var target_data := Catalog.get_data(enemy_target.species_id)
-	var player_actor := game.get("player") as EcoActor if game != null else null
+	var player_actor := EcoActor.safe_actor_reference(game.get("player")) if game != null else null
 	var status_parts: Array[String] = []
 	if enemy_target.poison_timer > 0.0:
 		status_parts.append("中毒 %.1fs" % enemy_target.poison_timer)

@@ -125,10 +125,10 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,winner,duration_s,death_count,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
+			batch_log_file.store_line("run,level,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
 		batch_death_log_file = FileAccess.open("user://batch_deaths.csv", FileAccess.WRITE)
 		if batch_death_log_file != null:
-			batch_death_log_file.store_line("run,victim,killer")
+			batch_death_log_file.store_line("run,time_s,victim,killer")
 		_start_batch_run.call_deferred()
 	elif "--autoplay" in OS.get_cmdline_user_args():
 		_start_new_world.call_deferred()
@@ -458,6 +458,8 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	corpse.global_position = Vector3(actor.global_position.x, 0.0, actor.global_position.z)
 	corpse.setup(actor.species_id, actor.actor_id)
 	corpses.append(corpse)
+	if is_instance_valid(killer) and killer != actor:
+		killer.claim_fresh_corpse(corpse)
 	if is_instance_valid(world):
 		world.record_danger_memory(actor.global_position, actor.species_id, int(actor.data["size"]), killer.species_id if is_instance_valid(killer) else "")
 	if is_instance_valid(killer) and killer != actor:
@@ -472,7 +474,11 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 		influence_source.gain_experience(assist_reward, actor.species_id, actor.ecology_influence_reason)
 
 	if batch_mode:
-		batch_deaths.append({"victim": actor.species_id, "killer": (killer.species_id if is_instance_valid(killer) else "")})
+		batch_deaths.append({
+			"time": level_elapsed,
+			"victim": actor.species_id,
+			"killer": (killer.species_id if is_instance_valid(killer) else ""),
+		})
 	else:
 		var victim_name := Catalog.display_name(actor.species_id)
 		var remaining_count := get_living_actors().size()
@@ -762,6 +768,9 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		winner = living[0].species_id
 	var timed_out := level_elapsed > 900.0 and living.size() > 1
 	var run_index := batch_total_runs - batch_runs_remaining + 1
+	var deaths_30s := _count_batch_deaths_by(30.0)
+	var deaths_60s := _count_batch_deaths_by(60.0)
+	var first_death_s := float(batch_deaths[0].get("time", -1.0)) if not batch_deaths.is_empty() else -1.0
 	batch_results.append({
 		"winner": winner,
 		"duration": level_elapsed,
@@ -770,15 +779,18 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"hunter_peak": ecology_hunter_peak,
 		"trace_hunts": ecology_trace_investigations,
 		"danger_avoids": danger_memory_avoidances,
+		"deaths_30s": deaths_30s,
+		"deaths_60s": deaths_60s,
+		"first_death_s": first_death_s,
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
-			batch_death_log_file.store_line("%d,%s,%s" % [run_index, death["victim"], death["killer"]])
-	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
-		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
+			batch_death_log_file.store_line("%d,%.1f,%s,%s" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"]])
+	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
+		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -799,6 +811,14 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		get_tree().quit()
 
 
+func _count_batch_deaths_by(cutoff_seconds: float) -> int:
+	var count := 0
+	for death in batch_deaths:
+		if float(death.get("time", INF)) <= cutoff_seconds:
+			count += 1
+	return count
+
+
 func _print_batch_report() -> void:
 	print("\n===== 批量模拟报告（%d 局，第 %d 关）=====" % [batch_total_runs, batch_level])
 	var win_counts: Dictionary = {}
@@ -810,6 +830,10 @@ func _print_batch_report() -> void:
 	var total_hunter_peak := 0
 	var total_trace_hunts := 0
 	var total_danger_avoids := 0
+	var total_deaths_30s := 0
+	var total_deaths_60s := 0
+	var total_first_death_s := 0.0
+	var runs_with_deaths := 0
 	var timeout_runs := 0
 	for result in batch_results:
 		var winner: String = result["winner"]
@@ -819,6 +843,12 @@ func _print_batch_report() -> void:
 		total_hunter_peak += int(result.get("hunter_peak", 0))
 		total_trace_hunts += int(result.get("trace_hunts", 0))
 		total_danger_avoids += int(result.get("danger_avoids", 0))
+		total_deaths_30s += int(result.get("deaths_30s", 0))
+		total_deaths_60s += int(result.get("deaths_60s", 0))
+		var first_death_s := float(result.get("first_death_s", -1.0))
+		if first_death_s >= 0.0:
+			total_first_death_s += first_death_s
+			runs_with_deaths += 1
 		if result["timeout"]:
 			timeout_runs += 1
 		for death in result["deaths"]:
@@ -829,6 +859,11 @@ func _print_batch_report() -> void:
 			else:
 				combat_deaths += 1
 	print("平均局长：%.1fs　超时未分胜负：%d/%d" % [total_duration / maxf(float(batch_results.size()), 1.0), timeout_runs, batch_total_runs])
+	print("开局死亡：30秒内 %.1f 只/局　60秒内 %.1f 只/局　平均首例 %.1fs" % [
+		float(total_deaths_30s) / maxf(float(batch_results.size()), 1.0),
+		float(total_deaths_60s) / maxf(float(batch_results.size()), 1.0),
+		total_first_death_s / maxf(float(runs_with_deaths), 1.0),
+	])
 	print("平均生态热点：%.1f 次/局" % [float(total_events) / maxf(float(batch_results.size()), 1.0)])
 	print("平均热点猎手峰值：%.1f" % [float(total_hunter_peak) / maxf(float(batch_results.size()), 1.0)])
 	print("平均踪迹追踪：%.1f　平均危险绕行：%.1f" % [float(total_trace_hunts) / maxf(float(batch_results.size()), 1.0), float(total_danger_avoids) / maxf(float(batch_results.size()), 1.0)])

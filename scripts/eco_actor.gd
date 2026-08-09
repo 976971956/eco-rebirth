@@ -205,6 +205,14 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	_build_collision()
 	_build_visual()
 	spawn_protection = 6.0 if is_player else 0.0
+	# Every map needs a short establishment window; dense late levels otherwise
+	# let long-range skills kill an actor on the very first simulation frame.
+	# Taking damage immediately ends this restraint, so a player cannot attack a
+	# passive target for free.
+	if not is_player and is_instance_valid(game):
+		var game_level_value: Variant = game.get("current_level")
+		var game_level := int(game_level_value) if game_level_value != null else 0
+		calm_timer = opening_caution_seconds(game_level)
 	decision_timer = fmod(float(actor_id) * 0.073, 0.33) + 0.05
 	wander_timer = 0.1
 	last_sample_position = global_position
@@ -1596,10 +1604,11 @@ func _update_health_bar_visibility(delta: float) -> void:
 	if is_player:
 		health_bar_root.visible = true
 		return
-	if game.get("batch_mode") or not is_instance_valid(game.player):
+	var game_player := _game_player()
+	if game.get("batch_mode") or not is_instance_valid(game_player):
 		health_bar_root.visible = false
 		return
-	health_bar_root.visible = not dead and global_position.distance_to(game.player.global_position) <= 22.0
+	health_bar_root.visible = not dead and global_position.distance_to(game_player.global_position) <= 22.0
 
 
 func reveal_health_bar(duration: float = 4.2) -> void:
@@ -2554,6 +2563,11 @@ func _try_attack() -> void:
 func use_skill(target: EcoActor = null) -> bool:
 	if dead or exhausted or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
+	# Normal attacks already honor calm_timer. Skills must follow the same rule,
+	# otherwise a fleeing animal can deal the first damage during the teaching
+	# establishment window and wake the whole food chain several seconds in.
+	if calm_timer > 0.0 and hunger < 70.0 and is_instance_valid(target) and target != last_attacker:
+		return false
 	var used := false
 	var affected_count := 0
 	var effect_color := Color.from_string(str(data.get("skill_color", "#9fe7bf")), Color("#9fe7bf"))
@@ -3037,7 +3051,7 @@ func _resolve_flight_strike(target: EcoActor, damage_value: float, slow_value: f
 func _should_show_skill_vfx() -> bool:
 	if not is_instance_valid(game) or game.get("batch_mode"):
 		return false
-	var game_player := game.get("player") as EcoActor
+	var game_player := _game_player()
 	var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
 	var visible_distance := 24.0 if quality == "low" else (48.0 if quality == "high" else 36.0)
 	return is_player or not is_instance_valid(game_player) or global_position.distance_to(game_player.global_position) <= visible_distance
@@ -3123,6 +3137,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	var size_scale := 1.0
 	if is_instance_valid(source):
 		size_scale = clampf(1.0 + (int(source.data["size"]) - int(data["size"])) * 0.12, 0.65, 1.45)
+		calm_timer = 0.0
 		last_attacker = source
 		register_ecology_influence(source, 8.0)
 		_break_cover()
@@ -3223,6 +3238,22 @@ func apply_calm(source: EcoActor, duration: float) -> void:
 		attack_intent = false
 		ai_state = "wander"
 		state_commit_timer = 0.0
+
+
+func claim_fresh_corpse(corpse: Node3D) -> bool:
+	if is_player or dead or not is_instance_valid(corpse) or not Catalog.can_eat_corpse(species_id):
+		return false
+	# A successful hunter should feed instead of chaining immediately into the
+	# next weak target. Six seconds allows several bites, lowers hunting drive,
+	# and gives scavengers/nearby prey time to react to the new hotspot.
+	resource_target = corpse
+	pending_food_resource = null
+	ai_target = null
+	attack_intent = false
+	ai_state = "food"
+	state_commit_timer = maxf(state_commit_timer, 6.0)
+	calm_timer = maxf(calm_timer, 6.2)
+	return true
 
 
 func register_ecology_influence(source: EcoActor, duration: float, reason: String = "生态助攻") -> void:
@@ -3466,10 +3497,14 @@ func die(killer: EcoActor) -> void:
 	# Player death pauses the tree when the result panel appears. An awaited
 	# SceneTreeTimer here would remain suspended on a dead actor, and Web builds
 	# could later dispatch its stale continuation as a null WASM function. Finish
-	# the short death animation before the result delay and queue the actor safely.
+	# the short death animation before the result delay. Keep the dead player node
+	# alive (but hidden) until the result screen has read its species and run stats;
+	# the next world transition owns its final cleanup.
+	var release_after_animation := should_queue_free_after_death(is_player)
 	tween.tween_callback(func() -> void:
 		visible = false
-		queue_free()
+		if release_after_animation:
+			queue_free()
 	)
 
 
@@ -3491,7 +3526,7 @@ func _update_visual_lod(delta: float) -> void:
 		return
 	visual_lod_elapsed += delta
 	var update_interval := 0.0
-	var game_player := game.get("player") as EcoActor
+	var game_player := _game_player()
 	if not is_player and is_instance_valid(game_player):
 		var player_distance := global_position.distance_to(game_player.global_position)
 		var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
@@ -3521,6 +3556,46 @@ func _update_visual_lod(delta: float) -> void:
 	var animation_delta := visual_lod_elapsed
 	visual_lod_elapsed = 0.0
 	_update_visual_motion(animation_delta)
+
+
+static func safe_actor_reference(candidate: Variant) -> EcoActor:
+	if not is_instance_valid(candidate) or not candidate is EcoActor:
+		return null
+	return candidate
+
+
+static func should_queue_free_after_death(player_controlled: bool) -> bool:
+	return not player_controlled
+
+
+static func opening_caution_seconds(campaign_level: int) -> float:
+	match campaign_level:
+		1:
+			return 38.0
+		2:
+			return 30.0
+		3:
+			return 27.0
+		4:
+			return 25.0
+		5:
+			return 24.0
+		6:
+			return 23.0
+		7:
+			return 22.0
+		8:
+			return 21.0
+		9, 10:
+			return 20.0
+		_:
+			return 0.0
+
+
+func _game_player() -> EcoActor:
+	if not is_instance_valid(game):
+		return null
+	return safe_actor_reference(game.get("player"))
 
 
 func _update_visual_motion(delta: float) -> void:

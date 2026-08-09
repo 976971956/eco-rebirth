@@ -1327,14 +1327,42 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 	while roster.size() < count:
 		var weighted: Array[String] = []
 		for species_id in selected:
+			var species_cap := roster_species_cap(species_id, campaign_level)
+			if species_cap > 0 and roster.count(species_id) >= species_cap:
+				continue
 			var weight := int(REPEAT_WEIGHT.get(species_id, 2))
 			if campaign_level < int(REPEAT_FROM_LEVEL.get(species_id, 1)):
 				weight = 0
 			for i in range(weight):
 				weighted.append(species_id)
 		if weighted.is_empty():
-			weighted = selected.duplicate()
+			for species_id in selected:
+				var species_cap := roster_species_cap(species_id, campaign_level)
+				if species_cap <= 0 or roster.count(species_id) < species_cap:
+					weighted.append(species_id)
+		if weighted.is_empty():
+			weighted.append("rabbit")
 		roster.append(weighted[rng.randi_range(0, weighted.size() - 1)])
+
+	# The first level is a teaching ecosystem, not a predator lottery. Preserve
+	# every selected species while turning duplicate predator slots into enough
+	# herbivores for at least two readable food-chain interactions.
+	if campaign_level == 1:
+		var early_foragers := 0
+		for species_id in roster:
+			if str(DATA[species_id]["diet"]) == "herbivore":
+				early_foragers += 1
+		while early_foragers < mini(5, roster.size()):
+			var replacement_index := -1
+			for index in range(roster.size() - 1, -1, -1):
+				var species_id := roster[index]
+				if str(DATA[species_id]["diet"]) != "herbivore" and roster.count(species_id) > 1:
+					replacement_index = index
+					break
+			if replacement_index < 0:
+				break
+			roster[replacement_index] = "deer" if selected.has("deer") else "rabbit"
+			early_foragers += 1
 
 	for index in range(roster.size() - 1, 0, -1):
 		var swap_index := rng.randi_range(0, index)
@@ -1342,6 +1370,22 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 		roster[index] = roster[swap_index]
 		roster[swap_index] = value
 	return roster
+
+
+static func roster_species_cap(species_id: String, campaign_level: int) -> int:
+	if campaign_level == 1:
+		if species_id == "bear":
+			return 1
+		if species_id == "wolf":
+			return 3
+	if campaign_level == 2 and species_id in ["boar", "porcupine"]:
+		return 3
+	if str(GROWTH_ARCHETYPE.get(species_id, "")) == "giant":
+		if campaign_level == 5:
+			return 1
+		if campaign_level >= 6:
+			return 2
+	return 0
 
 
 static func can_eat_food(species_id: String) -> bool:

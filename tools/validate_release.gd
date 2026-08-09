@@ -14,6 +14,7 @@ var failures: Array[String] = []
 func _init() -> void:
 	_validate_save_migration()
 	_validate_quality_presets()
+	_validate_spawn_distribution_contract()
 	_validate_tutorial_contract()
 	_validate_free_mode_contract()
 	_validate_leaderboard_contract()
@@ -30,7 +31,7 @@ func _init() -> void:
 	_validate_ecology_hotspot_contract()
 	_validate_ecology_trace_contract()
 	if failures.is_empty():
-		print("[release] V1.13 发布校验通过：生态踪迹、猎手调查、危险记忆、食物链迁徙与三端规则正常")
+		print("[release] V1.14 发布校验通过：死亡结算、出生分布、建立期、捕食进食与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -101,6 +102,24 @@ func _validate_quality_presets() -> void:
 	world.free()
 
 
+func _validate_spawn_distribution_contract() -> void:
+	var world := WorldScript.new()
+	world.world_size = 182.0
+	world.rng.seed = 9137
+	var occupied: Array[Vector3] = []
+	var regions: Array[String] = ["forest", "grassland", "wetland", "highland"]
+	var minimum_observed := INF
+	for index in range(100):
+		var expected_region := regions[index % regions.size()]
+		var position_value := world.random_spawn_in_regions([expected_region], occupied, 8.0)
+		if not occupied.is_empty():
+			minimum_observed = minf(minimum_observed, WorldScript.minimum_spawn_distance(position_value, occupied))
+		_expect(world.region_id_at(position_value) == expected_region, "高密度出生点丢失了物种生态区")
+		occupied.append(position_value)
+	_expect(minimum_observed >= 7.95, "100 个体生成时出生点过度重叠，可能开局瞬间死亡")
+	world.free()
+
+
 func _validate_tutorial_contract() -> void:
 	_expect(MainScript.TUTORIAL_STEPS.size() == 5, "新手教学应包含 5 个步骤")
 	var expected := ["move", "sprint", "attack", "skill", "eat"]
@@ -158,6 +177,18 @@ func _validate_death_lifecycle_contract() -> void:
 	_expect(die_start >= 0 and next_method > die_start, "无法读取动物死亡生命周期")
 	_expect(not die_source.contains("await "), "动物死亡仍会留下跨结算暂停的等待协程")
 	_expect(die_source.contains("tween.tween_callback"), "动物死亡动画结束后没有安排安全销毁")
+	_expect(not ActorScript.should_queue_free_after_death(true), "玩家死亡动画后被提前释放，结算会丢失物种与战绩")
+	_expect(ActorScript.should_queue_free_after_death(false), "AI 死亡动画后没有释放角色节点")
+	var stale_actor := ActorScript.new()
+	_expect(ActorScript.safe_actor_reference(stale_actor) == stale_actor, "有效动物引用被错误清理")
+	stale_actor.free()
+	_expect(ActorScript.safe_actor_reference(stale_actor) == null, "已释放动物引用仍被强制转换，可能造成逐帧错误")
+	_expect(actor_source.contains("var game_player := _game_player()"), "视觉 LOD 没有使用安全的玩家引用")
+	_expect(ActorScript.opening_caution_seconds(1) >= 30.0, "第一关没有留出完整的移动与技能观察时间")
+	_expect(ActorScript.opening_caution_seconds(2) > 0.0, "第二关没有从教学节奏平滑过渡")
+	_expect(ActorScript.opening_caution_seconds(3) < ActorScript.opening_caution_seconds(2), "中期关卡建立期没有随难度缩短")
+	_expect(ActorScript.opening_caution_seconds(10) >= 18.0, "第十关长距离技能仍可在开局首帧击杀动物")
+	_expect(ActorScript.opening_caution_seconds(10) < ActorScript.opening_caution_seconds(1), "高压关卡的建立期不应长于教学关")
 
 
 func _validate_web_audio_contract() -> void:

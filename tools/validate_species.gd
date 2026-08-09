@@ -193,6 +193,50 @@ func _run_validation() -> void:
 			for species_id in available:
 				if Catalog.unlock_level(species_id) == campaign_level and not roster.has(species_id):
 					failures.append("第%d关没有生成本关新物种 %s" % [campaign_level, species_id])
+	for sample_index in range(64):
+		rng.seed = 8100 + sample_index
+		var teaching_roster := Catalog.build_roster(rng, 10, Vector2i(4, 5), 1)
+		var teaching_foragers := 0
+		for species_id in teaching_roster:
+			if str(Catalog.DATA[species_id]["diet"]) == "herbivore":
+				teaching_foragers += 1
+		if teaching_roster.count("bear") > Catalog.roster_species_cap("bear", 1):
+			failures.append("第一关生成了超过 1 只熊")
+		if teaching_roster.count("wolf") > Catalog.roster_species_cap("wolf", 1):
+			failures.append("第一关生成了超过 3 只狼")
+		if teaching_foragers < 5:
+			failures.append("第一关草食个体少于 5 只，不符合早期 50–60% 人口结构")
+		if not failures.is_empty():
+			break
+	rng.seed = 9901
+	var final_roster := Catalog.build_roster(rng, 100, Vector2i(22, 26), 10)
+	for giant_id in ["elephant", "rhino", "hippo"]:
+		if final_roster.count(giant_id) > Catalog.roster_species_cap(giant_id, 10):
+			failures.append("第十关%s超过生态巨兽上限" % Catalog.display_name(giant_id))
+
+	var feeding_hunter := ActorScript.new()
+	feeding_hunter.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(feeding_hunter)
+	feeding_hunter.setup(game_stub, 900, "wolf", false, Vector3.ZERO, 0)
+	var fresh_corpse := Node3D.new()
+	container.add_child(fresh_corpse)
+	if not feeding_hunter.claim_fresh_corpse(fresh_corpse):
+		failures.append("肉食 AI 击杀后没有接管新鲜尸体")
+	if feeding_hunter.ai_state != "food" or feeding_hunter.resource_target != fresh_corpse or feeding_hunter.state_commit_timer < 5.9:
+		failures.append("捕食者没有保持进食状态，仍可能立即连杀")
+	var feeding_target := ActorScript.new()
+	feeding_target.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(feeding_target)
+	feeding_target.setup(game_stub, 901, "rabbit", false, Vector3(0.0, 0.0, -1.0), 0)
+	feeding_hunter.skill_timer = 0.0
+	feeding_hunter.stamina = feeding_hunter.max_stamina
+	feeding_hunter.calm_timer = 5.0
+	feeding_hunter.last_attacker = null
+	if feeding_hunter.use_skill(feeding_target):
+		failures.append("建立期 AI 可以绕过普攻限制用技能发起战斗")
+	fresh_corpse.free()
+	feeding_hunter.free()
+	feeding_target.free()
 
 	var new_species: Array[String] = [
 		"boar", "raccoon", "porcupine", "lynx", "capybara", "otter", "goat", "wolverine", "bison",
