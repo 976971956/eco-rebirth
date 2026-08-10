@@ -92,8 +92,9 @@ func _render() -> void:
 	ui.add_battle_report("金雕击倒了雪兔 · 累计5击杀 · 剩余16", "击杀", "#ecc89d")
 	for _frame in range(5):
 		await process_frame
-	var leaderboard_result := root.get_texture().get_image().save_png("res://docs/images/v15-leaderboard-ticker.png")
-	var mobile_safe_result := root.get_texture().get_image().save_png("res://docs/images/v17-mobile-safe-ui.png")
+	var gameplay_image := root.get_texture().get_image()
+	var leaderboard_result := gameplay_image.save_png("res://docs/images/v15-leaderboard-ticker.png")
+	var mobile_safe_result := gameplay_image.save_png("res://docs/images/v26-adaptive-mobile-ui.png")
 	ui.battle_ticker_button.hide()
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
 	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2\n伏击就绪 · 首击可逆袭强敌"

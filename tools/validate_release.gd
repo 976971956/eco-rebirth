@@ -31,7 +31,7 @@ func _init() -> void:
 	_validate_ecology_hotspot_contract()
 	_validate_ecology_trace_contract()
 	if failures.is_empty():
-		print("[release] V1.14 发布校验通过：死亡结算、出生分布、建立期、捕食进食与三端规则正常")
+		print("[release] V1.15 发布校验通过：多机型 UI、死亡结算、生态节奏与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -252,6 +252,9 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(not UIScript.portrait_layout_needed(Vector2(844, 390), true), "手机横屏被错误拦截")
 	_expect(not UIScript.portrait_layout_needed(Vector2(390, 844), false), "桌面窗口不应触发手机旋转守卫")
 	var safe_viewport := Vector2(1220, 690)
+	_expect(UIScript.compact_touch_layout_needed(safe_viewport, true), "手机安全区没有启用紧凑 HUD")
+	_expect(not UIScript.compact_touch_layout_needed(Vector2(1220, 820), true), "大屏平板被错误压缩成手机 HUD")
+	_expect(not UIScript.compact_touch_layout_needed(safe_viewport, false), "桌面窗口不应启用手机紧凑 HUD")
 	var touch_rects := [
 		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_ATTACK_OFFSET, UIScript.TOUCH_ATTACK_SIZE),
 		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_SKILL_OFFSET, UIScript.TOUCH_SKILL_SIZE),
@@ -262,11 +265,21 @@ func _validate_adaptive_ui_contract() -> void:
 		_expect(Rect2(Vector2.ZERO, safe_viewport).encloses(touch_rects[first_index]), "触控按钮超出安全 HUD 区域")
 		for second_index in range(first_index + 1, touch_rects.size()):
 			_expect(not touch_rects[first_index].intersects(touch_rects[second_index]), "右侧触控按钮彼此重叠")
-	var skill_panel_rect := Rect2(Vector2((safe_viewport.x - 340.0) * 0.5, safe_viewport.y - 118.0), Vector2(340, 100))
-	var intro_rect := Rect2(Vector2(safe_viewport.x * 0.5 - 400.0, 40.0), Vector2(640, 410))
+	var status_rect := Rect2(Vector2(12.0, 12.0), UIScript.COMPACT_STATUS_SIZE)
+	var info_rect := Rect2(Vector2(safe_viewport.x - 368.0, 12.0), UIScript.COMPACT_INFO_SIZE)
+	var leaderboard_rect := Rect2(Vector2(safe_viewport.x - 368.0, 190.0), UIScript.COMPACT_LEADERBOARD_SIZE)
+	var ticker_rect := Rect2(Vector2(safe_viewport.x * 0.5 - 155.0, 58.0), Vector2(310.0, 50.0))
+	_expect(not status_rect.intersects(ticker_rect), "紧凑玩家状态框遮挡顶部战报")
+	_expect(not info_rect.intersects(ticker_rect), "紧凑关卡信息框遮挡顶部战报")
+	_expect(not info_rect.intersects(leaderboard_rect), "紧凑关卡信息框与排行榜重叠")
+	_expect(status_rect.size.y < 250.0 and info_rect.size.y < 180.0 and leaderboard_rect.size.y < 180.0, "手机 HUD 信息框仍占据过多垂直视野")
+	var skill_panel_rect := Rect2(Vector2((safe_viewport.x - UIScript.COMPACT_SKILL_SIZE.x) * 0.5, safe_viewport.y - 104.0), UIScript.COMPACT_SKILL_SIZE)
+	var intro_rect := Rect2(Vector2(safe_viewport.x * 0.5 - 360.0, 28.0), UIScript.COMPACT_INTRO_SIZE)
 	for touch_button_rect in touch_rects:
 		_expect(not skill_panel_rect.intersects(touch_button_rect), "触控按钮仍遮挡技能状态栏")
 		_expect(not intro_rect.intersects(touch_button_rect), "物种攻略仍遮挡触控按钮")
+	var phone_modal_size := UIScript.modal_size_for_available(Vector2(1000.0, 700.0), safe_viewport, true)
+	_expect(phone_modal_size.x <= safe_viewport.x * 0.94 and phone_modal_size.y <= safe_viewport.y * 0.92, "手机弹窗没有保留足够的周边视野")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")

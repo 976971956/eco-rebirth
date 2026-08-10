@@ -25,6 +25,13 @@ const TOUCH_EAT_OFFSET := Vector2(-306.0, -224.0)
 const TOUCH_EAT_SIZE := Vector2(112.0, 96.0)
 const TOUCH_SPRINT_OFFSET := Vector2(-306.0, -116.0)
 const TOUCH_SPRINT_SIZE := Vector2(112.0, 96.0)
+const COMPACT_TOUCH_MAX_HEIGHT := 760.0
+const COMPACT_TOUCH_MAX_WIDTH := 1120.0
+const COMPACT_STATUS_SIZE := Vector2(340.0, 230.0)
+const COMPACT_INFO_SIZE := Vector2(296.0, 170.0)
+const COMPACT_LEADERBOARD_SIZE := Vector2(296.0, 166.0)
+const COMPACT_SKILL_SIZE := Vector2(320.0, 88.0)
+const COMPACT_INTRO_SIZE := Vector2(600.0, 360.0)
 const HUD_STATUS_BACKGROUND := Color(0.018, 0.09, 0.075, 0.62)
 const HUD_INFO_BACKGROUND := Color(0.018, 0.09, 0.075, 0.54)
 const HUD_LEADERBOARD_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
@@ -156,8 +163,20 @@ static func portrait_layout_needed(viewport_size: Vector2, touch_layout: bool) -
 	return touch_layout and viewport_size.y > viewport_size.x
 
 
+static func compact_touch_layout_needed(safe_viewport_size: Vector2, touch_layout: bool) -> bool:
+	return touch_layout and (safe_viewport_size.y <= COMPACT_TOUCH_MAX_HEIGHT or safe_viewport_size.x <= COMPACT_TOUCH_MAX_WIDTH)
+
+
 static func touch_rect(viewport_size: Vector2, offset: Vector2, size_value: Vector2) -> Rect2:
 	return Rect2(viewport_size + offset, size_value)
+
+
+static func modal_size_for_available(desired_size: Vector2, available_size: Vector2, touch_layout: bool) -> Vector2:
+	var maximum_size := Vector2(maxf(available_size.x - 24.0, 1.0), maxf(available_size.y - 24.0, 1.0))
+	if touch_layout:
+		maximum_size.x = minf(maximum_size.x, available_size.x * 0.94)
+		maximum_size.y = minf(maximum_size.y, available_size.y * 0.92)
+	return Vector2(minf(desired_size.x, maximum_size.x), minf(desired_size.y, maximum_size.y))
 
 
 func _uses_touch_layout() -> bool:
@@ -166,6 +185,16 @@ func _uses_touch_layout() -> bool:
 
 func _font_size(desktop_size: int, touch_size: int) -> int:
 	return touch_size if _uses_touch_layout() else desktop_size
+
+
+func _uses_compact_touch_layout() -> bool:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var margins := _display_safe_margins()
+	var safe_size := Vector2(
+		maxf(viewport_size.x - margins.x - margins.z, 1.0),
+		maxf(viewport_size.y - margins.y - margins.w, 1.0)
+	)
+	return compact_touch_layout_needed(safe_size, _uses_touch_layout())
 
 
 func _on_viewport_size_changed() -> void:
@@ -239,6 +268,16 @@ func _panel_style(color: Color, radius: int = 16, border_color: Color = Color.TR
 	style.border_width_right = border_width
 	style.border_width_top = border_width
 	style.border_width_bottom = border_width
+	return style
+
+
+func _hud_panel_style(color: Color, radius: int = 16, border_color: Color = Color.TRANSPARENT, border_width: int = 0) -> StyleBoxFlat:
+	var style := _panel_style(color, radius, border_color, border_width)
+	if _uses_compact_touch_layout():
+		style.content_margin_left = 14.0
+		style.content_margin_right = 14.0
+		style.content_margin_top = 10.0
+		style.content_margin_bottom = 10.0
 	return style
 
 
@@ -356,6 +395,7 @@ func _build_menu() -> void:
 
 func _build_hud() -> void:
 	var touch_layout := _uses_touch_layout()
+	var compact_touch := _uses_compact_touch_layout()
 	hud_root = Control.new()
 	hud_root.name = "HUD"
 	hud_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -363,9 +403,9 @@ func _build_hud() -> void:
 	add_child(hud_root)
 
 	var status_panel := PanelContainer.new()
-	status_panel.position = Vector2(16, 16) if touch_layout else Vector2(20, 20)
-	status_panel.custom_minimum_size = Vector2(360, 270) if touch_layout else Vector2(400, 252)
-	status_panel.add_theme_stylebox_override("panel", _panel_style(HUD_STATUS_BACKGROUND, 16, Color(0.48, 0.80, 0.53, 0.48), 1))
+	status_panel.position = Vector2(12, 12) if compact_touch else (Vector2(16, 16) if touch_layout else Vector2(20, 20))
+	status_panel.custom_minimum_size = COMPACT_STATUS_SIZE if compact_touch else (Vector2(360, 270) if touch_layout else Vector2(400, 252))
+	status_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_STATUS_BACKGROUND, 16, Color(0.48, 0.80, 0.53, 0.48), 1))
 	hud_root.add_child(status_panel)
 	var status_box := VBoxContainer.new()
 	status_box.add_theme_constant_override("separation", 6)
@@ -396,23 +436,23 @@ func _build_hud() -> void:
 	remaining_label.add_theme_font_size_override("font_size", _font_size(30, 34))
 	remaining_label.add_theme_color_override("font_color", Color("#f4f3d7"))
 	remaining_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	remaining_label.position = Vector2(-150, 16) if touch_layout else Vector2(-160, 20)
-	remaining_label.size = Vector2(300, 48) if touch_layout else Vector2(320, 46)
+	remaining_label.position = Vector2(-145, 10) if compact_touch else (Vector2(-150, 16) if touch_layout else Vector2(-160, 20))
+	remaining_label.size = Vector2(290, 44) if compact_touch else (Vector2(300, 48) if touch_layout else Vector2(320, 46))
 	hud_root.add_child(remaining_label)
 
 	battle_ticker_button = Button.new()
 	battle_ticker_button.name = "BattleTicker"
 	battle_ticker_button.text = "战报 [展开] · 等待生态事件"
 	battle_ticker_button.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	battle_ticker_button.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
-	battle_ticker_button.size = Vector2(320, 56) if touch_layout else Vector2(440, 50)
+	battle_ticker_button.position = Vector2(-155, 58) if compact_touch else (Vector2(-160, 70) if touch_layout else Vector2(-220, 70))
+	battle_ticker_button.size = Vector2(310, 50) if compact_touch else (Vector2(320, 56) if touch_layout else Vector2(440, 50))
 	battle_ticker_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	battle_ticker_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	battle_ticker_button.add_theme_font_size_override("font_size", _font_size(16, 19))
 	battle_ticker_button.add_theme_color_override("font_color", Color("#f3e5b5"))
-	battle_ticker_button.add_theme_stylebox_override("normal", _panel_style(HUD_TICKER_BACKGROUND, 13, Color(0.74, 0.78, 0.40, 0.60), 1))
-	battle_ticker_button.add_theme_stylebox_override("hover", _panel_style(Color(0.085, 0.22, 0.15, 0.78), 13, Color(0.92, 0.88, 0.50, 0.84), 2))
-	battle_ticker_button.add_theme_stylebox_override("pressed", _panel_style(Color(0.04, 0.10, 0.075, 0.84), 13, Color("#f2df7a"), 2))
+	battle_ticker_button.add_theme_stylebox_override("normal", _hud_panel_style(HUD_TICKER_BACKGROUND, 13, Color(0.74, 0.78, 0.40, 0.60), 1))
+	battle_ticker_button.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.085, 0.22, 0.15, 0.78), 13, Color(0.92, 0.88, 0.50, 0.84), 2))
+	battle_ticker_button.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.04, 0.10, 0.075, 0.84), 13, Color("#f2df7a"), 2))
 	battle_ticker_button.pressed.connect(_play_ui_sound)
 	battle_ticker_button.pressed.connect(show_battle_report)
 	hud_root.add_child(battle_ticker_button)
@@ -420,10 +460,10 @@ func _build_hud() -> void:
 	enemy_panel = PanelContainer.new()
 	enemy_panel.name = "EnemyHealth"
 	enemy_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	enemy_panel.position = Vector2(-160, 70) if touch_layout else Vector2(-220, 70)
-	enemy_panel.size = Vector2(320, 110) if touch_layout else Vector2(440, 102)
+	enemy_panel.position = Vector2(-155, 58) if compact_touch else (Vector2(-160, 70) if touch_layout else Vector2(-220, 70))
+	enemy_panel.size = Vector2(310, 98) if compact_touch else (Vector2(320, 110) if touch_layout else Vector2(440, 102))
 	enemy_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	enemy_panel.add_theme_stylebox_override("panel", _panel_style(HUD_ENEMY_BACKGROUND, 14, Color(0.95, 0.38, 0.32, 0.70), 2))
+	enemy_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_ENEMY_BACKGROUND, 14, Color(0.95, 0.38, 0.32, 0.70), 2))
 	hud_root.add_child(enemy_panel)
 	var enemy_box := VBoxContainer.new()
 	enemy_box.add_theme_constant_override("separation", 4)
@@ -454,9 +494,9 @@ func _build_hud() -> void:
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	info_panel.position = Vector2(-390, 16) if touch_layout else Vector2(-420, 20)
-	info_panel.size = Vector2(320, 200) if touch_layout else Vector2(350, 194)
-	info_panel.add_theme_stylebox_override("panel", _panel_style(HUD_INFO_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.32), 1))
+	info_panel.position = Vector2(-368, 12) if compact_touch else (Vector2(-390, 16) if touch_layout else Vector2(-420, 20))
+	info_panel.size = COMPACT_INFO_SIZE if compact_touch else (Vector2(320, 200) if touch_layout else Vector2(350, 194))
+	info_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_INFO_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.32), 1))
 	hud_root.add_child(info_panel)
 	var info_box := VBoxContainer.new()
 	info_panel.add_child(info_box)
@@ -492,15 +532,16 @@ func _build_hud() -> void:
 	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	seed_label.add_theme_font_size_override("font_size", _font_size(15, 18))
 	seed_label.add_theme_color_override("font_color", Color(0.75, 0.86, 0.78, 0.78))
+	seed_label.visible = not compact_touch
 	info_box.add_child(seed_label)
 
 	leaderboard_panel = PanelContainer.new()
 	leaderboard_panel.name = "LevelLeaderboard"
 	leaderboard_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	leaderboard_panel.position = Vector2(-390, 224) if touch_layout else Vector2(-420, 222)
-	leaderboard_panel.size = Vector2(320, 194) if touch_layout else Vector2(350, 188)
+	leaderboard_panel.position = Vector2(-368, 190) if compact_touch else (Vector2(-390, 224) if touch_layout else Vector2(-420, 222))
+	leaderboard_panel.size = COMPACT_LEADERBOARD_SIZE if compact_touch else (Vector2(320, 194) if touch_layout else Vector2(350, 188))
 	leaderboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	leaderboard_panel.add_theme_stylebox_override("panel", _panel_style(HUD_LEADERBOARD_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.44), 1))
+	leaderboard_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_LEADERBOARD_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.44), 1))
 	hud_root.add_child(leaderboard_panel)
 	var leaderboard_box := VBoxContainer.new()
 	leaderboard_box.add_theme_constant_override("separation", 4)
@@ -523,9 +564,9 @@ func _build_hud() -> void:
 
 	var skill_panel := PanelContainer.new()
 	skill_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	skill_panel.position = Vector2(-170, -118) if touch_layout else Vector2(-215, -120)
-	skill_panel.size = Vector2(340, 100) if touch_layout else Vector2(430, 98)
-	skill_panel.add_theme_stylebox_override("panel", _panel_style(HUD_SKILL_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.36), 1))
+	skill_panel.position = Vector2(-160, -104) if compact_touch else (Vector2(-170, -118) if touch_layout else Vector2(-215, -120))
+	skill_panel.size = COMPACT_SKILL_SIZE if compact_touch else (Vector2(340, 100) if touch_layout else Vector2(430, 98))
+	skill_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_SKILL_BACKGROUND, 14, Color(0.48, 0.80, 0.53, 0.36), 1))
 	hud_root.add_child(skill_panel)
 	var skill_box := VBoxContainer.new()
 	skill_panel.add_child(skill_box)
@@ -549,8 +590,8 @@ func _build_hud() -> void:
 	event_feed.scroll_active = false
 	event_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	event_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	event_feed.position = Vector2(20, -154)
-	event_feed.size = Vector2(380, 130)
+	event_feed.position = Vector2(12, -132) if compact_touch else Vector2(20, -154)
+	event_feed.size = Vector2(340, 112) if compact_touch else Vector2(380, 130)
 	event_feed.add_theme_font_size_override("normal_font_size", _font_size(17, 19))
 	event_feed.add_theme_color_override("default_color", Color(0.93, 0.96, 0.88, 0.85))
 	hud_root.add_child(event_feed)
@@ -561,8 +602,8 @@ func _build_hud() -> void:
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint_label.clip_text = true
 	hint_label.set_anchors_preset(Control.PRESET_CENTER)
-	hint_label.position = Vector2(-270, 68) if touch_layout else Vector2(-300, 92)
-	hint_label.size = Vector2(540, 76) if touch_layout else Vector2(600, 58)
+	hint_label.position = Vector2(-250, 54) if compact_touch else (Vector2(-270, 68) if touch_layout else Vector2(-300, 92))
+	hint_label.size = Vector2(500, 66) if compact_touch else (Vector2(540, 76) if touch_layout else Vector2(600, 58))
 	hint_label.add_theme_font_size_override("font_size", _font_size(19, 24))
 	hint_label.add_theme_color_override("font_color", Color("#f6f0c9"))
 	hint_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
@@ -573,7 +614,7 @@ func _build_hud() -> void:
 	var pause_button := Button.new()
 	pause_button.text = "Ⅱ"
 	pause_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	pause_button.position = Vector2(-64, 16) if touch_layout else Vector2(-68, 20)
+	pause_button.position = Vector2(-64, 12) if compact_touch else (Vector2(-64, 16) if touch_layout else Vector2(-68, 20))
 	pause_button.size = Vector2(56, 56)
 	pause_button.add_theme_font_size_override("font_size", _font_size(18, 24))
 	pause_button.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -635,10 +676,11 @@ func _make_value_label() -> Label:
 
 func _build_intro() -> void:
 	var touch_layout := _uses_touch_layout()
+	var compact_touch := _uses_compact_touch_layout()
 	intro_panel = PanelContainer.new()
 	intro_panel.set_anchors_preset(Control.PRESET_CENTER_TOP if touch_layout else Control.PRESET_CENTER)
-	intro_panel.position = Vector2(-400, 40) if touch_layout else Vector2(-390, -220)
-	intro_panel.size = Vector2(640, 410) if touch_layout else Vector2(780, 440)
+	intro_panel.position = Vector2(-360, 28) if compact_touch else (Vector2(-400, 40) if touch_layout else Vector2(-390, -220))
+	intro_panel.size = COMPACT_INTRO_SIZE if compact_touch else (Vector2(640, 410) if touch_layout else Vector2(780, 440))
 	intro_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.94), 24, Color(0.61, 0.92, 0.61, 0.62), 2))
 	hud_root.add_child(intro_panel)
 	var box := VBoxContainer.new()
@@ -675,11 +717,12 @@ func _build_intro() -> void:
 
 func _build_tutorial() -> void:
 	var touch_layout := _uses_touch_layout()
+	var compact_touch := _uses_compact_touch_layout()
 	tutorial_panel = PanelContainer.new()
 	tutorial_panel.name = "Tutorial"
 	tutorial_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	tutorial_panel.position = Vector2(-300, 142) if touch_layout else Vector2(-280, 155)
-	tutorial_panel.size = Vector2(600, 190) if touch_layout else Vector2(560, 162)
+	tutorial_panel.position = Vector2(-260, 126) if compact_touch else (Vector2(-300, 142) if touch_layout else Vector2(-280, 155))
+	tutorial_panel.size = Vector2(520, 176) if compact_touch else (Vector2(600, 190) if touch_layout else Vector2(560, 162))
 	tutorial_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	tutorial_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.09, 0.075, 0.95), 18, Color(0.86, 0.79, 0.39, 0.72), 2))
 	hud_root.add_child(tutorial_panel)
@@ -833,8 +876,7 @@ func _clear_modal_content(shade_color: Color) -> void:
 
 func _add_modal_panel(panel: PanelContainer, desired_size: Vector2) -> void:
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	var available_size := modal_safe_root.size - Vector2(24.0, 24.0)
-	var panel_size := Vector2(minf(desired_size.x, available_size.x), minf(desired_size.y, available_size.y))
+	var panel_size := modal_size_for_available(desired_size, modal_safe_root.size, _uses_touch_layout())
 	panel.position = -panel_size * 0.5
 	panel.size = panel_size
 	modal_safe_root.add_child(panel)
@@ -1087,7 +1129,7 @@ func show_battle_report() -> void:
 	_clear_modal_content(Color(0.006, 0.025, 0.022, 0.90))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.095, 0.078, 0.99), 24, Color(0.72, 0.86, 0.48, 0.68), 2))
-	_add_modal_panel(panel, Vector2(1000, 620))
+	_add_modal_panel(panel, Vector2(920, 560) if _uses_compact_touch_layout() else Vector2(1000, 620))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
@@ -1284,7 +1326,7 @@ func show_result(title_text: String, body_text: String, retry_text: String = "�
 	_clear_modal_content(Color(0.01, 0.045, 0.04, 0.78))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	_add_modal_panel(panel, Vector2(600, 440) if _uses_touch_layout() else Vector2(600, 410))
+	_add_modal_panel(panel, Vector2(560, 400) if _uses_compact_touch_layout() else (Vector2(600, 440) if _uses_touch_layout() else Vector2(600, 410)))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 15)
@@ -1331,10 +1373,11 @@ func show_pause() -> void:
 
 func show_free_mode() -> void:
 	_clear_modal_content(Color(0.008, 0.035, 0.032, 0.88))
+	var compact_touch := _uses_compact_touch_layout()
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.99), 24, Color(0.64, 0.94, 0.62, 0.72), 2))
-	_add_modal_panel(panel, Vector2(940, 650))
+	_add_modal_panel(panel, Vector2(880, 600) if compact_touch else Vector2(940, 650))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 9)
@@ -1396,7 +1439,7 @@ func show_free_mode() -> void:
 	box.add_child(level_hint)
 
 	var preview_panel := PanelContainer.new()
-	preview_panel.custom_minimum_size = Vector2(0, 275)
+	preview_panel.custom_minimum_size = Vector2(0, 235 if compact_touch else 275)
 	preview_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	preview_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.055, 0.047, 0.88), 18, Color(0.45, 0.76, 0.49, 0.42), 1))
 	box.add_child(preview_panel)
@@ -1468,7 +1511,7 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	_add_modal_panel(panel, Vector2(700, 620) if _uses_touch_layout() else Vector2(660, 600))
+	_add_modal_panel(panel, Vector2(620, 560) if _uses_compact_touch_layout() else (Vector2(700, 620) if _uses_touch_layout() else Vector2(660, 600)))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 7)
@@ -1596,7 +1639,7 @@ func show_reset_confirmation() -> void:
 	_clear_modal_content(Color(0.008, 0.025, 0.022, 0.90))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.08, 0.075, 0.045, 0.98), 24, Color(0.90, 0.69, 0.36, 0.75), 2))
-	_add_modal_panel(panel, Vector2(620, 380) if _uses_touch_layout() else Vector2(600, 340))
+	_add_modal_panel(panel, Vector2(560, 340) if _uses_compact_touch_layout() else (Vector2(620, 380) if _uses_touch_layout() else Vector2(600, 340)))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 16)
