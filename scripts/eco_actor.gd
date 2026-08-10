@@ -37,6 +37,10 @@ const ECOLOGY_TRACE_INVESTIGATION_SECONDS := 5.2
 const DANGER_MEMORY_AVOID_SECONDS := 2.6
 const STAMINA_REGEN_COMBAT_DELAY := 0.8
 const STARVATION_DAMAGE_PER_SECOND := 0.01 / 3.0
+const AI_PACK_SHARE_RADIUS := 20.0
+const AI_HERD_SHARE_RADIUS := 18.0
+const AI_GROUP_ALERT_RANGE := 42.0
+const AI_MIN_PREY_UTILITY := 0.105
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -184,6 +188,7 @@ var forced_health_bar_timer: float = 0.0
 var behavior_rng := RandomNumberGenerator.new()
 var rewarded_food_sources: Dictionary = {}
 var threat_perception_multiplier: float = 1.0
+var group_escape_direction := Vector3.ZERO
 
 
 func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlled: bool, spawn_position: Vector3, threat_level: int = 0) -> void:
@@ -247,6 +252,73 @@ static func starvation_health_after(current_health: float, maximum_health: float
 
 static func can_regenerate_stamina(sprinting: bool, recovery_delay: float) -> bool:
 	return not sprinting and recovery_delay <= 0.0
+
+
+static func evaluate_prey_utility(context: Dictionary) -> float:
+	var hunter_health := clampf(float(context.get("hunter_health", 1.0)), 0.0, 1.0)
+	var hunter_stamina := clampf(float(context.get("hunter_stamina", 1.0)), 0.0, 1.0)
+	var target_health := clampf(float(context.get("target_health", 1.0)), 0.0, 1.0)
+	var target_stamina := clampf(float(context.get("target_stamina", 1.0)), 0.0, 1.0)
+	var hunger_ratio := clampf(float(context.get("hunger", 0.5)), 0.0, 1.0)
+	var aggression := clampf(float(context.get("aggression", 0.5)), 0.0, 1.0)
+	var distance := maxf(float(context.get("distance", 0.0)), 0.0)
+	var speed_ratio := maxf(float(context.get("speed_ratio", 1.0)), 0.1)
+	var tier_delta := clampf(float(context.get("tier_delta", 0.0)), -4.0, 4.0)
+	var size_delta := clampf(float(context.get("size_delta", 0.0)), -4.0, 4.0)
+	var support := clampf(float(context.get("support", 0.0)), 0.0, 4.0)
+	var target_pressure := clampf(float(context.get("target_pressure", 0.0)), 0.0, 4.0)
+	var habitat_delta := clampf(float(context.get("habitat_delta", 0.0)), -1.0, 1.0)
+	var threat_gap := maxi(int(context.get("threat_gap", 0)), 0)
+	var target_exposed := bool(context.get("target_exposed", false))
+	if hunter_health <= 0.18:
+		return 0.0
+	var prey_value := 0.22 + (1.0 - target_health) * 0.34 + (1.0 - target_stamina) * 0.10
+	prey_value += hunger_ratio * 0.18 + aggression * 0.12
+	var matchup := 0.62 + tier_delta * 0.12 + size_delta * 0.055
+	matchup += support * 0.085 + target_pressure * 0.065 + habitat_delta * 0.12
+	matchup -= maxf(target_health - hunter_health, 0.0) * 0.28
+	if speed_ratio < 0.90 and target_health > 0.45:
+		matchup -= (0.90 - speed_ratio) * 0.85
+	var distance_factor := lerpf(0.48, 1.0, clampf(1.0 - distance / 42.0, 0.0, 1.0))
+	var result := prey_value * clampf(matchup, 0.08, 1.35) * distance_factor
+	if bool(context.get("finisher", false)):
+		result *= 1.0 + (1.0 - target_health) * 0.58
+	if bool(context.get("pack_hunter", false)):
+		result *= 1.0 + support * 0.10
+	if bool(context.get("scavenger", false)):
+		result *= 1.0 + target_pressure * 0.08
+	if bool(context.get("ambush_ready", false)):
+		result *= 1.26
+	if bool(context.get("aerial_small_prey", false)):
+		result *= 1.16
+	if threat_gap > 0 and not target_exposed:
+		result *= maxf(0.22, 0.58 - float(threat_gap) * 0.08)
+	if hunter_stamina < 0.25 and distance > float(context.get("attack_range", 2.0)) * 1.8:
+		result *= 0.42
+	return maxf(result, 0.0)
+
+
+static func should_abandon_pursuit(utility: float, hunter_health: float, hunter_stamina: float, target_health: float, distance: float, attack_range: float, final_competition: bool) -> bool:
+	if final_competition:
+		return false
+	if utility < AI_MIN_PREY_UTILITY:
+		return true
+	if hunter_health < 0.30 and target_health > 0.52:
+		return true
+	return hunter_stamina < 0.16 and distance > attack_range + 1.8
+
+
+static func should_approach_contested_food(danger_count: int, courage: float, health_ratio: float, hunger_value: float, scavenger: bool, pack_support: int) -> bool:
+	if hunger_value >= 88.0:
+		return true
+	if health_ratio < 0.36 and danger_count > 0:
+		return false
+	var tolerance := pack_support
+	if scavenger:
+		tolerance += 1
+	if courage >= 0.72:
+		tolerance += 1
+	return danger_count <= tolerance
 
 
 static func should_follow_hotspot_signal(hunger_value: float, aggression: float, health_ratio: float, stamina_ratio: float, prey_signals: int, can_feed: bool, territory_restricted: bool, actor_value: int, event_sequence: int) -> bool:
@@ -1733,6 +1805,8 @@ func _update_ai(delta: float) -> void:
 		"flee":
 			if is_instance_valid(ai_target) and not ai_target.dead:
 				var away := (global_position - ai_target.global_position).normalized()
+				if group_escape_direction.length() > 0.1:
+					away = (away * 0.78 + group_escape_direction * 0.42).normalized()
 				var evade_side := Vector3(-away.z, 0.0, away.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 				var cover_offset := escape_cover_position - global_position
 				var habitat_offset := escape_habitat_position - global_position
@@ -1907,11 +1981,42 @@ func _update_ai(delta: float) -> void:
 
 
 func _think() -> void:
+	var living_actors: Array[EcoActor] = game.get_living_actors()
 	var nearest_threat: EcoActor
 	var threat_distance := INF
-	for other in game.get_living_actors():
+	var shared_herd_threat: EcoActor
+	var shared_herd_distance := INF
+	var shared_pack_target: EcoActor
+	var shared_pack_distance := INF
+	var pack_support := 0
+	var target_pressure_counts: Dictionary = {}
+	var herd_escape_sum := Vector3.ZERO
+	var herd_escape_count := 0
+	group_escape_direction = Vector3.ZERO
+	for other in living_actors:
 		if other == self or other.dead:
 			continue
+		var observer_distance := global_position.distance_to(other.global_position)
+		if observer_distance <= AI_GROUP_ALERT_RANGE and other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
+			var pressure_key: int = other.ai_target.actor_id
+			target_pressure_counts[pressure_key] = int(target_pressure_counts.get(pressure_key, 0)) + 1
+		if other.species_id == species_id:
+			var group_distance := observer_distance
+			if Catalog.has_trait(species_id, "pack_hunter") and group_distance <= AI_PACK_SHARE_RADIUS:
+				pack_support += 1
+				if other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead and other._can_detect_actor(other.ai_target):
+					var pack_target_distance := global_position.distance_to(other.ai_target.global_position)
+					if pack_target_distance <= AI_GROUP_ALERT_RANGE and group_distance < shared_pack_distance:
+						shared_pack_target = other.ai_target
+						shared_pack_distance = group_distance
+			if Catalog.has_trait(species_id, "herd_mover") and group_distance <= AI_HERD_SHARE_RADIUS and other.ai_state == "flee" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
+				var herd_target_distance := global_position.distance_to(other.ai_target.global_position)
+				if herd_target_distance <= AI_GROUP_ALERT_RANGE and group_distance < shared_herd_distance:
+					shared_herd_threat = other.ai_target
+					shared_herd_distance = group_distance
+				if other.desired_direction.length() > 0.1:
+					herd_escape_sum += other.desired_direction.normalized()
+					herd_escape_count += 1
 		if is_airborne() and not Catalog.has_trait(other.species_id, "flying"):
 			continue
 		if Catalog.considers_prey(other.species_id, species_id) and _can_detect_actor(other):
@@ -1920,6 +2025,8 @@ func _think() -> void:
 			if distance < threat_distance and stronger:
 				nearest_threat = other
 				threat_distance = distance
+	if herd_escape_count > 0:
+		group_escape_direction = (herd_escape_sum / float(herd_escape_count)).normalized()
 	var attacker_distance := global_position.distance_to(last_attacker.global_position) if is_instance_valid(last_attacker) and not last_attacker.dead else INF
 	if should_rest_for_stamina(stamina / maxf(max_stamina, 1.0), threat_distance, attacker_distance):
 		_switch_state("rest", null)
@@ -1931,10 +2038,24 @@ func _think() -> void:
 	if is_instance_valid(collapse_competitor):
 		_switch_state("hunt", collapse_competitor)
 		return
+	if is_instance_valid(shared_herd_threat) and Catalog.considers_prey(shared_herd_threat.species_id, species_id):
+		_switch_state("flee", shared_herd_threat)
+		return
 	if ai_state == "hunt" and is_instance_valid(ai_target) and not ai_target.dead:
 		if _can_detect_actor(ai_target):
 			last_known_target_position = ai_target.global_position
 			has_last_known_target_position = true
+			var current_utility := _prey_utility(ai_target, pack_support, int(target_pressure_counts.get(ai_target.actor_id, 0)))
+			var current_distance := global_position.distance_to(ai_target.global_position)
+			if should_abandon_pursuit(current_utility, health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), ai_target.health / maxf(ai_target.max_health, 1.0), current_distance, float(data["attack_range"]), _collapse_competition_active()):
+				var abandoned_target := ai_target
+				if Catalog.considers_prey(abandoned_target.species_id, species_id) and current_distance < 18.0:
+					_switch_state("flee", abandoned_target)
+				elif stamina < max_stamina * 0.28:
+					_switch_state("rest", null)
+				else:
+					_switch_state("wander", null)
+				return
 		else:
 			search_position = last_known_target_position if has_last_known_target_position else ai_target.global_position
 			search_timer = SEARCH_MEMORY_SECONDS + float(int(data["size"])) * 0.16
@@ -1943,12 +2064,12 @@ func _think() -> void:
 			state_commit_timer = 0.45
 			return
 	if ai_state == "search" and search_timer > 0.0:
-		var reacquired := _best_prey()
+		var reacquired := _best_prey(living_actors, target_pressure_counts, pack_support)
 		if is_instance_valid(reacquired):
 			_switch_state("hunt", reacquired)
 			return
 	if ai_state == "trace_investigate" and trace_investigation_timer > 0.0:
-		var visible_trace_prey := _best_prey()
+		var visible_trace_prey := _best_prey(living_actors, target_pressure_counts, pack_support)
 		if is_instance_valid(visible_trace_prey):
 			_switch_state("hunt", visible_trace_prey)
 	if ai_state == "hide" and is_cover_concealed():
@@ -1995,14 +2116,14 @@ func _think() -> void:
 		elif health < max_health * 0.46:
 			ai_state = "wander"
 		else:
-			var visible_hotspot_prey := _best_prey()
+			var visible_hotspot_prey := _best_prey(living_actors, target_pressure_counts, pack_support)
 			if is_instance_valid(visible_hotspot_prey):
 				_switch_state("hunt", visible_hotspot_prey)
 			return
 
 	if calm_timer > 0.0 and hunger < 70.0:
 		if hunger > 42.0:
-			var calm_resource := _best_food_resource()
+			var calm_resource := _best_food_resource(living_actors)
 			if is_instance_valid(calm_resource):
 				ai_state = "food"
 				resource_target = calm_resource
@@ -2026,7 +2147,7 @@ func _think() -> void:
 		return
 
 	if hunger > 42.0:
-		var resource := _best_food_resource()
+		var resource := _best_food_resource(living_actors)
 		if is_instance_valid(resource):
 			if ai_state != "food":
 				state_commit_timer = 1.4
@@ -2034,8 +2155,13 @@ func _think() -> void:
 			resource_target = resource
 			return
 
-	var prey := _best_prey()
 	var hunting_motivation := hunger / 100.0 + float(data["aggression"]) * 0.56
+	if is_instance_valid(shared_pack_target) and hunting_motivation > 0.38:
+		var shared_utility := _prey_utility(shared_pack_target, pack_support, int(target_pressure_counts.get(shared_pack_target.actor_id, 0)))
+		if shared_utility >= AI_MIN_PREY_UTILITY:
+			_switch_state("hunt", shared_pack_target)
+			return
+	var prey := _best_prey(living_actors, target_pressure_counts, pack_support)
 	if is_instance_valid(prey) and hunting_motivation > 0.44:
 		_switch_state("hunt", prey)
 		return
@@ -2088,6 +2214,8 @@ func _best_territory_intruder() -> EcoActor:
 	var closest_distance: float = territory_radius * 0.76
 	for other in game.get_living_actors():
 		if other == self or other.dead or other.spawn_protection > 0.0 or other.species_id == species_id:
+			continue
+		if not _can_detect_actor(other):
 			continue
 		var distance_from_home: float = other.global_position.distance_to(territory_center)
 		if distance_from_home >= closest_distance:
@@ -2228,14 +2356,17 @@ func _skill_engage_range() -> float:
 		_: return 5.2
 
 
-func _best_food_resource() -> Node3D:
+func _best_food_resource(living_actors: Array[EcoActor] = []) -> Node3D:
+	var candidates: Array[EcoActor] = living_actors
+	if candidates.is_empty():
+		candidates = game.get_living_actors()
 	var corpse: Node3D
 	if Catalog.can_eat_corpse(species_id):
 		var corpse_range := 34.0
 		if Catalog.has_trait(species_id, "scavenger"):
 			corpse_range *= 1.55 if species_id == "raccoon" else 1.36
 		corpse = game.nearest_corpse(global_position, corpse_range)
-	if is_instance_valid(corpse):
+	if is_instance_valid(corpse) and _corpse_is_safe(corpse, candidates):
 		return corpse
 	if Catalog.can_eat_food(species_id):
 		return _best_wild_food(30.0)
@@ -2243,6 +2374,26 @@ func _best_food_resource() -> Node3D:
 	if is_instance_valid(wild_meat):
 		return wild_meat
 	return null
+
+
+func _corpse_is_safe(corpse: Node3D, living_actors: Array[EcoActor]) -> bool:
+	var danger_count := 0
+	var nearby_pack := 0
+	var own_presence := _ecology_combat_presence(self)
+	for other in living_actors:
+		if other == self or other.dead:
+			continue
+		var distance := corpse.global_position.distance_to(other.global_position)
+		if other.species_id == species_id and distance <= 10.0:
+			nearby_pack += 1
+			continue
+		if distance > 9.0:
+			continue
+		var threatens_self := Catalog.considers_prey(other.species_id, species_id)
+		var stronger_competitor := Catalog.can_eat_corpse(other.species_id) and _ecology_combat_presence(other) > own_presence * 1.08
+		if threatens_self or stronger_competitor:
+			danger_count += 1
+	return should_approach_contested_food(danger_count, float(data["courage"]), health / maxf(max_health, 1.0), hunger, Catalog.has_trait(species_id, "scavenger"), nearby_pack)
 
 
 func _best_wild_food(search_range: float) -> Node3D:
@@ -2344,10 +2495,20 @@ func is_stalking_ecology_hotspot(event_sequence: int) -> bool:
 	return not dead and ai_state == "hotspot_stalk" and hotspot_event_sequence == event_sequence
 
 
-func _best_prey() -> EcoActor:
+func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dictionary = {}, pack_support: int = -1) -> EcoActor:
+	var candidates: Array[EcoActor] = living_actors
+	if candidates.is_empty():
+		candidates = game.get_living_actors()
+	var support_count := pack_support
+	if support_count < 0:
+		support_count = 0
+		if Catalog.has_trait(species_id, "pack_hunter"):
+			for candidate in candidates:
+				if candidate != self and not candidate.dead and candidate.species_id == species_id and global_position.distance_to(candidate.global_position) <= AI_PACK_SHARE_RADIUS:
+					support_count += 1
 	var best: EcoActor
 	var best_score := -INF
-	for other in game.get_living_actors():
+	for other in candidates:
 		if other == self or other.dead or other.spawn_protection > 0.0:
 			continue
 		var considers_target: bool = Catalog.considers_prey(species_id, other.species_id)
@@ -2356,20 +2517,50 @@ func _best_prey() -> EcoActor:
 			continue
 		if other.is_airborne() and not Catalog.has_trait(species_id, "flying"):
 			continue
-		var distance := global_position.distance_to(other.global_position)
 		if not _can_detect_actor(other):
 			continue
-		var weakness: float = 1.0 + (1.0 - other.health / other.max_health) * 2.2
-		var size_risk: float = maxf(0.35, 1.0 + float(int(data["size"]) - int(other.data["size"])) * 0.22)
-		var score: float = weakness * size_risk / maxf(distance, 2.0)
+		var score := _prey_utility(other, support_count, int(target_pressure_counts.get(other.actor_id, 0)))
 		if other.scent_mark_timer > 0.0:
-			score *= 2.15
+			score *= 1.35
 		if other.is_opportunity_exposed():
-			score *= 1.45 + float(Catalog.opportunity_threat_gap(species_id, other.species_id)) * 0.18
-		if score > best_score:
+			score *= 1.18 + float(Catalog.opportunity_threat_gap(species_id, other.species_id)) * 0.10
+		if score >= AI_MIN_PREY_UTILITY and score > best_score:
 			best_score = score
 			best = other
 	return best
+
+
+func _prey_utility(target: EcoActor, pack_support: int = 0, target_pressure: int = 0) -> float:
+	if not is_instance_valid(target) or target.dead:
+		return 0.0
+	var target_region: String = game.world.region_id_at(target.global_position) if game.world != null and game.world.has_method("region_id_at") else ""
+	var habitat_delta := 0.0
+	if target_region != "":
+		habitat_delta = Catalog.habitat_affinity(species_id, target_region) - Catalog.habitat_affinity(target.species_id, target_region)
+	var context := {
+		"hunter_health": health / maxf(max_health, 1.0),
+		"hunter_stamina": stamina / maxf(max_stamina, 1.0),
+		"target_health": target.health / maxf(target.max_health, 1.0),
+		"target_stamina": target.stamina / maxf(target.max_stamina, 1.0),
+		"hunger": hunger / 100.0,
+		"aggression": float(data["aggression"]),
+		"distance": global_position.distance_to(target.global_position),
+		"speed_ratio": float(data["speed"]) / maxf(float(target.data["speed"]), 0.1),
+		"tier_delta": Catalog.combat_tier(species_id) - Catalog.combat_tier(target.species_id),
+		"size_delta": int(data["size"]) - int(target.data["size"]),
+		"support": pack_support,
+		"target_pressure": target_pressure,
+		"habitat_delta": habitat_delta,
+		"threat_gap": Catalog.opportunity_threat_gap(species_id, target.species_id),
+		"target_exposed": target.is_opportunity_exposed(),
+		"finisher": Catalog.has_trait(species_id, "finisher"),
+		"pack_hunter": Catalog.has_trait(species_id, "pack_hunter"),
+		"scavenger": Catalog.has_trait(species_id, "scavenger"),
+		"ambush_ready": has_cover_ambush(),
+		"aerial_small_prey": Catalog.has_trait(species_id, "flying") and int(target.data["size"]) <= 2,
+		"attack_range": float(data["attack_range"]),
+	}
+	return evaluate_prey_utility(context)
 
 
 func _apply_movement(delta: float) -> void:

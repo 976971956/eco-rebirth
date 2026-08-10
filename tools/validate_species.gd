@@ -67,6 +67,36 @@ func _run_validation() -> void:
 		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
 	if not is_equal_approx(ActorScript.starvation_health_after(1.2, 100.0, 3.0), 1.0):
 		failures.append("饥饿伤害仍能直接杀死生物")
+	var favorable_hunt_score := ActorScript.evaluate_prey_utility({
+		"hunter_health": 0.92, "hunter_stamina": 0.78, "target_health": 0.22, "target_stamina": 0.16,
+		"hunger": 0.72, "aggression": 0.66, "distance": 8.0, "speed_ratio": 1.08,
+		"tier_delta": 1, "size_delta": 0, "support": 2, "target_pressure": 1,
+		"habitat_delta": 0.25, "threat_gap": 0, "target_exposed": true, "finisher": true,
+		"pack_hunter": true, "scavenger": false, "ambush_ready": false, "aerial_small_prey": false,
+		"attack_range": 2.0,
+	})
+	var reckless_hunt_score := ActorScript.evaluate_prey_utility({
+		"hunter_health": 0.35, "hunter_stamina": 0.12, "target_health": 0.95, "target_stamina": 0.90,
+		"hunger": 0.35, "aggression": 0.40, "distance": 24.0, "speed_ratio": 0.70,
+		"tier_delta": -2, "size_delta": -2, "support": 0, "target_pressure": 0,
+		"habitat_delta": -0.30, "threat_gap": 2, "target_exposed": false, "finisher": false,
+		"pack_hunter": false, "scavenger": false, "ambush_ready": false, "aerial_small_prey": false,
+		"attack_range": 2.0,
+	})
+	if favorable_hunt_score <= reckless_hunt_score or favorable_hunt_score < ActorScript.AI_MIN_PREY_UTILITY:
+		failures.append("AI 目标效用没有优先选择残血、力竭且有队友支援的猎物")
+	if reckless_hunt_score >= ActorScript.AI_MIN_PREY_UTILITY:
+		failures.append("AI 仍会选择远距离、更强且无法追上的猎物")
+	if not ActorScript.should_abandon_pursuit(reckless_hunt_score, 0.35, 0.12, 0.95, 24.0, 2.0, false):
+		failures.append("AI 在低收益或力竭时不会放弃追击")
+	if ActorScript.should_abandon_pursuit(0.0, 0.10, 0.05, 1.0, 30.0, 2.0, true):
+		failures.append("终局收束战被普通脱战逻辑中断")
+	if ActorScript.should_approach_contested_food(1, 0.30, 0.30, 60.0, false, 0):
+		failures.append("受伤独行 AI 仍会冲进有强敌的尸体争夺点")
+	if not ActorScript.should_approach_contested_food(1, 0.45, 0.80, 60.0, true, 0):
+		failures.append("健康食腐者无法承担一名尸体竞争者")
+	if not ActorScript.should_approach_contested_food(3, 0.20, 0.30, 90.0, false, 0):
+		failures.append("即将饿死的 AI 没有在最后关头冒险进食")
 
 	var base_threat_actor: EcoActor = ActorScript.new()
 	base_threat_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -80,6 +110,62 @@ func _run_validation() -> void:
 		failures.append("世界威胁没有同步提高 AI 生命、速度和感知")
 	base_threat_actor.free()
 	high_threat_actor.free()
+
+	var pack_leader: EcoActor = ActorScript.new()
+	pack_leader.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(pack_leader)
+	pack_leader.setup(game_stub, 63, "wolf", false, Vector3(5.0, 0.0, 0.0), 0)
+	var pack_follower: EcoActor = ActorScript.new()
+	pack_follower.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(pack_follower)
+	pack_follower.setup(game_stub, 64, "wolf", false, Vector3.ZERO, 0)
+	var distant_rabbit: EcoActor = ActorScript.new()
+	distant_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(distant_rabbit)
+	distant_rabbit.setup(game_stub, 65, "rabbit", false, Vector3(31.0, 0.0, 0.0), 0)
+	pack_leader.spawn_protection = 0.0
+	pack_follower.spawn_protection = 0.0
+	distant_rabbit.spawn_protection = 0.0
+	pack_leader._switch_state("hunt", distant_rabbit)
+	pack_follower.hunger = 70.0
+	pack_follower.calm_timer = 0.0
+	pack_follower.state_commit_timer = 0.0
+	game_stub.actors = [pack_leader, pack_follower, distant_rabbit]
+	pack_follower._think()
+	if pack_follower.ai_state != "hunt" or pack_follower.ai_target != distant_rabbit:
+		failures.append("狼群成员没有接收近处同伴共享的追猎目标")
+	pack_leader.free()
+	pack_follower.free()
+	distant_rabbit.free()
+	game_stub.actors.clear()
+
+	var herd_scout: EcoActor = ActorScript.new()
+	herd_scout.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(herd_scout)
+	herd_scout.setup(game_stub, 66, "deer", false, Vector3(5.0, 0.0, 0.0), 0)
+	var herd_follower: EcoActor = ActorScript.new()
+	herd_follower.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(herd_follower)
+	herd_follower.setup(game_stub, 67, "deer", false, Vector3.ZERO, 0)
+	var distant_wolf: EcoActor = ActorScript.new()
+	distant_wolf.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(distant_wolf)
+	distant_wolf.setup(game_stub, 68, "wolf", false, Vector3(31.0, 0.0, 0.0), 0)
+	herd_scout.spawn_protection = 0.0
+	herd_follower.spawn_protection = 0.0
+	distant_wolf.spawn_protection = 0.0
+	herd_scout._switch_state("flee", distant_wolf)
+	herd_scout.desired_direction = Vector3.LEFT
+	herd_follower.calm_timer = 0.0
+	herd_follower.state_commit_timer = 0.0
+	game_stub.actors = [herd_scout, herd_follower, distant_wolf]
+	herd_follower._think()
+	if herd_follower.ai_state != "flee" or herd_follower.ai_target != distant_wolf or herd_follower.group_escape_direction.length() < 0.9:
+		failures.append("鹿群成员没有接收同伴的危险警报与逃生方向")
+	herd_scout.free()
+	herd_follower.free()
+	distant_wolf.free()
+	game_stub.actors.clear()
 
 	var foraging_actor: EcoActor = ActorScript.new()
 	foraging_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -569,7 +655,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, tactical counterplay mastery/anti-farming, ecological leverage/AI third-party routing, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

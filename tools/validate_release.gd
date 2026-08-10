@@ -31,8 +31,9 @@ func _init() -> void:
 	_validate_counterplay_mastery_contract()
 	_validate_ecology_hotspot_contract()
 	_validate_ecology_trace_contract()
+	_validate_ai_tactical_contract()
 	if failures.is_empty():
-		print("[release] V1.16 发布校验通过：暂停安全、成长生态、关卡节奏与三端规则正常")
+		print("[release] V1.17 发布校验通过：AI 战况判断、群体情报、关卡节奏与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -204,7 +205,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.16.0\"") and presets.contains("application/short_version=\"1.16.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/name=\"1.17.0\"") and presets.contains("application/short_version=\"1.17.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=270") and presets.contains("application/version=\"270\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -529,6 +531,19 @@ func _validate_ecology_trace_contract() -> void:
 	world.free()
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("ecology_trace_label") and ui_source.contains("生态踪迹 · 暂无线索"), "移动 HUD 没有持续显示生态踪迹")
+
+
+func _validate_ai_tactical_contract() -> void:
+	_expect(ActorScript.AI_PACK_SHARE_RADIUS > 0.0 and ActorScript.AI_HERD_SHARE_RADIUS > 0.0, "群猎或群居 AI 没有有限情报距离")
+	_expect(ActorScript.AI_GROUP_ALERT_RANGE >= ActorScript.AI_PACK_SHARE_RADIUS, "群体目标警报范围小于成员交流范围")
+	_expect(ActorScript.should_abandon_pursuit(0.0, 0.8, 0.8, 0.2, 6.0, 2.0, false), "低效用追击不会中止")
+	_expect(not ActorScript.should_abandon_pursuit(0.0, 0.1, 0.1, 1.0, 30.0, 2.0, true), "最终竞争仍可被普通脱战打断")
+	_expect(not ActorScript.should_approach_contested_food(1, 0.2, 0.3, 60.0, false, 0), "受伤独行者仍会无视守尸风险")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("func evaluate_prey_utility") and actor_source.contains("target_pressure_counts"), "AI 猎物选择没有战况效用与第三方压力")
+	_expect(actor_source.contains("Catalog.has_trait(species_id, \"pack_hunter\")") and actor_source.contains("shared_pack_target"), "群猎物种没有共享追猎意图")
+	_expect(actor_source.contains("Catalog.has_trait(species_id, \"herd_mover\")") and actor_source.contains("group_escape_direction"), "群居物种没有共享危险或逃生方向")
+	_expect(actor_source.contains("func _corpse_is_safe") and actor_source.contains("stronger_competitor"), "尸体目标没有竞争风险评估")
 
 
 func _expect(condition: bool, message: String) -> void:
