@@ -15,7 +15,7 @@
 
 Godot 官方建议让场景保持单一职责、低耦合，并由拥有者管理外部关系；自定义 Resource 可直接序列化、在 Inspector 编辑且适合版本控制。因此本项目采用“场景负责行为组合，Resource 负责数据”的结构。
 
-### 1.1 当前可玩版移动 UI 基线（V1.15）
+### 1.1 当前可玩版移动 UI 基线（V1.16）
 
 - 逻辑设计尺寸为 1280×720，使用 `canvas_items + expand` 兼容 16:9、超宽手机和 4:3 平板横屏。
 - Android/iOS 通过 `DisplayServer.get_display_safe_area()` 把物理安全区域换算为 Godot 逻辑边距；首页内容、HUD、弹窗和触控层共用同一套边距。

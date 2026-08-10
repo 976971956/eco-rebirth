@@ -32,16 +32,16 @@ var player: EcoActor
 var rng := RandomNumberGenerator.new()
 
 const LEVEL_CONFIG := [
-	{"individuals": 10, "world_size": 86.0, "species_range": Vector2i(4, 5), "establishment": 45.0, "convergence_ratio": 0.40},
-	{"individuals": 20, "world_size": 104.0, "species_range": Vector2i(6, 8), "establishment": 55.0, "convergence_ratio": 0.35},
-	{"individuals": 30, "world_size": 118.0, "species_range": Vector2i(8, 11), "establishment": 65.0, "convergence_ratio": 0.33},
-	{"individuals": 40, "world_size": 130.0, "species_range": Vector2i(10, 13), "establishment": 75.0, "convergence_ratio": 0.30},
-	{"individuals": 50, "world_size": 140.0, "species_range": Vector2i(12, 15), "establishment": 85.0, "convergence_ratio": 0.28},
-	{"individuals": 60, "world_size": 150.0, "species_range": Vector2i(14, 18), "establishment": 95.0, "convergence_ratio": 0.27},
-	{"individuals": 70, "world_size": 158.0, "species_range": Vector2i(16, 20), "establishment": 105.0, "convergence_ratio": 0.25},
-	{"individuals": 80, "world_size": 166.0, "species_range": Vector2i(18, 22), "establishment": 115.0, "convergence_ratio": 0.24},
-	{"individuals": 90, "world_size": 174.0, "species_range": Vector2i(20, 25), "establishment": 120.0, "convergence_ratio": 0.22},
-	{"individuals": 100, "world_size": 182.0, "species_range": Vector2i(22, 26), "establishment": 135.0, "convergence_ratio": 0.20},
+	{"individuals": 10, "world_size": 140.0, "species_range": Vector2i(4, 5), "establishment": 180.0, "forced_collapse": 300.0, "convergence_ratio": 0.30},
+	{"individuals": 20, "world_size": 190.0, "species_range": Vector2i(6, 8), "establishment": 250.0, "forced_collapse": 420.0, "convergence_ratio": 0.28},
+	{"individuals": 30, "world_size": 240.0, "species_range": Vector2i(8, 11), "establishment": 320.0, "forced_collapse": 540.0, "convergence_ratio": 0.27},
+	{"individuals": 40, "world_size": 280.0, "species_range": Vector2i(10, 13), "establishment": 360.0, "forced_collapse": 600.0, "convergence_ratio": 0.25},
+	{"individuals": 50, "world_size": 320.0, "species_range": Vector2i(12, 15), "establishment": 430.0, "forced_collapse": 720.0, "convergence_ratio": 0.24},
+	{"individuals": 60, "world_size": 350.0, "species_range": Vector2i(14, 18), "establishment": 500.0, "forced_collapse": 840.0, "convergence_ratio": 0.23},
+	{"individuals": 70, "world_size": 380.0, "species_range": Vector2i(16, 20), "establishment": 540.0, "forced_collapse": 900.0, "convergence_ratio": 0.22},
+	{"individuals": 80, "world_size": 410.0, "species_range": Vector2i(18, 22), "establishment": 610.0, "forced_collapse": 1020.0, "convergence_ratio": 0.21},
+	{"individuals": 90, "world_size": 440.0, "species_range": Vector2i(20, 25), "establishment": 650.0, "forced_collapse": 1080.0, "convergence_ratio": 0.20},
+	{"individuals": 100, "world_size": 470.0, "species_range": Vector2i(22, 26), "establishment": 720.0, "forced_collapse": 1200.0, "convergence_ratio": 0.20},
 ]
 
 var world_seed: int = 0
@@ -89,6 +89,7 @@ var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
 var leaderboard_refresh_remaining: float = 0.0
 var orientation_blocked: bool = false
+var world_seed_override: int = -1
 
 
 func _ready() -> void:
@@ -116,6 +117,9 @@ func _ready() -> void:
 	ui.orientation_blocked_changed.connect(_on_orientation_blocked_changed)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
+	var seed_arg := _find_cmdline_value("--world-seed")
+	if seed_arg != "":
+		world_seed_override = int(seed_arg)
 	if batch_arg != "":
 		batch_total_runs = maxi(int(batch_arg), 1)
 		batch_runs_remaining = batch_total_runs
@@ -125,7 +129,7 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
+			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
 		batch_death_log_file = FileAccess.open("user://batch_deaths.csv", FileAccess.WRITE)
 		if batch_death_log_file != null:
 			batch_death_log_file.store_line("run,time_s,victim,killer")
@@ -144,7 +148,7 @@ func _process(delta: float) -> void:
 		_refresh_ecology_hotspot_activity(delta)
 	if batch_mode and state == "playing":
 		var living := get_living_actors()
-		if living.size() <= 1 or level_elapsed > 900.0:
+		if living.size() <= 1 or level_elapsed > 2100.0:
 			_finish_batch_run(living)
 			return
 	if state == "playing" and not orientation_blocked and is_instance_valid(player):
@@ -279,7 +283,8 @@ func _start_new_world(free_mode: bool = false) -> void:
 	danger_memory_avoidances = 0
 	ecology_trace_report_cooldown = 0.0
 	danger_memory_report_cooldown = 0.0
-	world_seed = int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
+	var batch_run_offset := batch_total_runs - batch_runs_remaining if batch_mode else 0
+	world_seed = world_seed_override + batch_run_offset if world_seed_override >= 0 else int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
 	rng.seed = world_seed
 
 	var level_config: Dictionary = LEVEL_CONFIG[current_level - 1]
@@ -396,7 +401,7 @@ func _begin_tutorial_if_needed() -> void:
 	tutorial_active = false
 	tutorial_step = 0
 	tutorial_world_seed = world_seed
-	await get_tree().create_timer(8.75).timeout
+	await get_tree().create_timer(8.75, false).timeout
 	if state != "playing" or tutorial_completed or tutorial_world_seed != world_seed:
 		return
 	tutorial_active = true
@@ -585,10 +590,8 @@ func _check_collapse_trigger() -> void:
 		return
 	var ratio: float = level_config["convergence_ratio"]
 	var living_ratio := float(get_living_actors().size()) / maxf(float(roster_size), 1.0)
-	# Large late-game maps need more time for ecology to develop, but waiting five
-	# full establishment windows leaves too little room for a 100-animal finale.
-	var forced_collapse_factor := 3.5 if current_level >= 10 else (4.0 if current_level >= 8 else 5.0)
-	if living_ratio > ratio and level_elapsed < establishment * forced_collapse_factor:
+	var forced_collapse: float = float(level_config["forced_collapse"])
+	if living_ratio > ratio and level_elapsed < forced_collapse:
 		return
 	collapse_triggered = true
 	if is_instance_valid(world):
@@ -766,12 +769,13 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 	var winner := "none"
 	if living.size() == 1:
 		winner = living[0].species_id
-	var timed_out := level_elapsed > 900.0 and living.size() > 1
+	var timed_out := level_elapsed > 2100.0 and living.size() > 1
 	var run_index := batch_total_runs - batch_runs_remaining + 1
 	var deaths_30s := _count_batch_deaths_by(30.0)
 	var deaths_60s := _count_batch_deaths_by(60.0)
 	var first_death_s := float(batch_deaths[0].get("time", -1.0)) if not batch_deaths.is_empty() else -1.0
 	batch_results.append({
+		"world_seed": world_seed,
 		"winner": winner,
 		"duration": level_elapsed,
 		"deaths": batch_deaths.duplicate(),
@@ -785,12 +789,12 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%s" % [run_index, batch_level, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%s" % [run_index, batch_level, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
 			batch_death_log_file.store_line("%d,%.1f,%s,%s" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"]])
-	print("[batch] run %d/%d done — winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
-		run_index, batch_total_runs, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
+	print("[batch] run %d/%d done — seed=%d winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
+		run_index, batch_total_runs, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -1009,7 +1013,7 @@ func consume_interact_request() -> bool:
 
 
 func get_ai_damage_multiplier() -> float:
-	return 1.0 + min(threat_level, 8) * 0.045
+	return 1.0 if run_uses_free_mode else 1.0 + min(threat_level, 8) * 0.045
 
 
 func show_hint(text_value: String) -> void:
@@ -1077,6 +1081,9 @@ func on_counterplay_progress(actor: EcoActor, target: EcoActor, route_id: String
 
 func on_player_experience_gained(amount: int, defeated_species: String, reason: String = "击杀") -> void:
 	if ui == null or batch_mode:
+		return
+	if reason == "觅食":
+		ui.add_event("觅食%s · 获得 %d 经验" % [defeated_species, amount], "#8fe0b0")
 		return
 	var action_text := "击倒" if reason == "击杀" else "%s ·" % reason
 	ui.add_event("%s%s · 获得 %d 经验" % [action_text, Catalog.display_name(defeated_species), amount], "#8fe0b0" if reason == "击杀" else "#f0cf78")

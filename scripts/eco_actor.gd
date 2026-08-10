@@ -35,6 +35,8 @@ const COUNTERPLAY_MASTERY_VISUAL_TIME := 3.2
 const ECOLOGY_TRACE_INTERVAL := 1.05
 const ECOLOGY_TRACE_INVESTIGATION_SECONDS := 5.2
 const DANGER_MEMORY_AVOID_SECONDS := 2.6
+const STAMINA_REGEN_COMBAT_DELAY := 0.8
+const STARVATION_DAMAGE_PER_SECOND := 0.01 / 3.0
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -59,6 +61,7 @@ const MAX_LEVEL := 8
 var attack_timer: float = 0.0
 var skill_timer: float = 0.0
 var eat_timer: float = 0.0
+var stamina_regen_delay: float = 0.0
 var decision_timer: float = 0.0
 var wander_timer: float = 0.0
 var dash_timer: float = 0.0
@@ -178,6 +181,9 @@ var health_bar_fill: MeshInstance3D
 var health_bar_label: Label3D
 var health_bar_visibility_timer: float = 0.0
 var forced_health_bar_timer: float = 0.0
+var behavior_rng := RandomNumberGenerator.new()
+var rewarded_food_sources: Dictionary = {}
+var threat_perception_multiplier: float = 1.0
 
 
 func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlled: bool, spawn_position: Vector3, threat_level: int = 0) -> void:
@@ -186,8 +192,13 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	species_id = new_species_id
 	is_player = player_controlled
 	data = Catalog.get_data(species_id)
+	var world_seed_value := int(game.get("world_seed")) if is_instance_valid(game) and game.get("world_seed") != null else 1
+	behavior_rng.seed = behavior_seed(world_seed_value, actor_id, species_id)
 	name = "%s_%02d%s" % [species_id.capitalize(), actor_id, "_Player" if is_player else ""]
 	var ai_health_scale: float = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.06
+	if not is_player:
+		data["speed"] = float(data["speed"]) * (1.0 + float(min(threat_level, 8)) * 0.01)
+		threat_perception_multiplier = 1.0 + float(min(threat_level, 8)) * 0.025
 	max_health = float(data["health"]) * ai_health_scale
 	health = max_health
 	max_stamina = float(data["stamina"])
@@ -218,6 +229,24 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	last_sample_position = global_position
 	ecology_trace_last_position = global_position
 	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
+
+
+static func behavior_seed(seed_value: int, id_value: int, species_value: String) -> int:
+	return seed_value ^ (id_value * 104729) ^ species_value.hash()
+
+
+static func should_rest_for_stamina(stamina_ratio: float, nearest_threat_distance: float, attacker_distance: float) -> bool:
+	return stamina_ratio < EXPOSED_STAMINA_RATIO and nearest_threat_distance >= 14.0 and attacker_distance >= 14.0
+
+
+static func starvation_health_after(current_health: float, maximum_health: float, delta: float) -> float:
+	if current_health <= 1.0:
+		return current_health
+	return maxf(current_health - maximum_health * STARVATION_DAMAGE_PER_SECOND * delta, 1.0)
+
+
+static func can_regenerate_stamina(sprinting: bool, recovery_delay: float) -> bool:
+	return not sprinting and recovery_delay <= 0.0
 
 
 static func should_follow_hotspot_signal(hunger_value: float, aggression: float, health_ratio: float, stamina_ratio: float, prey_signals: int, can_feed: bool, territory_restricted: bool, actor_value: int, event_sequence: int) -> bool:
@@ -1397,6 +1426,7 @@ func _update_timers(delta: float) -> void:
 	attack_timer = maxf(attack_timer - delta, 0.0)
 	skill_timer = maxf(skill_timer - delta, 0.0)
 	eat_timer = maxf(eat_timer - delta, 0.0)
+	stamina_regen_delay = maxf(stamina_regen_delay - delta, 0.0)
 	decision_timer -= delta
 	wander_timer -= delta
 	spawn_protection = maxf(spawn_protection - delta, 0.0)
@@ -1578,14 +1608,12 @@ func _update_cover_visual() -> void:
 func _update_needs(delta: float) -> void:
 	hunger = minf(hunger + float(data["hunger_rate"]) * delta, 100.0)
 	if hunger >= 100.0:
-		health -= max_health * 0.008 * delta
+		health = starvation_health_after(health, max_health, delta)
 		health_changed.emit(health, max_health)
 		_update_health_bar()
 		if is_player and starvation_warning_timer <= 0.0:
 			starvation_warning_timer = 5.0
 			game.show_hint("饱腹值耗尽，正在持续失去生命！快寻找食物")
-		if health <= 0.0:
-			die(null)
 	if is_player:
 		hunger_changed.emit(hunger)
 
@@ -1872,8 +1900,8 @@ func _update_ai(delta: float) -> void:
 				desired_direction = Vector3.ZERO
 		_:
 			if wander_timer <= 0.0:
-				wander_timer = 1.4 + fmod(float(actor_id) * 0.51 + Time.get_ticks_msec() * 0.001, 2.8)
-				var angle := fmod(float(actor_id) * 1.83 + Time.get_ticks_msec() * 0.00037, TAU)
+				wander_timer = behavior_rng.randf_range(1.4, 4.2)
+				var angle := behavior_rng.randf_range(0.0, TAU)
 				wander_direction = Vector3(cos(angle), 0.0, sin(angle))
 			desired_direction = wander_direction
 
@@ -1886,13 +1914,14 @@ func _think() -> void:
 			continue
 		if is_airborne() and not Catalog.has_trait(other.species_id, "flying"):
 			continue
-		if Catalog.considers_prey(other.species_id, species_id):
+		if Catalog.considers_prey(other.species_id, species_id) and _can_detect_actor(other):
 			var distance := global_position.distance_to(other.global_position)
 			var stronger: bool = other.health / other.max_health > 0.25 or int(other.data["size"]) >= int(data["size"])
 			if distance < threat_distance and stronger:
 				nearest_threat = other
 				threat_distance = distance
-	if stamina < max_stamina * EXPOSED_STAMINA_RATIO:
+	var attacker_distance := global_position.distance_to(last_attacker.global_position) if is_instance_valid(last_attacker) and not last_attacker.dead else INF
+	if should_rest_for_stamina(stamina / maxf(max_stamina, 1.0), threat_distance, attacker_distance):
 		_switch_state("rest", null)
 		return
 	# The final habitat contest overrides ordinary fear and retaliation. Without
@@ -2152,6 +2181,7 @@ func _can_detect_actor(other: EcoActor, base_range: float = 27.0) -> bool:
 	if distance <= close_reveal:
 		return true
 	var detect_range := base_range
+	detect_range *= threat_perception_multiplier
 	if game.world != null and game.world.has_method("perception_multiplier"):
 		detect_range *= game.world.perception_multiplier(species_id)
 	if other.is_cover_concealed():
@@ -2377,7 +2407,7 @@ func _apply_movement(delta: float) -> void:
 			last_sample_position = global_position
 			movement_sample_timer = 0.0
 			if stuck_duration > 0.85:
-				var side_sign := -1.0 if (actor_id + int(Time.get_ticks_msec() / 1000)) % 2 == 0 else 1.0
+				var side_sign := -1.0 if behavior_rng.randi_range(0, 1) == 0 else 1.0
 				recovery_direction = flat_direction.rotated(Vector3.UP, side_sign * PI * 0.62).normalized()
 				recovery_timer = 0.9
 				stuck_duration = 0.0
@@ -2428,8 +2458,8 @@ func _apply_movement(delta: float) -> void:
 		if game.world != null and game.world.has_method("stamina_cost_multiplier"):
 			sprint_cost *= game.world.stamina_cost_multiplier(species_id, global_position)
 		stamina = maxf(stamina - sprint_cost * delta, 0.0)
-	else:
-		var hunger_factor := 1.0 if hunger < 70.0 else (0.85 if hunger < 90.0 else 0.65)
+	elif can_regenerate_stamina(sprinting, stamina_regen_delay):
+		var hunger_factor := 1.0 if hunger < 60.0 else (0.85 if hunger < 80.0 else 0.65)
 		var environment_regen: float = float(game.world.stamina_regen_multiplier(species_id, global_position)) if game.world != null and game.world.has_method("stamina_regen_multiplier") else 1.0
 		stamina = minf(stamina + float(data["regen"]) * hunger_factor * environment_regen * delta * (1.0 if flat_direction.length() < 0.1 else 0.70), max_stamina)
 	if dash_timer > 0.0:
@@ -2536,6 +2566,7 @@ func _try_attack() -> void:
 				nearby_pack += 1
 		attack_cost *= 1.0 - mini(nearby_pack, 3) * 0.06
 	stamina -= attack_cost
+	stamina_regen_delay = STAMINA_REGEN_COMBAT_DELAY
 	_update_exhaustion_state()
 	var damage := float(data["attack"])
 	if not is_player:
@@ -3010,6 +3041,7 @@ func use_skill(target: EcoActor = null) -> bool:
 	if used:
 		spawn_protection = 0.0
 		stamina = maxf(stamina - float(data["skill_cost"]), 0.0)
+		stamina_regen_delay = STAMINA_REGEN_COMBAT_DELAY
 		skill_timer = float(data["skill_cooldown"])
 		exposed_timer = maxf(exposed_timer, Catalog.skill_exposure_duration(species_id))
 		_update_exhaustion_state()
@@ -3035,7 +3067,9 @@ func _skill_effect_parent() -> Node:
 
 
 func _resolve_flight_strike(target: EcoActor, damage_value: float, slow_value: float, slow_duration: float, knockback_strength: float, strike_direction: Vector3, warning_time: float) -> void:
-	await get_tree().create_timer(warning_time).timeout
+	# Delayed combat must stop with the world. Otherwise a dive can kill while a
+	# pause/report modal is open and its death event is discarded by the match.
+	await get_tree().create_timer(warning_time, false).timeout
 	if dead or not is_instance_valid(target) or target.dead:
 		return
 	var planar_distance := Vector2(global_position.x - target.global_position.x, global_position.z - target.global_position.z).length()
@@ -3415,6 +3449,12 @@ func try_consume_resource(resource: Node3D) -> bool:
 	health = minf(health + eaten * healing_efficiency * nutrition_multiplier, max_health)
 	if species_id == "raccoon":
 		forage_speed_timer = 3.0
+	if resource is FoodPatch:
+		var source_key := str(resource.get_instance_id())
+		if not rewarded_food_sources.has(source_key):
+			rewarded_food_sources[source_key] = true
+			var forage_xp := maxi(roundi(eaten * nutrition_multiplier * 0.24), 2)
+			gain_experience(forage_xp, resource.get_food_name(), "觅食")
 	health_changed.emit(health, max_health)
 	_update_health_bar()
 	if game.has_method("play_sfx_near"):

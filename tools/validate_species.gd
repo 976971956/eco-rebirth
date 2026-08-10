@@ -4,6 +4,7 @@ const Catalog = preload("res://scripts/species_catalog.gd")
 const ActorScript = preload("res://scripts/eco_actor.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
+const FoodPatchScript = preload("res://scripts/food_patch.gd")
 
 class ValidationGame:
 	extends Node
@@ -11,6 +12,7 @@ class ValidationGame:
 	var batch_mode: bool = true
 	var player: EcoActor
 	var world: Node
+	var world_seed: int = 424242
 	var interventions: Array[Dictionary] = []
 	var counterplay_events: Array[Dictionary] = []
 
@@ -50,6 +52,57 @@ func _run_validation() -> void:
 	root.add_child(container)
 	var game_stub := ValidationGame.new()
 	container.add_child(game_stub)
+
+	if ActorScript.behavior_seed(77, 3, "wolf") != ActorScript.behavior_seed(77, 3, "wolf"):
+		failures.append("相同世界种子无法派生相同 AI 行为种子")
+	if ActorScript.behavior_seed(77, 3, "wolf") == ActorScript.behavior_seed(78, 3, "wolf"):
+		failures.append("不同世界种子错误派生了相同 AI 行为种子")
+	if ActorScript.should_rest_for_stamina(0.12, 8.0, INF):
+		failures.append("低耐力 AI 面对近距离天敌仍会原地休息")
+	if not ActorScript.should_rest_for_stamina(0.12, 18.0, INF):
+		failures.append("低耐力 AI 在安全距离外不会休息恢复")
+	if ActorScript.can_regenerate_stamina(false, 0.4) or not ActorScript.can_regenerate_stamina(false, 0.0):
+		failures.append("攻击后的 0.8 秒耐力恢复延迟失效")
+	if not is_equal_approx(ActorScript.starvation_health_after(100.0, 100.0, 3.0), 99.0):
+		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
+	if not is_equal_approx(ActorScript.starvation_health_after(1.2, 100.0, 3.0), 1.0):
+		failures.append("饥饿伤害仍能直接杀死生物")
+
+	var base_threat_actor: EcoActor = ActorScript.new()
+	base_threat_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(base_threat_actor)
+	base_threat_actor.setup(game_stub, 60, "rabbit", false, Vector3.ZERO, 0)
+	var high_threat_actor: EcoActor = ActorScript.new()
+	high_threat_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(high_threat_actor)
+	high_threat_actor.setup(game_stub, 61, "rabbit", false, Vector3(3.0, 0.0, 0.0), 8)
+	if high_threat_actor.max_health <= base_threat_actor.max_health or float(high_threat_actor.data["speed"]) <= float(base_threat_actor.data["speed"]) or high_threat_actor.threat_perception_multiplier <= base_threat_actor.threat_perception_multiplier:
+		failures.append("世界威胁没有同步提高 AI 生命、速度和感知")
+	base_threat_actor.free()
+	high_threat_actor.free()
+
+	var foraging_actor: EcoActor = ActorScript.new()
+	foraging_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(foraging_actor)
+	foraging_actor.setup(game_stub, 62, "rabbit", false, Vector3.ZERO, 0)
+	var food_patch: FoodPatch = FoodPatchScript.new()
+	food_patch.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(food_patch)
+	var food_rng := RandomNumberGenerator.new()
+	food_rng.seed = 62
+	food_patch.setup("grass", food_rng)
+	game_stub.actors = [foraging_actor]
+	foraging_actor.hunger = 70.0
+	if not foraging_actor.try_consume_resource(food_patch) or foraging_actor.experience <= 0:
+		failures.append("第一次觅食没有获得成长经验")
+	var first_forage_experience := foraging_actor.experience
+	foraging_actor.eat_timer = 0.0
+	foraging_actor.try_consume_resource(food_patch)
+	if foraging_actor.experience != first_forage_experience:
+		failures.append("同一食物点可以被反复刷取经验")
+	foraging_actor.free()
+	food_patch.free()
+	game_stub.actors.clear()
 
 	for index in range(Catalog.ORDER.size()):
 		var species_id: String = Catalog.ORDER[index]
@@ -208,6 +261,20 @@ func _run_validation() -> void:
 			failures.append("第一关草食个体少于 5 只，不符合早期 50–60% 人口结构")
 		if not failures.is_empty():
 			break
+	for campaign_level in range(1, 11):
+		var individual_count := campaign_level * 10
+		var type_range := Vector2i(minimum_types_by_level[campaign_level - 1], mini(minimum_types_by_level[campaign_level - 1] + 3, Catalog.available_species(campaign_level).size()))
+		var bounds := Catalog.roster_forager_bounds(individual_count, campaign_level)
+		for sample_index in range(32):
+			rng.seed = 9200 + campaign_level * 100 + sample_index
+			var sampled_roster := Catalog.build_roster(rng, individual_count, type_range, campaign_level)
+			var forager_count := 0
+			for species_id in sampled_roster:
+				if str(Catalog.DATA[species_id]["diet"]) == "herbivore":
+					forager_count += 1
+			if forager_count < bounds.x or forager_count > bounds.y:
+				failures.append("第%d关草食个体 %d 不在配额 %d–%d" % [campaign_level, forager_count, bounds.x, bounds.y])
+				break
 	rng.seed = 9901
 	var final_roster := Catalog.build_roster(rng, 100, Vector2i(22, 26), 10)
 	for giant_id in ["elephant", "rhino", "hippo"]:
@@ -488,6 +555,18 @@ func _run_validation() -> void:
 	if world_test.precipitation == null:
 		failures.append("暴雨没有生成局部降水视觉")
 	world_test.free()
+
+	var paused_timer_state := [false]
+	var paused_combat_timer := create_timer(0.05, false)
+	paused_combat_timer.timeout.connect(func() -> void: paused_timer_state[0] = true)
+	paused = true
+	await create_timer(0.12, true).timeout
+	if bool(paused_timer_state[0]):
+		failures.append("暂停期间战斗延迟计时器仍在运行")
+	paused = false
+	await create_timer(0.08, true).timeout
+	if not bool(paused_timer_state[0]):
+		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
 		print("SPECIES_VALIDATION_OK: %d species, tactical counterplay mastery/anti-farming, ecological leverage/AI third-party routing, terrain counter/AI routing, cover ambush/search, opportunity/exhaustion combat, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])

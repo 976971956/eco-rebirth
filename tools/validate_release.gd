@@ -20,6 +20,7 @@ func _init() -> void:
 	_validate_leaderboard_contract()
 	_validate_world_transition_contract()
 	_validate_death_lifecycle_contract()
+	_validate_export_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
 	_validate_adaptive_ui_contract()
@@ -31,7 +32,7 @@ func _init() -> void:
 	_validate_ecology_hotspot_contract()
 	_validate_ecology_trace_contract()
 	if failures.is_empty():
-		print("[release] V1.15 发布校验通过：多机型 UI、死亡结算、生态节奏与三端规则正常")
+		print("[release] V1.16 发布校验通过：暂停安全、成长生态、关卡节奏与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -104,7 +105,7 @@ func _validate_quality_presets() -> void:
 
 func _validate_spawn_distribution_contract() -> void:
 	var world := WorldScript.new()
-	world.world_size = 182.0
+	world.world_size = 470.0
 	world.rng.seed = 9137
 	var occupied: Array[Vector3] = []
 	var regions: Array[String] = ["forest", "grassland", "wetland", "highland"]
@@ -125,6 +126,8 @@ func _validate_tutorial_contract() -> void:
 	var expected := ["move", "sprint", "attack", "skill", "eat"]
 	for index in range(expected.size()):
 		_expect(str(MainScript.TUTORIAL_STEPS[index]["id"]) == expected[index], "新手教学步骤顺序错误")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("create_timer(8.75, false)"), "教学延迟仍会在暂停期间流逝并永久跳过")
 
 
 func _validate_free_mode_contract() -> void:
@@ -140,6 +143,12 @@ func _validate_free_mode_contract() -> void:
 	main.campaign_level = 4
 	main.selected_free_level = 10
 	_expect(main.menu_start_text() == "继续轮回", "首页战役按钮被自由模式选择覆盖")
+	main.threat_level = 8
+	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.0), "自由模式仍继承战役威胁伤害")
+	main.run_uses_free_mode = false
+	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.36), "战役威胁伤害倍率失效")
+	_expect(float(MainScript.LEVEL_CONFIG[0]["world_size"]) == 140.0 and float(MainScript.LEVEL_CONFIG[9]["world_size"]) == 470.0, "十关地图没有恢复到 GDD 的有效生态尺度")
+	_expect(float(MainScript.LEVEL_CONFIG[0]["forced_collapse"]) >= 300.0 and float(MainScript.LEVEL_CONFIG[9]["forced_collapse"]) >= 1200.0, "关卡强制收束早于 GDD 的目标局长")
 	main.free()
 
 
@@ -184,11 +193,21 @@ func _validate_death_lifecycle_contract() -> void:
 	stale_actor.free()
 	_expect(ActorScript.safe_actor_reference(stale_actor) == null, "已释放动物引用仍被强制转换，可能造成逐帧错误")
 	_expect(actor_source.contains("var game_player := _game_player()"), "视觉 LOD 没有使用安全的玩家引用")
+	_expect(actor_source.contains("create_timer(warning_time, false)"), "飞行延迟技能仍会在暂停时结算伤害")
 	_expect(ActorScript.opening_caution_seconds(1) >= 30.0, "第一关没有留出完整的移动与技能观察时间")
 	_expect(ActorScript.opening_caution_seconds(2) > 0.0, "第二关没有从教学节奏平滑过渡")
 	_expect(ActorScript.opening_caution_seconds(3) < ActorScript.opening_caution_seconds(2), "中期关卡建立期没有随难度缩短")
 	_expect(ActorScript.opening_caution_seconds(10) >= 18.0, "第十关长距离技能仍可在开局首帧击杀动物")
 	_expect(ActorScript.opening_caution_seconds(10) < ActorScript.opening_caution_seconds(1), "高压关卡的建立期不应长于教学关")
+
+
+func _validate_export_contract() -> void:
+	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
+	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
+	_expect(presets.contains("version/name=\"1.16.0\"") and presets.contains("application/short_version=\"1.16.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
+	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
+	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
 
 
 func _validate_web_audio_contract() -> void:

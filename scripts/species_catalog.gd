@@ -1364,12 +1364,79 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 			roster[replacement_index] = "deer" if selected.has("deer") else "rabbit"
 			early_foragers += 1
 
+	_rebalance_roster_foragers(roster, selected, campaign_level, rng)
+
 	for index in range(roster.size() - 1, 0, -1):
 		var swap_index := rng.randi_range(0, index)
 		var value: String = roster[index]
 		roster[index] = roster[swap_index]
 		roster[swap_index] = value
 	return roster
+
+
+static func roster_forager_bounds(count: int, campaign_level: int) -> Vector2i:
+	var ratio_range := Vector2(0.50, 0.60)
+	if campaign_level in [3, 4]:
+		ratio_range = Vector2(0.45, 0.55)
+	elif campaign_level in [5, 6, 7, 8]:
+		ratio_range = Vector2(0.42, 0.50)
+	elif campaign_level >= 9:
+		ratio_range = Vector2(0.35, 0.45)
+	return Vector2i(ceili(float(count) * ratio_range.x), floori(float(count) * ratio_range.y))
+
+
+static func _rebalance_roster_foragers(roster: Array[String], selected: Array[String], campaign_level: int, rng: RandomNumberGenerator) -> void:
+	var bounds := roster_forager_bounds(roster.size(), campaign_level)
+	var forager_count := 0
+	for species_id in roster:
+		if str(DATA[species_id]["diet"]) == "herbivore":
+			forager_count += 1
+	var herbivores: Array[String] = []
+	var non_herbivores: Array[String] = []
+	for species_id in selected:
+		if str(DATA[species_id]["diet"]) == "herbivore":
+			herbivores.append(species_id)
+		else:
+			non_herbivores.append(species_id)
+	while forager_count < bounds.x and not herbivores.is_empty():
+		var replacement_index := -1
+		for index in range(roster.size() - 1, -1, -1):
+			var current_id := roster[index]
+			if str(DATA[current_id]["diet"]) != "herbivore" and roster.count(current_id) > 1:
+				replacement_index = index
+				break
+		if replacement_index < 0:
+			break
+		var replacement_id := _roster_candidate_with_capacity(herbivores, roster, campaign_level, rng)
+		if replacement_id == "":
+			break
+		roster[replacement_index] = replacement_id
+		forager_count += 1
+	while forager_count > bounds.y and not non_herbivores.is_empty():
+		var herbivore_index := -1
+		for index in range(roster.size() - 1, -1, -1):
+			var herbivore_id := roster[index]
+			if str(DATA[herbivore_id]["diet"]) == "herbivore" and roster.count(herbivore_id) > 1:
+				herbivore_index = index
+				break
+		if herbivore_index < 0:
+			break
+		var non_herbivore_id := _roster_candidate_with_capacity(non_herbivores, roster, campaign_level, rng)
+		if non_herbivore_id == "":
+			break
+		roster[herbivore_index] = non_herbivore_id
+		forager_count -= 1
+
+
+static func _roster_candidate_with_capacity(candidates: Array[String], roster: Array[String], campaign_level: int, rng: RandomNumberGenerator) -> String:
+	var eligible: Array[String] = []
+	for species_id in candidates:
+		var species_cap := roster_species_cap(species_id, campaign_level)
+		if species_cap <= 0 or roster.count(species_id) < species_cap:
+			eligible.append(species_id)
+	if eligible.is_empty():
+		return ""
+	return eligible[rng.randi_range(0, eligible.size() - 1)]
 
 
 static func roster_species_cap(species_id: String, campaign_level: int) -> int:
