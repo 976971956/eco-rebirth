@@ -29,7 +29,7 @@ func _render() -> void:
 
 	for _frame in range(32):
 		await process_frame
-	var output_path := "res://docs/images/v16-biome-kit-v2.png"
+	var output_path := "res://docs/images/v27-organic-biome-v3.png"
 	var result := root.get_texture().get_image().save_png(output_path)
 	if result == OK:
 		print("BIOME_KIT_PREVIEW_OK: %s" % ProjectSettings.globalize_path(output_path))

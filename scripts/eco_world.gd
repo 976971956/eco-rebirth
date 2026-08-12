@@ -106,6 +106,7 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	_build_biome_props()
 	_build_food()
 	_build_visible_border()
+	_build_distant_landscape()
 	ecology_clock = 0.0
 	ecology_trace_cleanup_timer = 0.0
 	ecology_trace_sequence = 0
@@ -156,9 +157,9 @@ func _build_environment() -> void:
 	environment.ambient_light_energy = 0.32 if time_phase == "night" else 0.46
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.adjustment_enabled = true
-	environment.adjustment_brightness = 0.94
-	environment.adjustment_contrast = 1.16
-	environment.adjustment_saturation = 1.10
+	environment.adjustment_brightness = 0.91
+	environment.adjustment_contrast = 1.11
+	environment.adjustment_saturation = 1.03
 	environment.fog_enabled = true
 	environment.fog_light_color = Color("#65798b") if time_phase == "night" else Color("#b9cfb8")
 	environment.fog_light_energy = 0.55
@@ -177,7 +178,7 @@ func _build_environment() -> void:
 	sun_light = sun
 	sun.name = "Sun"
 	sun.light_color = Color("#afc9e9") if time_phase == "night" else Color("#ffe0aa")
-	sun.light_energy = (0.27 if time_phase == "night" else 0.82) * (0.58 if weather_id == "storm" else (0.76 if weather_id in ["rain", "fog"] else 1.0))
+	sun.light_energy = (0.27 if time_phase == "night" else 0.76) * (0.58 if weather_id == "storm" else (0.76 if weather_id in ["rain", "fog"] else 1.0))
 	base_sun_energy = sun.light_energy
 	sun.shadow_enabled = quality_preset != "low"
 	sun.shadow_opacity = 0.62
@@ -265,7 +266,7 @@ func _build_ground() -> void:
 	plane.subdivide_width = 1
 	plane.subdivide_depth = 1
 	ground.mesh = plane
-	ground.material_override = Factory.terrain_material(Color("#193228"), Color("#274737"), 15.0, FOREST_GROUND_TEXTURE, 7.0, 0.12)
+	ground.material_override = Factory.biome_blend_material(FOREST_GROUND_TEXTURE, GRASSLAND_GROUND_TEXTURE, WETLAND_GROUND_TEXTURE, HIGHLAND_GROUND_TEXTURE, world_size * 0.5)
 	decoration_root.add_child(ground)
 
 	var collision_body := StaticBody3D.new()
@@ -282,27 +283,13 @@ func _build_ground() -> void:
 
 
 func _build_biome_regions() -> void:
-	var half_extent := world_size * 0.245
-	var region_size := Vector2(world_size * 0.495, world_size * 0.495)
-	_add_region_ground("AncientForest", Vector3(-half_extent, 0.003, -half_extent), region_size, Color("#244833"), Color("#3b603d"), FOREST_GROUND_TEXTURE, 0.24)
-	_add_region_ground("SunGrassland", Vector3(half_extent, 0.003, -half_extent), region_size, Color("#596f3d"), Color("#7d8244"), GRASSLAND_GROUND_TEXTURE, 0.20)
-	_add_region_ground("ShallowWetland", Vector3(-half_extent, 0.003, half_extent), region_size, Color("#305a53"), Color("#416b5b"), WETLAND_GROUND_TEXTURE, 0.24)
-	_add_region_ground("RockHighland", Vector3(half_extent, 0.003, half_extent), region_size, Color("#5b563f"), Color("#766446"), HIGHLAND_GROUND_TEXTURE, 0.22)
+	# Region identity is painted by one world-space shader on the base ground.
+	# Marker nodes remain independent gameplay landmarks, while removing the four
+	# overlapping square planes also removes visible seams and overdraw.
 	_build_region_marker("古木林地", Vector3(-world_size * 0.27, 0.0, -world_size * 0.27), Color("#9dd19b"))
 	_build_region_marker("日照草原", Vector3(world_size * 0.27, 0.0, -world_size * 0.27), Color("#e1d68a"))
 	_build_region_marker("浅水湿地", Vector3(-world_size * 0.27, 0.0, world_size * 0.27), Color("#8fd5cf"))
 	_build_region_marker("岩丘高地", Vector3(world_size * 0.27, 0.0, world_size * 0.27), Color("#d4c493"))
-
-
-func _add_region_ground(node_name: String, center: Vector3, size_value: Vector2, tint: Color, detail_tint: Color, painted_texture: Texture2D, painted_strength: float) -> void:
-	var region := MeshInstance3D.new()
-	region.name = node_name
-	var plane := PlaneMesh.new()
-	plane.size = size_value
-	region.mesh = plane
-	region.material_override = Factory.terrain_material(tint, detail_tint, 12.0, painted_texture, 5.0, painted_strength)
-	region.position = center
-	decoration_root.add_child(region)
 
 
 func _build_biome_transitions() -> void:
@@ -368,7 +355,7 @@ func _build_ground_details() -> void:
 
 
 func _build_paths_and_pond() -> void:
-	var trail_color := Color("#4f603e")
+	var trail_color := Color("#655844")
 	var path_half := world_size * 0.46
 	var east_west_points: Array[Vector2] = [
 		Vector2(-path_half, -2.4), Vector2(-path_half * 0.64, -0.8), Vector2(-path_half * 0.32, 1.3),
@@ -380,6 +367,8 @@ func _build_paths_and_pond() -> void:
 	]
 	_add_winding_trail("EastWestMainTrail", east_west_points, 4.1, trail_color.lightened(0.035), 0.022)
 	_add_winding_trail("NorthSouthMainTrail", north_south_points, 4.1, trail_color, 0.023)
+	_add_winding_trail("EastWestFootwear", east_west_points, 1.55, trail_color.darkened(0.11), 0.026)
+	_add_winding_trail("NorthSouthFootwear", north_south_points, 1.55, trail_color.darkened(0.13), 0.027)
 	for trail_index in range(3):
 		var angle := -0.55 + trail_index * 1.92 + rng.randf_range(-0.18, 0.18)
 		var previous := Vector2(rng.randf_range(-2.0, 2.0), rng.randf_range(-2.0, 2.0))
@@ -752,6 +741,33 @@ func _build_visible_border() -> void:
 	decoration_root.add_child(Factory.loft("SouthNaturalRidge", Color("#4e5a42"), south_centers, south_radii, 8))
 	decoration_root.add_child(Factory.loft("WestNaturalRidge", Color("#304c42"), west_centers, west_radii, 8))
 	decoration_root.add_child(Factory.loft("EastNaturalRidge", Color("#5f5942"), east_centers, east_radii, 8))
+
+
+func _build_distant_landscape() -> void:
+	# Low, non-colliding silhouettes continue the biome beyond the playable
+	# ridge. They hide the flat terrain edge from the angled camera without ever
+	# suggesting an accessible route inside the collision square.
+	var edge := world_size * 0.5
+	var hill_count: int = {"low": 10, "medium": 16, "high": 22}.get(quality_preset, 16)
+	for hill_index in range(hill_count):
+		var side := hill_index % 4
+		var along := rng.randf_range(-edge * 1.12, edge * 1.12)
+		var outside := edge + rng.randf_range(4.8, 11.5)
+		var hill_position := Vector3.ZERO
+		match side:
+			0: hill_position = Vector3(along, -0.55, -outside)
+			1: hill_position = Vector3(outside, -0.55, along)
+			2: hill_position = Vector3(along, -0.55, outside)
+			_: hill_position = Vector3(-outside, -0.55, along)
+		var region_id := region_id_at(hill_position)
+		var hill_color: Color = {
+			"forest": Color("#294334"), "grassland": Color("#59633b"),
+			"wetland": Color("#31514a"), "highland": Color("#625943"),
+		}.get(region_id, Color("#3f5140"))
+		var hill_scale := Vector3(rng.randf_range(5.8, 11.5), rng.randf_range(2.0, 4.6), rng.randf_range(4.6, 9.2))
+		var hill := Factory.sphere("DistantBiomeHill", hill_color.lightened(rng.randf_range(-0.05, 0.045)), hill_scale, hill_position, 9, 5)
+		hill.rotation.y = rng.randf_range(0.0, TAU)
+		decoration_root.add_child(hill)
 
 
 func trigger_collapse() -> void:
@@ -1250,9 +1266,44 @@ func clamp_position(pos: Vector3) -> Vector3:
 
 
 func region_id_at(pos: Vector3) -> String:
-	if pos.x < 0.0:
-		return "forest" if pos.z < 0.0 else "wetland"
-	return "grassland" if pos.z < 0.0 else "highland"
+	var warped_axes := _warped_biome_axes(Vector2(pos.x, pos.z))
+	if warped_axes.x < 0.0:
+		return "forest" if warped_axes.y < 0.0 else "wetland"
+	return "grassland" if warped_axes.y < 0.0 else "highland"
+
+
+func _warped_biome_axes(point: Vector2) -> Vector2:
+	# Keep gameplay region queries on the same deterministic boundary as the
+	# world-space ground shader. Region HUD, food, habitat bonuses and vegetation
+	# therefore change where the player sees the painted biome change.
+	var broad_a := _biome_value_noise(point * 0.035)
+	var broad_b := _biome_value_noise(Vector2(point.y, point.x) * 0.071 + Vector2(17.2, 6.4))
+	var extent := world_size * 0.5
+	var warp_x := (broad_a - 0.5) * extent * 0.115 + (broad_b - 0.5) * extent * 0.045
+	var warp_z := (broad_b - 0.5) * extent * 0.105 - (broad_a - 0.5) * extent * 0.040
+	return Vector2(point.x + warp_x, point.y + warp_z)
+
+
+static func _biome_value_noise(point: Vector2) -> float:
+	var cell := Vector2(floorf(point.x), floorf(point.y))
+	var local := Vector2(_fraction(point.x), _fraction(point.y))
+	local = local * local * (Vector2.ONE * 3.0 - local * 2.0)
+	var a := _biome_hash(cell)
+	var b := _biome_hash(cell + Vector2(1.0, 0.0))
+	var c := _biome_hash(cell + Vector2(0.0, 1.0))
+	var d := _biome_hash(cell + Vector2(1.0, 1.0))
+	return lerpf(lerpf(a, b, local.x), lerpf(c, d, local.x), local.y)
+
+
+static func _biome_hash(point: Vector2) -> float:
+	var wrapped := Vector2(_fraction(point.x * 123.34), _fraction(point.y * 456.21))
+	var offset := wrapped.dot(wrapped + Vector2(45.32, 45.32))
+	wrapped += Vector2(offset, offset)
+	return _fraction(wrapped.x * wrapped.y)
+
+
+static func _fraction(value: float) -> float:
+	return value - floorf(value)
 
 
 func region_name_at(pos: Vector3) -> String:

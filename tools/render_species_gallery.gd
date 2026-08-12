@@ -3,6 +3,7 @@ extends SceneTree
 const ActorScript = preload("res://scripts/eco_actor.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
+const FOREST_GROUND_TEXTURE = preload("res://assets/textures/terrain/forest_floor_ai.jpg")
 
 class GalleryGame:
 	extends Node
@@ -60,11 +61,11 @@ func _build_gallery() -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(34.0, 28.0)
 	ground.mesh = plane
-	ground.material_override = Factory.terrain_material(Color("#425d3d"), Color("#61764a"), 12.0)
+	ground.material_override = Factory.terrain_material(Color("#344d35"), Color("#526743"), 12.0, FOREST_GROUND_TEXTURE, 6.0, 0.24)
 	scene.add_child(ground)
 
-	var species_ids: Array[String] = ["bear", "wolf", "tiger", "crocodile"]
-	var x_positions := [-7.5, -2.5, 2.5, 7.5]
+	var species_ids: Array[String] = ["rabbit", "wolf", "deer", "tiger", "elephant", "crocodile"]
+	var x_positions := [-9.2, -5.6, -2.0, 1.8, 5.7, 9.3]
 	for index in range(species_ids.size()):
 		var species_id := species_ids[index]
 		var actor: EcoActor = ActorScript.new()
@@ -84,12 +85,12 @@ func _build_gallery() -> void:
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
 		label.pixel_size = 0.011
-		label.position = actor.position + Vector3(0.0, 4.2 + int(Catalog.get_data(species_id)["size"]) * 0.18, 0.0)
+		label.position = actor.position + Vector3(0.0, 4.0 + int(Catalog.get_data(species_id)["size"]) * 0.22, 0.0)
 		scene.add_child(label)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 11.5
+	camera.size = 12.8
 	camera.position = Vector3(0.0, 10.5, -18.5)
 	scene.add_child(camera)
 	camera.look_at(Vector3(0.0, 1.5, 2.5), Vector3.UP)
@@ -97,7 +98,7 @@ func _build_gallery() -> void:
 
 	for _frame in range(8):
 		await process_frame
-	var output_path := "res://docs/images/v16-species-v2.png"
+	var output_path := "res://docs/images/v27-organic-species-v3.png"
 	var image := root.get_texture().get_image()
 	var result := image.save_png(output_path)
 	if result == OK:

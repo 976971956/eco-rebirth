@@ -168,6 +168,7 @@ var leg_pivots: Array[Node3D] = []
 var leg_phases: Array[float] = []
 var leg_stride_scales: Array[float] = []
 var wing_pivots: Array[Node3D] = []
+var tail_visuals: Array[Node3D] = []
 var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
@@ -398,6 +399,7 @@ func _build_visual() -> void:
 		"hippo": _build_hippo()
 		"hyena": _build_hyena()
 		"lion": _build_lion()
+	_collect_tail_visuals()
 	base_visual_scale = body_root.scale
 	_build_health_bar()
 	if is_player:
@@ -696,7 +698,7 @@ func _build_canine(is_fox: bool) -> void:
 	body_root.add_child(Factory.sphere("Nose", Color("#202522"), Vector3(0.20, 0.15, 0.17), Vector3(0.0, 1.43, -2.25), 8, 4))
 	var tail_centers := [
 		Vector3(0.0, 1.08, 0.92), Vector3(0.04, 1.22, 1.48),
-		Vector3(0.12, 1.53, 2.06), Vector3(0.10, 1.79, 2.52)
+		Vector3(0.12, 1.53 if is_fox else 1.22, 2.06), Vector3(0.10, 1.79 if is_fox else 1.28, 2.52)
 	]
 	var tail_radii := [
 		Vector2(0.25, 0.24), Vector2(0.38 if is_fox else 0.31, 0.35 if is_fox else 0.29),
@@ -1418,14 +1420,17 @@ func _add_eye_pair(height: float, forward_z: float, side_x: float, size: float) 
 		"wolf", "fox", "lynx", "tiger", "cheetah", "lion", "hyena": iris_color = Color("#d59b3b")
 		"owl", "eagle": iris_color = Color("#e6b740")
 		"crocodile", "snake", "turtle": iris_color = Color("#b9b84a")
+	var eye_scale := size * 0.88
 	for side in [-1.0, 1.0]:
-		body_root.add_child(Factory.sphere("EyeSocket", Color("#101715"), Vector3(size * 1.12, size * 1.08, size * 0.72), Vector3(side * side_x, height, forward_z), 8, 4))
-		body_root.add_child(Factory.sphere("Iris", iris_color, Vector3(size * 0.58, size * 0.62, size * 0.24), Vector3(side * (side_x + 0.018), height, forward_z - size * 0.53), 7, 4))
-		body_root.add_child(Factory.sphere("Pupil", Color("#080b09"), Vector3(size * 0.25, size * 0.38, size * 0.12), Vector3(side * (side_x + 0.022), height, forward_z - size * 0.68), 6, 3))
-		body_root.add_child(Factory.sphere("EyeLight", Color("#f7f3d8"), Vector3(size * 0.22, size * 0.22, size * 0.10), Vector3(side * (side_x + 0.040), height + size * 0.28, forward_z - size * 0.72), 6, 3))
+		body_root.add_child(Factory.sphere("EyeSocket", Color("#101715"), Vector3(eye_scale * 1.06, eye_scale, eye_scale * 0.66), Vector3(side * side_x, height, forward_z), 9, 5))
+		body_root.add_child(Factory.sphere("Iris", iris_color.darkened(0.06), Vector3(eye_scale * 0.50, eye_scale * 0.54, eye_scale * 0.20), Vector3(side * (side_x + 0.014), height, forward_z - eye_scale * 0.49), 8, 4))
+		body_root.add_child(Factory.sphere("Pupil", Color("#050807"), Vector3(eye_scale * 0.21, eye_scale * 0.34, eye_scale * 0.10), Vector3(side * (side_x + 0.018), height, forward_z - eye_scale * 0.61), 7, 4))
+		body_root.add_child(Factory.sphere("EyeLight", Color("#f4efd7"), Vector3(eye_scale * 0.14, eye_scale * 0.14, eye_scale * 0.065), Vector3(side * (side_x + 0.030), height + eye_scale * 0.22, forward_z - eye_scale * 0.64), 6, 3))
 
 
 func _add_legs(color: Color, radius: float, length: float, spread_x: float, spread_z: float, paw_color: Color = Color.TRANSPARENT) -> void:
+	var hoofed := species_id in ["deer", "goat", "zebra", "bison", "moose"]
+	var broad_footed := species_id in ["bear", "elephant", "rhino", "hippo", "gorilla"]
 	for x_sign in [-1.0, 1.0]:
 		for z_sign in [-1.0, 1.0]:
 			var foot_color := color.darkened(0.12) if paw_color.a <= 0.0 else paw_color
@@ -1438,7 +1443,12 @@ func _add_legs(color: Color, radius: float, length: float, spread_x: float, spre
 			pivot.position = upper
 			body_root.add_child(pivot)
 			pivot.add_child(Factory.loft("Leg", color, [Vector3.ZERO, knee - upper, ankle - upper, toe - upper], [Vector2(radius * 0.44, radius * 0.44), Vector2(radius * 0.36, radius * 0.34), Vector2(radius * 0.27, radius * 0.24), Vector2(radius * 0.40, radius * 0.22)], 7))
-			pivot.add_child(Factory.sphere("PawPad", foot_color, Vector3(radius * 0.50, radius * 0.16, radius * 0.58), toe - upper + Vector3(0.0, -0.015, -0.015), 7, 3))
+			var foot_scale := Vector3(radius * 0.44, radius * 0.15, radius * 0.60)
+			if hoofed:
+				foot_scale = Vector3(radius * 0.36, radius * 0.19, radius * 0.52)
+			elif broad_footed:
+				foot_scale = Vector3(radius * 0.62, radius * 0.18, radius * 0.66)
+			pivot.add_child(Factory.sphere("Hoof" if hoofed else "PawPad", foot_color, foot_scale, toe - upper + Vector3(0.0, -0.018, -0.035), 8, 4))
 			leg_pivots.append(pivot)
 			if species_id == "rabbit":
 				leg_phases.append(0.0 if z_sign < 0.0 else PI)
@@ -1446,6 +1456,14 @@ func _add_legs(color: Color, radius: float, length: float, spread_x: float, spre
 			else:
 				leg_phases.append(0.0 if x_sign == z_sign else PI)
 				leg_stride_scales.append(1.0 if z_sign < 0.0 else 0.92)
+
+
+func _collect_tail_visuals() -> void:
+	tail_visuals.clear()
+	var animated_tail_names := ["Tail", "CatTail", "LionTail", "CheetahTail", "RudderTail", "ElephantTail"]
+	for child in body_root.get_children():
+		if child is Node3D and str(child.name) in animated_tail_names:
+			tail_visuals.append(child as Node3D)
 
 
 func _add_primate_limbs(color: Color, arm_length: float, leg_length: float, shoulder_x: float, hip_x: float, heavy: bool) -> void:
@@ -3854,9 +3872,16 @@ func _update_visual_motion(delta: float) -> void:
 		var flap := sin(move_time * 1.65) * (0.42 + minf(flat_speed / maxf(float(data["speed"]), 0.1), 1.0) * 0.28) * airborne_blend
 		wing.rotation.z = lerp_angle(wing.rotation.z, -side_sign * flap, 1.0 - exp(-delta * 13.0))
 		wing.rotation.x = lerp_angle(wing.rotation.x, -0.10 + sin(move_time * 0.72) * 0.06, 1.0 - exp(-delta * 9.0))
+	for tail_visual in tail_visuals:
+		if not is_instance_valid(tail_visual):
+			continue
+		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * 0.065 * gait_blend
+		tail_visual.rotation.y = lerp_angle(tail_visual.rotation.y, tail_swing, 1.0 - exp(-delta * 8.0))
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
+		var body_pitch_scale := 0.42 if int(data["size"]) >= 4 else 1.0
+		body_root.rotation.x = sin(move_time * 2.0 + 0.65) * minf(flat_speed * 0.0038, 0.021) * gait_blend * body_pitch_scale
 		body_root.rotation.z = sin(move_time) * minf(flat_speed * 0.007, 0.032) * gait_blend
 		if species_id == "snake":
 			body_root.rotation.y = lerp_angle(body_root.rotation.y, sin(move_time * 0.92) * 0.13 * gait_blend, 1.0 - exp(-delta * 8.0))

@@ -34,7 +34,7 @@ func _init() -> void:
 	_validate_ai_tactical_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.18 发布校验通过：成长反馈、第一关生态变化、AI 战况判断与三端规则正常")
+		print("[release] V1.19 发布校验通过：有机物种曲面、连续生态地表、玩法与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -206,8 +206,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.18.0\"") and presets.contains("application/short_version=\"1.18.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=280") and presets.contains("application/version=\"280\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.19.0\"") and presets.contains("application/short_version=\"1.19.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=290") and presets.contains("application/version=\"290\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -245,16 +245,40 @@ func _validate_visual_kit_contract() -> void:
 	for texture_path in texture_paths:
 		_expect(ResourceLoader.exists(texture_path), "V2 地表材质缺失：%s" % texture_path)
 	var forest_texture := load(texture_paths[0]) as Texture2D
+	var grassland_texture := load(texture_paths[1]) as Texture2D
+	var wetland_texture := load(texture_paths[2]) as Texture2D
+	var highland_texture := load(texture_paths[3]) as Texture2D
 	_expect(forest_texture != null, "森林 AI 地表材质无法加载")
 	var terrain := Factory.terrain_material(Color("#244833"), Color("#3b603d"), 12.0, forest_texture, 5.0, 0.24)
 	_expect(terrain.shader != null, "V2 地表着色器没有创建")
 	_expect(is_equal_approx(float(terrain.get_shader_parameter("texture_strength")), 0.24), "AI 地表混合强度没有传入着色器")
+	var biome_blend := Factory.biome_blend_material(forest_texture, grassland_texture, wetland_texture, highland_texture, 70.0)
+	_expect(biome_blend.shader != null, "V3 连续生态地表着色器没有创建")
+	_expect(is_equal_approx(float(biome_blend.get_shader_parameter("world_extent")), 70.0), "V3 地表没有按地图尺度弯曲生态边界")
 	var faceted := Factory.sphere("VisualContract", Color("#a86f43"), Vector3.ONE, Vector3.ZERO, 8, 5)
-	_expect(faceted.mesh is ArrayMesh, "V2 物种基础体没有使用逐面程序网格")
+	_expect(faceted.mesh is ArrayMesh, "V3 物种基础体没有使用程序曲面网格")
 	if faceted.mesh is ArrayMesh:
 		var arrays := (faceted.mesh as ArrayMesh).surface_get_arrays(0)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
-		_expect(not colors.is_empty(), "V2 物种程序网格缺少逐面颜色")
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		_expect(not colors.is_empty(), "V3 物种程序网格缺少连续体色")
+		_expect(normals.size() == vertices.size(), "V3 物种程序网格缺少平滑法线")
+		var normals_by_vertex := {}
+		var minimum_shared_normal_dot := 1.0
+		var shared_vertex_count := 0
+		for vertex_index in range(vertices.size()):
+			var vertex := vertices[vertex_index]
+			if normals_by_vertex.has(vertex):
+				minimum_shared_normal_dot = minf(minimum_shared_normal_dot, Vector3(normals_by_vertex[vertex]).dot(normals[vertex_index]))
+				shared_vertex_count += 1
+			else:
+				normals_by_vertex[vertex] = normals[vertex_index]
+		_expect(shared_vertex_count > 0 and minimum_shared_normal_dot > 0.98, "V3 物种相邻曲面仍使用割裂的逐面法线")
+	var factory_source := FileAccess.get_file_as_string("res://scripts/low_poly_factory.gd")
+	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material"), "V3 有机曲面或连续生态地表实现缺失")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("tail_visuals") and actor_source.contains("body_pitch_scale"), "V3 动物步态缺少身体起伏或尾部摆动")
 	faceted.free()
 
 
