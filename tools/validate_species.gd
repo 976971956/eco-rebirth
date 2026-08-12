@@ -15,6 +15,9 @@ class ValidationGame:
 	var world_seed: int = 424242
 	var interventions: Array[Dictionary] = []
 	var counterplay_events: Array[Dictionary] = []
+	var actor_level_events: Array[Dictionary] = []
+	var player_level_events: Array[Dictionary] = []
+	var player_xp_events: Array[Dictionary] = []
 
 	func get_living_actors() -> Array[EcoActor]:
 		return actors.filter(func(actor: EcoActor) -> bool: return is_instance_valid(actor) and not actor.dead)
@@ -33,6 +36,15 @@ class ValidationGame:
 
 	func on_counterplay_progress(actor: EcoActor, target: EcoActor, route_id: String, xp_award: int, chain_count: int, mastery: bool, health_restored: float, stamina_restored: float) -> void:
 		counterplay_events.append({"actor": actor, "target": target, "route": route_id, "xp": xp_award, "chain": chain_count, "mastery": mastery, "health": health_restored, "stamina": stamina_restored})
+
+	func on_actor_level_up(actor: EcoActor, new_level: int) -> void:
+		actor_level_events.append({"actor": actor, "level": new_level})
+
+	func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
+		player_level_events.append({"level": new_level, "gains": gains.duplicate(true)})
+
+	func on_player_experience_gained(amount: int, source_name: String, reason: String = "击杀") -> void:
+		player_xp_events.append({"amount": amount, "source": source_name, "reason": reason})
 
 	func nearest_corpse(_origin: Vector3, _max_distance: float) -> Node3D:
 		return null
@@ -110,6 +122,62 @@ func _run_validation() -> void:
 		failures.append("世界威胁没有同步提高 AI 生命、速度和感知")
 	base_threat_actor.free()
 	high_threat_actor.free()
+
+	var growth_actor: EcoActor = ActorScript.new()
+	growth_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(growth_actor)
+	growth_actor.setup(game_stub, 69, "wolf", true, Vector3.ZERO, 0)
+	var expected_thresholds := [45, 82, 129, 186, 253, 330, 417]
+	for threshold_index in range(expected_thresholds.size()):
+		growth_actor.level = threshold_index + 1
+		if growth_actor.experience_to_next_level() != expected_thresholds[threshold_index]:
+			failures.append("Lv.%d 升级门槛不是 %d" % [threshold_index + 1, expected_thresholds[threshold_index]])
+	growth_actor.level = 1
+	var growth_profile := Catalog.growth_profile("wolf")
+	var growth_base_health := growth_actor.max_health
+	var growth_base_stamina := growth_actor.max_stamina
+	var growth_base_attack := float(growth_actor.data["attack"])
+	var growth_base_speed := float(growth_actor.data["speed"])
+	var growth_base_armor := float(growth_actor.data["armor"])
+	var growth_base_regen := float(growth_actor.data["regen"])
+	growth_actor.health = growth_actor.max_health * 0.20
+	growth_actor.stamina = growth_actor.max_stamina * 0.05
+	growth_actor.exhausted = true
+	game_stub.actor_level_events.clear()
+	game_stub.player_level_events.clear()
+	game_stub.player_xp_events.clear()
+	growth_actor.gain_experience(144, "bear")
+	if growth_actor.level != 3 or growth_actor.experience != 17:
+		failures.append("一次获得大量经验时没有正确连升两级并保留剩余经验")
+	if not is_equal_approx(growth_actor.max_health, growth_base_health * pow(1.0 + float(growth_profile["health"]), 2)):
+		failures.append("连续升级后生命上限不符合物种成长曲线")
+	if not is_equal_approx(growth_actor.max_stamina, growth_base_stamina * pow(1.0 + float(growth_profile["stamina"]), 2)):
+		failures.append("连续升级后耐力上限不符合物种成长曲线")
+	if not is_equal_approx(float(growth_actor.data["attack"]), growth_base_attack * pow(1.0 + float(growth_profile["attack"]), 2)) or not is_equal_approx(float(growth_actor.data["speed"]), growth_base_speed * pow(1.0 + float(growth_profile["speed"]), 2)):
+		failures.append("连续升级后攻击或速度复利错误")
+	if not is_equal_approx(float(growth_actor.data["armor"]), growth_base_armor + float(growth_profile["armor"]) * 2.0) or not is_equal_approx(float(growth_actor.data["regen"]), growth_base_regen * pow(1.0 + float(growth_profile["regen"]), 2)):
+		failures.append("连续升级后护甲或耐力恢复成长错误")
+	if growth_actor.health <= growth_base_health * 0.20 or growth_actor.stamina <= growth_base_stamina * 0.05 or growth_actor.exhausted:
+		failures.append("升级后没有正确恢复生命、耐力或解除力竭")
+	if game_stub.actor_level_events.size() != 2 or game_stub.player_level_events.size() != 2 or game_stub.player_xp_events.size() != 1:
+		failures.append("连续升级没有发送完整的角色、玩家或经验反馈事件")
+	elif not game_stub.player_level_events.all(func(event: Dictionary) -> bool: return float(event["gains"].get("regen", 0.0)) > 0.0):
+		failures.append("玩家升级反馈没有包含耐力恢复成长")
+	growth_actor.gain_experience(100000, "elephant")
+	if growth_actor.level != growth_actor.MAX_LEVEL or growth_actor.experience != 0 or growth_actor.experience_to_next_level() != 0:
+		failures.append("超额经验没有正确限制在 Lv.8 并清理溢出")
+	var capped_attack := float(growth_actor.data["attack"])
+	growth_actor.gain_experience(999, "rabbit")
+	if not is_equal_approx(float(growth_actor.data["attack"]), capped_attack):
+		failures.append("满级后仍能通过经验继续增长属性")
+	var fresh_growth_actor: EcoActor = ActorScript.new()
+	fresh_growth_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(fresh_growth_actor)
+	fresh_growth_actor.setup(game_stub, 70, "wolf", false, Vector3(3.0, 0.0, 0.0), 0)
+	if not is_equal_approx(float(fresh_growth_actor.data["attack"]), growth_base_attack) or not is_equal_approx(fresh_growth_actor.max_health, growth_base_health):
+		failures.append("一名狼升级污染了后续生成的同物种基础数据")
+	growth_actor.free()
+	fresh_growth_actor.free()
 
 	var pack_leader: EcoActor = ActorScript.new()
 	pack_leader.process_mode = Node.PROCESS_MODE_DISABLED
@@ -332,9 +400,12 @@ func _run_validation() -> void:
 			for species_id in available:
 				if Catalog.unlock_level(species_id) == campaign_level and not roster.has(species_id):
 					failures.append("第%d关没有生成本关新物种 %s" % [campaign_level, species_id])
-	for sample_index in range(64):
+	var teaching_bear_rosters := 0
+	for sample_index in range(128):
 		rng.seed = 8100 + sample_index
 		var teaching_roster := Catalog.build_roster(rng, 10, Vector2i(4, 5), 1)
+		if teaching_roster.has("bear"):
+			teaching_bear_rosters += 1
 		var teaching_foragers := 0
 		for species_id in teaching_roster:
 			if str(Catalog.DATA[species_id]["diet"]) == "herbivore":
@@ -347,6 +418,8 @@ func _run_validation() -> void:
 			failures.append("第一关草食个体少于 5 只，不符合早期 50–60% 人口结构")
 		if not failures.is_empty():
 			break
+	if teaching_bear_rosters < 38 or teaching_bear_rosters > 72:
+		failures.append("第一关棕熊出现率失控：128 个世界中出现 %d 局" % teaching_bear_rosters)
 	for campaign_level in range(1, 11):
 		var individual_count := campaign_level * 10
 		var type_range := Vector2i(minimum_types_by_level[campaign_level - 1], mini(minimum_types_by_level[campaign_level - 1] + 3, Catalog.available_species(campaign_level).size()))
@@ -655,7 +728,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, full XP/level chain, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

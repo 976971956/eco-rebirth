@@ -1103,12 +1103,13 @@ func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 		return
 	var growth_text := "生命、攻击、速度、耐力与护甲提升"
 	if not gains.is_empty():
-		growth_text = "生命+%d　攻击+%.1f　速度+%.2f　耐力+%d　护甲+%.1f" % [
+		growth_text = "生命+%d　攻击+%.1f　速度+%.2f　耐力+%d　护甲+%.1f　恢复+%.1f" % [
 			ceili(float(gains.get("health", 0.0))),
 			float(gains.get("attack", 0.0)),
 			float(gains.get("speed", 0.0)),
 			ceili(float(gains.get("stamina", 0.0))),
 			float(gains.get("armor", 0.0)),
+			float(gains.get("regen", 0.0)),
 		]
 	ui.show_hint("提升至 Lv.%d！%s" % [new_level, growth_text])
 	ui.add_event("%s · Lv.%d · %s" % [str(gains.get("profile", "生态适应")), new_level, growth_text], "#f1d46b")

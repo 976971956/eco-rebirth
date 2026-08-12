@@ -3683,6 +3683,7 @@ func _level_up() -> void:
 	var old_attack := float(data["attack"])
 	var old_armor := float(data["armor"])
 	var old_speed := float(data["speed"])
+	var old_regen := float(data["regen"])
 	max_health *= 1.0 + float(growth["health"])
 	max_stamina *= 1.0 + float(growth["stamina"])
 	data["attack"] = old_attack * (1.0 + float(growth["attack"]))
@@ -3693,6 +3694,7 @@ func _level_up() -> void:
 	# make the power increase immediately useful during a difficult fight.
 	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.30)
 	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.42)
+	_update_exhaustion_state()
 	health_changed.emit(health, max_health)
 	stamina_changed.emit(stamina, max_stamina)
 	_update_health_bar()
@@ -3706,6 +3708,7 @@ func _level_up() -> void:
 			"attack": float(data["attack"]) - old_attack,
 			"armor": float(data["armor"]) - old_armor,
 			"speed": float(data["speed"]) - old_speed,
+			"regen": float(data["regen"]) - old_regen,
 		})
 
 

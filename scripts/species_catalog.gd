@@ -6,6 +6,7 @@ const OPPORTUNITY_RATIO_PER_GAP := 0.01
 const OPPORTUNITY_MAX_GAP := 4
 const COUNTERPLAY_ROUTE_XP_RATIO := 0.10
 const COUNTERPLAY_TARGET_XP_CAP_RATIO := 0.32
+const FIRST_LEVEL_BEAR_CHANCE := 0.42
 
 const BIOME_DISPLAY_NAMES := {
 	"forest": "古木林地",
@@ -1299,12 +1300,19 @@ static func build_roster(rng: RandomNumberGenerator, count: int = 10, species_ty
 	var selected: Array[String] = []
 	if pool.has("rabbit"):
 		selected.append("rabbit")
+	# The bear cave is an optional lesson, not the fixed answer to every teaching
+	# ecosystem. When present the bear remains unique and dangerous; when absent,
+	# wolves, foxes and snakes can produce a less predictable final contest.
+	if campaign_level == 1 and pool.has("bear") and rng.randf() < FIRST_LEVEL_BEAR_CHANCE:
+		selected.append("bear")
 	for species_id in mandatory:
 		if not selected.has(species_id):
 			selected.append(species_id)
 	for species_id in pool:
 		if selected.size() >= type_count:
 			break
+		if campaign_level == 1 and species_id == "bear":
+			continue
 		if not selected.has(species_id):
 			selected.append(species_id)
 	var has_carnivore := false

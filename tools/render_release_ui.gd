@@ -1,6 +1,7 @@
 extends SceneTree
 
 const UIScript = preload("res://scripts/game_ui.gd")
+const ActorScript = preload("res://scripts/eco_actor.gd")
 
 
 class PreviewGame:
@@ -8,6 +9,10 @@ class PreviewGame:
 	var quality := "medium"
 	var state := "playing"
 	var level_elapsed := 0.0
+	var world_seed := 11818
+	var current_level := 2
+	var world: Node
+	func get_living_actors() -> Array[EcoActor]: return []
 	func play_ui_sound() -> void: pass
 	func is_music_enabled() -> bool: return true
 	func is_sfx_enabled() -> bool: return true
@@ -55,22 +60,18 @@ func _render() -> void:
 		await process_frame
 	var free_mode_result := root.get_texture().get_image().save_png("res://docs/images/v14-free-mode.png")
 	ui.modal_root.hide()
-	ui.menu_root.hide()
-	ui.hud_root.show()
+	var preview_actor: EcoActor = ActorScript.new()
+	preview_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game.add_child(preview_actor)
+	preview_actor.setup(game, 1, "wolf", true, Vector3.ZERO, 0)
+	preview_actor.gain_experience(79, "bear")
+	preview_actor.health = 132.0
+	preview_actor.stamina = 76.0
+	preview_actor.hunger = 32.0
+	ui.show_hud(preview_actor, game.world_seed, 1, 2, false)
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态踪迹 · 暂无线索")
 	ui.touch_root.show()
 	ui.intro_panel.hide()
-	ui.species_label.text = "Lv.2 狼 · 群猎者"
-	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2"
-	ui.hp_value_label.text = "132 / 150"
-	ui.stamina_value_label.text = "76 / 100"
-	ui.satiety_value_label.text = "68 / 100"
-	ui.xp_value_label.text = "34 / 70"
-	ui.remaining_label.text = "存活个体　16 / 20"
-	ui.threat_label.text = "第2关 · 世界威胁 1"
-	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
-	ui.ecology_event_label.text = "生态热点 · 下一次信号 26s"
-	ui.ecology_activity_label.text = "迁徙监测 · 尚无活动"
-	ui.ecology_trace_label.text = "生态踪迹 · 暂无线索"
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
 	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
@@ -97,7 +98,7 @@ func _render() -> void:
 	var mobile_safe_result := gameplay_image.save_png("res://docs/images/v26-adaptive-mobile-ui.png")
 	ui.battle_ticker_button.hide()
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
-	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2\n伏击就绪 · 首击可逆袭强敌"
+	ui.combat_stats_label.text = "攻 24.7　速 6.41　甲 9.2　恢复 16.4\n伏击就绪 · 首击可逆袭强敌"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#8fe8b7"))
 	ui.enemy_status_label.text = "伏击可逆袭 · 状态稳定"
 	ui.enemy_name_label.add_theme_color_override("font_color", Color("#8fe8b7"))
@@ -114,7 +115,7 @@ func _render() -> void:
 	var cover_ambush_result := root.get_texture().get_image().save_png("res://docs/images/v19-cover-ambush.png")
 	ui.species_label.text = "Lv.2 岩岭山羊 · 高地迁徙者"
 	ui.region_label.text = "当前位置 · 岩丘高地 · 白昼 · 晴朗 · 主场适应"
-	ui.combat_stats_label.text = "攻击 23.3　速度 6.13　护甲 10.1\n岩径反制就绪 · 可反制客场强敌"
+	ui.combat_stats_label.text = "攻 23.3　速 6.13　甲 10.1　恢复 18.5\n岩径反制就绪 · 可反制客场强敌"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#70cfe8"))
 	ui.enemy_name_label.text = "Lv.2 草原雄狮"
 	ui.enemy_status_label.text = "地形可逆袭 · 状态稳定"
@@ -132,7 +133,7 @@ func _render() -> void:
 	var terrain_counter_result := root.get_texture().get_image().save_png("res://docs/images/v20-terrain-counter.png")
 	ui.species_label.text = "Lv.2 雪兔 · 灵巧逃生者"
 	ui.region_label.text = "当前位置 · 开阔草原 · 白昼 · 晴朗 · 熟悉地形"
-	ui.combat_stats_label.text = "攻击 7.4　速度 7.79　护甲 0.8\n生态借力就绪 · 引向披甲犀牛"
+	ui.combat_stats_label.text = "攻 7.4　速 7.79　甲 0.8　恢复 20.5\n生态借力就绪 · 引向披甲犀牛"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#d7a2f2"))
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
 	ui.enemy_status_label.text = "可生态借力 · 引向披甲犀牛"
@@ -148,7 +149,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var ecology_leverage_result := root.get_texture().get_image().save_png("res://docs/images/v21-ecology-leverage.png")
-	ui.combat_stats_label.text = "攻击 7.4　速度 7.79　护甲 0.8\n生态掌控 · 生命与耐力已恢复"
+	ui.combat_stats_label.text = "攻 7.4　速 7.79　甲 0.8　恢复 20.5\n生态掌控 · 生命与耐力已恢复"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#ffb86b"))
 	ui.enemy_status_label.text = "战术连携 2/2 · 已掌控"
 	ui.enemy_name_label.add_theme_color_override("font_color", Color("#ffb86b"))
@@ -163,7 +164,7 @@ func _render() -> void:
 	var counterplay_mastery_result := root.get_texture().get_image().save_png("res://docs/images/v22-counterplay-mastery.png")
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
-	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2"
+	ui.combat_stats_label.text = "攻 24.7　速 6.41　甲 9.2　恢复 16.4"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#b9d9bd"))
 	ui.ecology_event_label.text = "生态热点 · 落果潮 · 西北 38m · 41s"
 	ui.enemy_panel.hide()
@@ -192,7 +193,7 @@ func _render() -> void:
 	ui.species_label.text = "Lv.2 狼 · 群猎者"
 	ui.region_label.text = "当前位置 · 古木林地 · 白昼 · 晴朗"
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
-	ui.combat_stats_label.text = "攻击 24.7　速度 6.41　护甲 9.2"
+	ui.combat_stats_label.text = "攻 24.7　速 6.41　甲 9.2　恢复 16.4"
 	ui.combat_stats_label.add_theme_color_override("font_color", Color("#b9d9bd"))
 	ui.enemy_status_label.text = "可逆袭 · 力竭破绽"
 	ui.enemy_name_label.add_theme_color_override("font_color", Color("#ffe078"))

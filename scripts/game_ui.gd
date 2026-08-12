@@ -950,8 +950,7 @@ func set_player(player_actor: EcoActor) -> void:
 	var data := Catalog.get_data(player_actor.species_id)
 	species_label.text = "Lv.%d %s · %s" % [player_actor.level, data["name"], data["subtitle"]]
 	_update_player_combat_summary(player_actor)
-	hp_bar.max_value = player_actor.max_health
-	stamina_bar.max_value = player_actor.max_stamina
+	_sync_player_status_ranges(player_actor)
 	hp_bar.value = player_actor.health
 	stamina_bar.value = player_actor.stamina
 	hunger_bar.value = 100.0 - player_actor.hunger
@@ -996,6 +995,7 @@ func _cancel_intro_tween() -> void:
 func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current_region: String = "未知区域", ecology_event_status: String = "", ecology_activity_status: String = "", ecology_trace_status: String = "") -> void:
 	if not hud_root.visible or not is_instance_valid(player_actor):
 		return
+	_sync_player_status_ranges(player_actor)
 	hp_bar.value = maxf(player_actor.health, 0.0)
 	stamina_bar.value = player_actor.stamina
 	var satiety := clampf(100.0 - player_actor.hunger, 0.0, 100.0)
@@ -1062,11 +1062,16 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	elif player_actor.tactical_terrain_status_text() != "":
 		tactical_status = player_actor.tactical_terrain_status_text()
 		tactical_color = Color("#8fc9d8")
-	combat_stats_label.text = "攻击 %.1f　速度 %.2f　护甲 %.1f%s" % [
-		float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]),
+	combat_stats_label.text = "攻 %.1f　速 %.2f　甲 %.1f　恢复 %.1f%s" % [
+		float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), float(player_actor.data["regen"]),
 		"\n%s" % tactical_status if tactical_status != "" else "",
 	]
 	combat_stats_label.add_theme_color_override("font_color", tactical_color)
+
+
+func _sync_player_status_ranges(player_actor: EcoActor) -> void:
+	hp_bar.max_value = maxf(player_actor.max_health, 1.0)
+	stamina_bar.max_value = maxf(player_actor.max_stamina, 1.0)
 
 
 func update_leaderboard(entries: Array[Dictionary]) -> void:
