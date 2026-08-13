@@ -2,6 +2,7 @@ extends SceneTree
 
 const UIScript = preload("res://scripts/game_ui.gd")
 const ActorScript = preload("res://scripts/eco_actor.gd")
+const Catalog = preload("res://scripts/species_catalog.gd")
 
 
 class PreviewGame:
@@ -96,6 +97,13 @@ func _render() -> void:
 	var gameplay_image := root.get_texture().get_image()
 	var leaderboard_result := gameplay_image.save_png("res://docs/images/v15-leaderboard-ticker.png")
 	var mobile_safe_result := gameplay_image.save_png("res://docs/images/v26-adaptive-mobile-ui.png")
+	preview_actor.habit_buff_name = "群猎分食"
+	preview_actor.habit_buff_kind = "hunt"
+	preview_actor.habit_buff_timer = 4.2
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态踪迹 · 暂无线索")
+	for _frame in range(5):
+		await process_frame
+	var habit_hud_result := root.get_texture().get_image().save_png("res://docs/images/v28-ecological-habit-hud.png")
 	ui.battle_ticker_button.hide()
 	ui.enemy_name_label.text = "Lv.2 非洲巨象"
 	ui.combat_stats_label.text = "攻 24.7　速 6.41　甲 9.2　恢复 16.4\n伏击就绪 · 首击可逆袭强敌"
@@ -220,16 +228,29 @@ func _render() -> void:
 		await process_frame
 	var tutorial_result := root.get_texture().get_image().save_png("res://docs/images/v12-release-tutorial.png")
 	ui.hide_tutorial()
-	ui.show_species_intro("cheetah")
+	preview_actor.species_id = "rabbit"
+	preview_actor.data = Catalog.get_data("rabbit")
+	preview_actor.level = 1
+	preview_actor.max_health = float(preview_actor.data["health"])
+	preview_actor.health = preview_actor.max_health
+	preview_actor.max_stamina = float(preview_actor.data["stamina"])
+	preview_actor.stamina = preview_actor.max_stamina
+	preview_actor.hunger = 18.0
+	preview_actor.experience = 12
+	preview_actor.habit_buff_timer = 0.0
+	preview_actor.habit_buff_kind = ""
+	preview_actor.habit_buff_name = ""
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态踪迹 · 暂无线索")
+	ui.show_species_intro("rabbit")
 	for _frame in range(5):
 		await process_frame
-	var guide_result := root.get_texture().get_image().save_png("res://docs/images/v13-growth-guide.png")
+	var guide_result := root.get_texture().get_image().save_png("res://docs/images/v28-species-habit-guide.png")
 	ui.intro_panel.hide()
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

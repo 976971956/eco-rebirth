@@ -6,8 +6,8 @@
 |---|---|
 | `scenes/main.tscn` | Main scene entry |
 | `scripts/main.gd` | Game states, campaign/free mode, spawning, progression, saves, outcomes, tutorial orchestration |
-| `scripts/species_catalog.gd` | All 30 species data, unlock pools, XP rewards, growth profiles, skills, traits, diets, preferred regions, victory guides |
-| `scripts/eco_actor.gd` | Shared player/AI movement, combat, hunger, stamina, experience, levels, animation, AI execution |
+| `scripts/species_catalog.gd` | All 30 species data, ecological habits, unlock pools, XP rewards, growth profiles, skills, traits, diets, preferred regions, victory guides |
+| `scripts/eco_actor.gd` | Shared player/AI movement, combat, hunger, stamina, ecological habit recovery, experience, levels, animation, AI execution |
 | `scripts/eco_world.gd` | Procedural four-region world, AI-painted terrain blending, biome prop kits, terrain access, food, day/night, weather, collapse, quality settings |
 | `scripts/game_ui.gd` | Home, free-mode picker, HUD, live level leaderboard, rotating battle ticker/report, enemy health, touch controls, tutorial, settings, pause/result modals |
 | `scripts/audio_manager.gd` | Procedural adaptive music, ambient sound, SFX pool, audio persistence |
@@ -19,6 +19,7 @@
 
 - Ship 10 campaign levels with 10–100 ecological individuals and progressively larger species pools.
 - Ship 30 playable species. Normal campaign chooses the player species from the generated roster and avoids immediate repeats.
+- Give all 30 species one food-and-habitat ecological habit. Player and AI share the same trigger, one-source reward limit, recovery, and temporary buff rules.
 - Provide a home-page free mode that selects any level and any species. Insert the selected species into the roster when that level would not normally unlock it.
 - Keep free mode at zero world threat. Free-mode victory/death must not change `campaign_level`, `last_completed_level`, `total_deaths`, `threat_level`, or `last_player_species`.
 - Cap in-run level at 8. Every level improves health, current survivability, attack, speed, stamina, armor, and stamina regeneration according to the species growth profile.
@@ -41,6 +42,7 @@
 - Balance schema: `docs/08_数据字典与初始平衡.md`
 - 30-species implementation history: `docs/09_关卡物种扩展设计.md` and `docs/10_三十种动物制作蓝图.md`
 - AI art direction and runtime visual kit: `docs/12_AI美术重制方案.md`
+- Ecological habits and resource routes: `docs/13_三十种生态习性设计.md`
 - Running/exporting: `BUILDING.md`
 
 ## Cross-platform UI rules

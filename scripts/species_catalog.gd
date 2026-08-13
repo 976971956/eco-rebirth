@@ -125,8 +125,49 @@ const GROWTH_PROFILES := {
 	"giant": {"name": "巨兽蜕变", "health": 0.120, "attack": 0.070, "speed": 0.008, "stamina": 0.050, "armor": 2.2, "regen": 0.020},
 }
 
+const HABIT_BUFF_NAMES := {
+	"escape": "轻捷", "recover": "调息", "guard": "守势", "hunt": "猎性", "conceal": "匿踪",
+}
+
+# Ecological habits are deliberately separate from combat traits. Every animal
+# gets one readable food-and-habitat loop, while TRAITS continue to own its
+# combat, movement-domain and social behavior. A source can trigger its habit
+# only once per actor, so regrowing beside one food patch is never optimal.
+const ECO_HABITS := {
+	"rabbit": {"name": "草窟反刍", "foods": ["grass"], "health": 0.080, "stamina": 0.120, "hunger": 4.0, "buff": "escape", "duration": 4.5, "condition": "cover", "seek_health": 0.90, "summary": "吃嫩草额外恢复生命与耐力；在森林、草原或草丛中效果最强，并短暂轻捷。"},
+	"fox": {"name": "林缘藏食", "foods": ["corpse"], "health": 0.040, "stamina": 0.140, "hunger": 2.0, "buff": "escape", "duration": 3.8, "condition": "small_carcass", "prey_max": 2, "seek_health": 0.68, "summary": "取食尸体后补充耐力并轻捷撤离；小型猎物和林缘主场收益更高。"},
+	"deer": {"name": "嫩叶迁徙", "foods": ["grass", "berries"], "health": 0.040, "stamina": 0.180, "hunger": 4.0, "buff": "recover", "duration": 5.5, "seek_health": 0.76, "summary": "沿森林与草原取食嫩草、野莓，大幅补回耐力并获得迁徙调息。"},
+	"wolf": {"name": "群猎分食", "foods": ["corpse"], "health": 0.040, "stamina": 0.130, "hunger": 2.0, "buff": "hunt", "duration": 4.2, "condition": "large_carcass", "prey_min": 2, "seek_health": 0.62, "summary": "分食中型以上尸体可恢复耐力并短暂激发猎性，主场内更稳定。"},
+	"snake": {"name": "冷伏精食", "foods": ["corpse", "fish"], "health": 0.050, "stamina": 0.100, "hunger": 2.0, "buff": "conceal", "duration": 4.8, "condition": "small_carcass", "prey_max": 2, "seek_health": 0.74, "summary": "取食鱼群或小型尸体后压低气味，在湿地与林下更难被远处发现。"},
+	"bear": {"name": "杂食储能", "foods": ["berries", "fruit", "corpse"], "health": 0.035, "stamina": 0.100, "hunger": 5.0, "buff": "guard", "duration": 5.5, "condition": "injured", "seek_health": 0.58, "summary": "果实、野莓与尸体都能快速储能；受伤时进食会进入短暂守势。"},
+	"boar": {"name": "拱土寻菌", "foods": ["mushroom", "roots"], "health": 0.050, "stamina": 0.120, "hunger": 5.0, "buff": "guard", "duration": 4.8, "condition": "injured", "seek_health": 0.68, "summary": "挖食蘑菇和块根可回复生命，受伤时还会绷紧硬皮抵抗追击。"},
+	"raccoon": {"name": "巧手藏果", "foods": ["berries", "fruit"], "health": 0.040, "stamina": 0.160, "hunger": 5.0, "buff": "escape", "duration": 5.0, "xp": 3, "seek_health": 0.78, "summary": "第一次搜刮野莓或落果获得额外见闻，并借轻捷迅速离开食物点。"},
+	"porcupine": {"name": "啮根固刺", "foods": ["roots", "mushroom"], "health": 0.060, "stamina": 0.100, "hunger": 4.0, "buff": "guard", "duration": 5.8, "condition": "injured", "seek_health": 0.82, "summary": "块根和蘑菇可恢复生命，受伤后取食会让背刺进入稳固守势。"},
+	"crocodile": {"name": "伏岸吞食", "foods": ["fish", "corpse"], "health": 0.040, "stamina": 0.130, "hunger": 3.0, "buff": "conceal", "duration": 5.0, "seek_health": 0.62, "summary": "在湿地吞食鱼群或尸体后收敛水面痕迹，恢复耐力并重新伏岸。"},
+	"capybara": {"name": "水草同栖", "foods": ["grass", "mushroom"], "health": 0.060, "stamina": 0.160, "hunger": 5.0, "buff": "recover", "duration": 6.0, "seek_health": 0.84, "summary": "取食湿地水草和蘑菇会稳定恢复生命、耐力，并延长同栖调息。"},
+	"otter": {"name": "鱼群嬉食", "foods": ["fish"], "health": 0.050, "stamina": 0.200, "hunger": 4.0, "buff": "escape", "duration": 4.5, "condition": "rain", "seek_health": 0.78, "summary": "鱼群能大幅补回耐力；湿地、暴雨与风暴中触发更强的水面轻捷。"},
+	"lynx": {"name": "岩隙藏餐", "foods": ["corpse"], "health": 0.040, "stamina": 0.150, "hunger": 2.0, "buff": "conceal", "duration": 5.2, "condition": "small_carcass", "prey_max": 2, "seek_health": 0.68, "summary": "吞食小型猎物后迅速藏身，在岩丘与林缘重新获得匿踪优势。"},
+	"goat": {"name": "岩根反刍", "foods": ["roots", "grass"], "health": 0.060, "stamina": 0.180, "hunger": 5.0, "buff": "escape", "duration": 4.8, "seek_health": 0.82, "summary": "高地块根与嫩草能快速补给耐力，进食后以岩径轻捷脱离。"},
+	"wolverine": {"name": "寒岩食腐", "foods": ["corpse"], "health": 0.050, "stamina": 0.160, "hunger": 3.0, "buff": "hunt", "duration": 5.0, "condition": "large_carcass", "prey_min": 3, "seek_health": 0.64, "summary": "大型尸体能激发不屈猎性，在高地与林下回复更多生命和耐力。"},
+	"bison": {"name": "草浪蓄力", "foods": ["grass"], "health": 0.050, "stamina": 0.170, "hunger": 6.0, "buff": "guard", "duration": 6.0, "seek_health": 0.70, "summary": "草原进食嫩草能重整呼吸和队形，恢复耐力并短暂稳固身体。"},
+	"zebra": {"name": "迁徙补草", "foods": ["grass", "fruit"], "health": 0.035, "stamina": 0.220, "hunger": 5.0, "buff": "escape", "duration": 5.2, "seek_health": 0.78, "summary": "草原上快速取食嫩草或落果，重点补回耐力并继续迁徙。"},
+	"elephant": {"name": "水草长食", "foods": ["grass", "fruit"], "health": 0.025, "stamina": 0.100, "hunger": 10.0, "buff": "guard", "duration": 6.5, "seek_health": 0.58, "summary": "草原与湿地植物能满足巨额食量，进食后稳固巨体并降低围攻风险。"},
+	"tiger": {"name": "密林独食", "foods": ["corpse"], "health": 0.045, "stamina": 0.140, "hunger": 2.0, "buff": "hunt", "duration": 5.0, "condition": "large_carcass", "prey_min": 3, "seek_health": 0.60, "summary": "在密林独占中大型尸体可恢复爆发耐力，并短暂激发独猎猎性。"},
+	"monkey": {"name": "林冠果宴", "foods": ["fruit", "berries"], "health": 0.050, "stamina": 0.180, "hunger": 5.0, "buff": "escape", "duration": 5.2, "xp": 3, "seek_health": 0.82, "summary": "林地果实与野莓提供额外见闻和耐力，便于进食后迅速转入树冠路线。"},
+	"owl": {"name": "夜栖精食", "foods": ["corpse"], "health": 0.040, "stamina": 0.200, "hunger": 2.0, "buff": "conceal", "duration": 5.5, "condition": "night", "prey_max": 2, "seek_health": 0.72, "summary": "夜间吞食小型猎物能快速补回巡航耐力，并借夜幕重新匿踪。"},
+	"moose": {"name": "湿岸啃食", "foods": ["grass", "roots"], "health": 0.050, "stamina": 0.160, "hunger": 6.0, "buff": "guard", "duration": 5.5, "seek_health": 0.70, "summary": "湿岸嫩草与岩根可补回生命与耐力，进食后稳住巨角防线对抗围攻。"},
+	"turtle": {"name": "岩隙慢食", "foods": ["mushroom", "roots"], "health": 0.080, "stamina": 0.130, "hunger": 5.0, "buff": "guard", "duration": 7.0, "condition": "clear", "seek_health": 0.90, "summary": "蘑菇与块根提供最高的慢速疗养；晴朗时进食会延长岩甲守势。"},
+	"cheetah": {"name": "猎后喘息", "foods": ["corpse"], "health": 0.035, "stamina": 0.220, "hunger": 2.0, "buff": "recover", "duration": 6.0, "condition": "clear", "prey_min": 2, "prey_max": 3, "seek_health": 0.62, "summary": "晴朗草原上进食中型猎物可大幅补回爆发耐力，缩短猎后喘息的危险期。"},
+	"rhino": {"name": "厚皮拱根", "foods": ["roots", "grass"], "health": 0.035, "stamina": 0.120, "hunger": 7.0, "buff": "guard", "duration": 6.2, "condition": "injured", "seek_health": 0.62, "summary": "草根与块根稳定巨兽体力，受伤进食后厚皮进入额外守势。"},
+	"gorilla": {"name": "林果疗养", "foods": ["fruit", "berries"], "health": 0.050, "stamina": 0.160, "hunger": 6.0, "buff": "guard", "duration": 6.0, "xp": 2, "seek_health": 0.68, "summary": "在森林领地取食果实可恢复生命与见闻，并强化短暂领地守势。"},
+	"eagle": {"name": "高地精食", "foods": ["corpse"], "health": 0.040, "stamina": 0.220, "hunger": 2.0, "buff": "hunt", "duration": 4.5, "condition": "day", "prey_max": 2, "seek_health": 0.70, "summary": "白天在高地或草原取食小型猎物，大幅补回飞行耐力并恢复猎性。"},
+	"hippo": {"name": "湿地水草", "foods": ["grass"], "health": 0.040, "stamina": 0.120, "hunger": 8.0, "buff": "guard", "duration": 6.5, "condition": "rain", "seek_health": 0.62, "summary": "湿地嫩草能补足巨额饱腹，雨天进食后更能强化水岸守势。"},
+	"hyena": {"name": "碎骨食腐", "foods": ["corpse"], "health": 0.050, "stamina": 0.160, "hunger": 3.0, "buff": "hunt", "duration": 5.2, "condition": "large_carcass", "prey_min": 3, "seek_health": 0.66, "summary": "大型尸体能补回生命与耐力，并让鬣狗以碎骨猎性守住战利品。"},
+	"lion": {"name": "狮群分食", "foods": ["corpse"], "health": 0.045, "stamina": 0.140, "hunger": 3.0, "buff": "hunt", "duration": 5.0, "condition": "large_carcass", "prey_min": 3, "seek_health": 0.62, "summary": "草原上分食中大型猎物可恢复体力，并延续狮群的围猎猎性。"},
+}
+
 const VICTORY_GUIDES := {
-	"rabbit": "前期沿地图外圈吃植物升级，不和任何捕食者换血。中期把狼、狐引向熊或蛇制造混战；终局保留月影折跃和半条以上耐力，用连续变向拖垮最后的追猎者。",
+	"rabbit": "前期沿森林与草原的草丛寻找嫩草，用草窟反刍回血、补耐力和轻捷迁徙，不和捕食者换血。中期把狼、狐引向熊或蛇制造混战；终局保留月影折跃和半条以上耐力，用伏击、主场反制与连续变向拖垮最后的追猎者。",
 	"fox": "围绕尸体和残血目标行动，不做第一只开战的动物。先用血味佯攻把猎物暴露给其他捕食者，再补刀获取经验；终局依靠速度和更高等级逐个收割。",
 	"deer": "优先积累耐力与等级，保持长直线移动，不在树林死角停留。用蹬踏把追兵推入其他战团；终局控制耐力节奏，让敌人冲刺耗尽后再反击。",
 	"wolf": "尽快靠近同类，选择中小型落单猎物，不要独自挑战巨兽。扑杀前先让狼群形成夹击；终局若失去同伴，利用速度反复脱战，等目标残血后再收尾。",
@@ -1151,6 +1192,74 @@ static func growth_description(species_id: String) -> String:
 		float(profile["stamina"]) * 100.0,
 		float(profile["armor"]),
 	]
+
+
+static func habit_profile(species_id: String) -> Dictionary:
+	return ECO_HABITS.get(species_id, ECO_HABITS["rabbit"]).duplicate(true)
+
+
+static func habit_description(species_id: String) -> String:
+	var profile: Dictionary = ECO_HABITS.get(species_id, ECO_HABITS["rabbit"])
+	return "生态习性：%s — %s" % [str(profile["name"]), str(profile["summary"])]
+
+
+static func habit_favored_foods(species_id: String) -> Array[String]:
+	var foods: Array[String] = []
+	for food_kind in ECO_HABITS.get(species_id, ECO_HABITS["rabbit"]).get("foods", []):
+		foods.append(str(food_kind))
+	return foods
+
+
+static func habit_seek_health_ratio(species_id: String) -> float:
+	return clampf(float(ECO_HABITS.get(species_id, ECO_HABITS["rabbit"]).get("seek_health", 0.72)), 0.45, 0.95)
+
+
+static func habit_buff_display_name(buff_id: String) -> String:
+	return str(HABIT_BUFF_NAMES.get(buff_id, "生态调适"))
+
+
+static func habit_food_effect(species_id: String, food_kind: String, region_id: String, in_cover: bool = false, time_phase: String = "day", weather_id: String = "clear", health_ratio: float = 1.0, prey_size: int = 0) -> Dictionary:
+	var profile: Dictionary = ECO_HABITS.get(species_id, {})
+	if profile.is_empty() or food_kind not in profile.get("foods", []):
+		return {}
+	var scale := 1.0
+	var home_active: bool = region_id in BIOME_PREFERENCES.get(species_id, [])
+	if home_active:
+		scale += 0.20
+	var special_active := _habit_special_condition(profile, food_kind, in_cover, time_phase, weather_id, health_ratio, prey_size)
+	if special_active:
+		scale += 0.25
+	return {
+		"name": str(profile.get("name", "生态习性")),
+		"health_ratio": float(profile.get("health", 0.0)) * scale,
+		"stamina_ratio": float(profile.get("stamina", 0.0)) * scale,
+		"hunger_bonus": float(profile.get("hunger", 0.0)) * scale,
+		"xp_bonus": maxi(roundi(float(profile.get("xp", 0)) * scale), 0),
+		"buff": str(profile.get("buff", "recover")),
+		"duration": float(profile.get("duration", 4.0)) * (1.12 if home_active and special_active else 1.0),
+		"home_active": home_active,
+		"special_active": special_active,
+	}
+
+
+static func _habit_special_condition(profile: Dictionary, food_kind: String, in_cover: bool, time_phase: String, weather_id: String, health_ratio: float, prey_size: int) -> bool:
+	var condition := str(profile.get("condition", ""))
+	var condition_matches := false
+	match condition:
+		"cover": condition_matches = in_cover
+		"injured": condition_matches = health_ratio <= 0.55
+		"night": condition_matches = time_phase == "night"
+		"day": condition_matches = time_phase == "day"
+		"clear": condition_matches = weather_id == "clear"
+		"rain": condition_matches = weather_id in ["rain", "storm"]
+		"small_carcass": condition_matches = food_kind == "corpse" and prey_size > 0 and prey_size <= int(profile.get("prey_max", 2))
+		"large_carcass": condition_matches = food_kind == "corpse" and prey_size >= int(profile.get("prey_min", 3))
+		_: condition_matches = false
+	if food_kind == "corpse" and condition not in ["small_carcass", "large_carcass"] and (profile.has("prey_min") or profile.has("prey_max")):
+		var minimum_size := int(profile.get("prey_min", 1))
+		var maximum_size := int(profile.get("prey_max", 5))
+		condition_matches = condition_matches and prey_size >= minimum_size and prey_size <= maximum_size
+	return condition_matches
 
 
 static func victory_guide(species_id: String) -> String:

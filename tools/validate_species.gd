@@ -79,6 +79,11 @@ func _run_validation() -> void:
 		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
 	if not is_equal_approx(ActorScript.starvation_health_after(1.2, 100.0, 3.0), 1.0):
 		failures.append("饥饿伤害仍能直接杀死生物")
+	var rabbit_grass_effect := Catalog.habit_food_effect("rabbit", "grass", "grassland", true, "day", "clear", 0.50, 0)
+	if rabbit_grass_effect.is_empty() or float(rabbit_grass_effect.get("health_ratio", 0.0)) < 0.115 or float(rabbit_grass_effect.get("stamina_ratio", 0.0)) < 0.17:
+		failures.append("雪兔在草原草丛取食嫩草没有获得足够的生命与耐力恢复")
+	if not Catalog.habit_food_effect("rabbit", "fruit", "grassland", true).is_empty():
+		failures.append("雪兔可以用非嫩草食物错误触发草窟反刍")
 	var favorable_hunt_score := ActorScript.evaluate_prey_utility({
 		"hunter_health": 0.92, "hunter_stamina": 0.78, "target_health": 0.22, "target_stamina": 0.16,
 		"hunger": 0.72, "aggression": 0.66, "distance": 8.0, "speed_ratio": 1.08,
@@ -239,6 +244,8 @@ func _run_validation() -> void:
 	foraging_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(foraging_actor)
 	foraging_actor.setup(game_stub, 62, "rabbit", false, Vector3.ZERO, 0)
+	foraging_actor.health = foraging_actor.max_health * 0.40
+	foraging_actor.stamina = foraging_actor.max_stamina * 0.30
 	var food_patch: FoodPatch = FoodPatchScript.new()
 	food_patch.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(food_patch)
@@ -249,11 +256,15 @@ func _run_validation() -> void:
 	foraging_actor.hunger = 70.0
 	if not foraging_actor.try_consume_resource(food_patch) or foraging_actor.experience <= 0:
 		failures.append("第一次觅食没有获得成长经验")
+	if foraging_actor.habit_activation_count != 1 or not foraging_actor.has_habit_buff("escape") or foraging_actor.health <= foraging_actor.max_health * 0.48:
+		failures.append("雪兔进食嫩草没有实际触发回血和轻捷习性")
 	var first_forage_experience := foraging_actor.experience
 	foraging_actor.eat_timer = 0.0
 	foraging_actor.try_consume_resource(food_patch)
 	if foraging_actor.experience != first_forage_experience:
 		failures.append("同一食物点可以被反复刷取经验")
+	if foraging_actor.habit_activation_count != 1:
+		failures.append("同一食物点可以反复刷取生态习性")
 	foraging_actor.free()
 	food_patch.free()
 	game_stub.actors.clear()
@@ -288,6 +299,21 @@ func _run_validation() -> void:
 			failures.append("%s 缺少可读的环境主场说明" % species_id)
 		if Catalog.counterplay_plan(species_id).length() < 24:
 			failures.append("%s 缺少完整反制组合攻略" % species_id)
+		if not Catalog.ECO_HABITS.has(species_id):
+			failures.append("%s 缺少独立生态习性" % species_id)
+		else:
+			var habit := Catalog.habit_profile(species_id)
+			var favored_foods := Catalog.habit_favored_foods(species_id)
+			if str(habit.get("name", "")).length() < 2 or str(habit.get("summary", "")).length() < 24 or favored_foods.is_empty():
+				failures.append("%s 生态习性名称、触发食物或说明不完整" % species_id)
+			if str(habit.get("buff", "")) not in Catalog.HABIT_BUFF_NAMES:
+				failures.append("%s 生态习性配置了未知状态" % species_id)
+			for food_kind in favored_foods:
+				if food_kind not in ["grass", "berries", "mushroom", "fruit", "roots", "fish", "corpse"]:
+					failures.append("%s 生态习性配置了未知食物 %s" % [species_id, food_kind])
+			var sample_effect := Catalog.habit_food_effect(species_id, favored_foods[0], regions[0], true, "night" if species_id == "owl" else "day", "clear", 0.50, 3)
+			if sample_effect.is_empty() or float(sample_effect.get("health_ratio", 0.0)) <= 0.0 or float(sample_effect.get("stamina_ratio", 0.0)) <= 0.0:
+				failures.append("%s 生态习性没有实际恢复效果" % species_id)
 		var growth := Catalog.growth_profile(species_id)
 		for growth_key in ["health", "attack", "speed", "stamina", "armor", "regen"]:
 			if not growth.has(growth_key) or float(growth[growth_key]) <= 0.0:
@@ -728,7 +754,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, full XP/level chain, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, ecological habits, full XP/level chain, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

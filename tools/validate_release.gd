@@ -32,9 +32,10 @@ func _init() -> void:
 	_validate_ecology_hotspot_contract()
 	_validate_ecology_trace_contract()
 	_validate_ai_tactical_contract()
+	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.19 发布校验通过：有机物种曲面、连续生态地表、玩法与三端规则正常")
+		print("[release] V1.20 发布校验通过：30 种生态习性、AI 疗养、地图联动与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -206,8 +207,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.19.0\"") and presets.contains("application/short_version=\"1.19.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=290") and presets.contains("application/version=\"290\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.20.0\"") and presets.contains("application/short_version=\"1.20.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=300") and presets.contains("application/version=\"300\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -569,6 +570,21 @@ func _validate_ai_tactical_contract() -> void:
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"pack_hunter\")") and actor_source.contains("shared_pack_target"), "群猎物种没有共享追猎意图")
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"herd_mover\")") and actor_source.contains("group_escape_direction"), "群居物种没有共享危险或逃生方向")
 	_expect(actor_source.contains("func _corpse_is_safe") and actor_source.contains("stronger_competitor"), "尸体目标没有竞争风险评估")
+
+
+func _validate_ecological_habit_contract() -> void:
+	_expect(Catalog.ECO_HABITS.size() == Catalog.ORDER.size(), "生态习性没有覆盖全部 30 种动物")
+	var rabbit_effect := Catalog.habit_food_effect("rabbit", "grass", "grassland", true, "day", "clear", 0.45, 0)
+	_expect(float(rabbit_effect.get("health_ratio", 0.0)) >= 0.115, "雪兔在草原草丛吃草没有获得设计中的回血")
+	_expect(float(rabbit_effect.get("stamina_ratio", 0.0)) >= 0.17, "雪兔在草原草丛吃草没有获得设计中的耐力恢复")
+	_expect(str(rabbit_effect.get("buff", "")) == "escape", "雪兔吃草没有触发轻捷状态")
+	_expect(Catalog.habit_food_effect("rabbit", "fruit", "grassland", true).is_empty(), "雪兔可用非偏好食物错误触发习性")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("habit_rewarded_sources") and actor_source.contains("func _apply_food_habit"), "同一资源缺少生态习性限次结算")
+	_expect(actor_source.contains("func _best_habit_food") and actor_source.contains("habit_seek_health_ratio"), "低血 AI 不会主动寻找习性资源")
+	_expect(actor_source.contains("has_habit_buff(\"escape\")") and actor_source.contains("has_habit_buff(\"guard\")") and actor_source.contains("has_habit_buff(\"hunt\")"), "习性短时状态没有接入实际移动或战斗")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("Catalog.habit_description") and ui_source.contains("habit_status_text"), "物种简报或 HUD 没有展示生态习性")
 
 
 func _validate_growth_hud_contract() -> void:
