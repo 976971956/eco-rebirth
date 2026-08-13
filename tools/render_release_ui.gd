@@ -246,11 +246,18 @@ func _render() -> void:
 		await process_frame
 	var guide_result := root.get_texture().get_image().save_png("res://docs/images/v28-species-habit-guide.png")
 	ui.intro_panel.hide()
+	preview_actor.health = 31.0
+	preview_actor.stamina = 34.0
+	preview_actor.hunger = 68.0
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态本能 · 嫩草 东北 18m · 完美习性")
+	for _frame in range(5):
+		await process_frame
+	var instinct_result := root.get_texture().get_image().save_png("res://docs/images/v29-ecological-instinct.png")
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and instinct_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

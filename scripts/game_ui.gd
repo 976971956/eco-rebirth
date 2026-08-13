@@ -1016,7 +1016,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	var activity_color := Color("#ef7d68") if ecology_activity_status.contains("高危") else (Color("#f0cf78") if ecology_activity_status.contains("警戒") else Color("#9bd69b"))
 	ecology_activity_label.add_theme_color_override("font_color", activity_color)
 	ecology_trace_label.text = ecology_trace_status
-	var trace_color := Color("#ef8b78") if ecology_trace_status.contains("危险记忆") else (Color("#d5b27a") if ecology_trace_status.contains("追踪线索") else Color("#b6c9b5"))
+	var trace_color := Color("#78dfbb") if ecology_trace_status.contains("生态本能") else (Color("#ef8b78") if ecology_trace_status.contains("危险记忆") else (Color("#d5b27a") if ecology_trace_status.contains("追踪线索") else Color("#b6c9b5")))
 	ecology_trace_label.add_theme_color_override("font_color", trace_color)
 	var cooldown := float(player_actor.data["skill_cooldown"])
 	var cooldown_remaining := player_actor.skill_timer
@@ -1039,6 +1039,9 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	if player_actor.exhausted:
 		tactical_status = "力竭破绽"
 		tactical_color = Color("#f1d46b")
+	elif player_actor.eat_timer > 0.0:
+		tactical_status = "咀嚼中 %.1fs · 无法冲刺、攻击或释放技能" % player_actor.eat_timer
+		tactical_color = Color("#d8cf8c")
 	elif player_actor.is_opportunity_exposed():
 		tactical_status = player_actor.opportunity_status_text()
 		tactical_color = Color("#f1d46b")

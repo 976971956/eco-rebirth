@@ -160,7 +160,8 @@ func _process(delta: float) -> void:
 		var region_name := "%s · %s%s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix, adaptation_suffix] if is_instance_valid(world) else "未知区域"
 		var ecology_status := world.ecology_event_status(player.global_position) if is_instance_valid(world) else ""
 		var ecology_activity := ecology_hotspot_activity_status()
-		var trace_status := ecology_trace_status()
+		var habit_guidance := player.habit_resource_guidance_text()
+		var trace_status := habit_guidance if habit_guidance != "" else ecology_trace_status()
 		ui.update_hud(player, living_count, roster_size, region_name, ecology_status, ecology_activity, trace_status)
 		_update_player_ecology_hotspot()
 		leaderboard_refresh_remaining -= delta
@@ -468,13 +469,13 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	if is_instance_valid(world):
 		world.record_danger_memory(actor.global_position, actor.species_id, int(actor.data["size"]), killer.species_id if is_instance_valid(killer) else "")
 	if is_instance_valid(killer) and killer != actor:
-		var reward := Catalog.experience_reward(actor.species_id, actor.level)
+		var reward := Catalog.combat_experience_reward(killer.species_id, actor.species_id, actor.level)
 		killer.gain_experience(reward, actor.species_id)
 	elif not is_instance_valid(killer):
 		pass
 	var influence_source: EcoActor = actor.ecology_influence_source if is_instance_valid(actor.ecology_influence_source) else null
 	if is_instance_valid(influence_source) and not influence_source.dead and influence_source != killer:
-		var assist_reward := maxi(int(round(Catalog.experience_reward(actor.species_id, actor.level) * 0.45)), 1)
+		var assist_reward := maxi(int(round(Catalog.combat_experience_reward(influence_source.species_id, actor.species_id, actor.level) * 0.45)), 1)
 		influence_source.assists += 1
 		influence_source.gain_experience(assist_reward, actor.species_id, actor.ecology_influence_reason)
 
@@ -957,6 +958,14 @@ func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
 			nearest_distance = distance
 			nearest = corpse
 	return nearest
+
+
+func get_available_corpses() -> Array[Node3D]:
+	var available: Array[Node3D] = []
+	for corpse in corpses:
+		if is_instance_valid(corpse) and not corpse.is_queued_for_deletion() and corpse.food_amount > 0.0:
+			available.append(corpse)
+	return available
 
 
 func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true) -> Node3D:

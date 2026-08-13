@@ -5,6 +5,7 @@ const ActorScript = preload("res://scripts/eco_actor.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
 const FoodPatchScript = preload("res://scripts/food_patch.gd")
+const CorpseScript = preload("res://scripts/corpse.gd")
 
 class ValidationGame:
 	extends Node
@@ -12,6 +13,7 @@ class ValidationGame:
 	var batch_mode: bool = true
 	var player: EcoActor
 	var world: Node
+	var corpses: Array[Node3D] = []
 	var world_seed: int = 424242
 	var interventions: Array[Dictionary] = []
 	var counterplay_events: Array[Dictionary] = []
@@ -46,10 +48,22 @@ class ValidationGame:
 	func on_player_experience_gained(amount: int, source_name: String, reason: String = "击杀") -> void:
 		player_xp_events.append({"amount": amount, "source": source_name, "reason": reason})
 
-	func nearest_corpse(_origin: Vector3, _max_distance: float) -> Node3D:
-		return null
+	func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
+		var nearest: Node3D
+		var nearest_distance := max_distance
+		for corpse in corpses:
+			if not is_instance_valid(corpse) or float(corpse.food_amount) <= 0.0:
+				continue
+			var distance := origin.distance_to(corpse.global_position)
+			if distance < nearest_distance:
+				nearest_distance = distance
+				nearest = corpse
+		return nearest
 
-	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "") -> Node3D:
+	func get_available_corpses() -> Array[Node3D]:
+		return corpses.filter(func(corpse: Node3D) -> bool: return is_instance_valid(corpse) and float(corpse.food_amount) > 0.0)
+
+	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "", _include_hotspots: bool = true) -> Node3D:
 		return null
 
 
@@ -79,9 +93,19 @@ func _run_validation() -> void:
 		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
 	if not is_equal_approx(ActorScript.starvation_health_after(1.2, 100.0, 3.0), 1.0):
 		failures.append("饥饿伤害仍能直接杀死生物")
+	if not ActorScript.should_show_habit_guidance(0.60, 0.80, 24.0, 0.90, false):
+		failures.append("受伤雪兔不会显示生态本能资源引导")
+	if ActorScript.should_show_habit_guidance(0.95, 0.90, 18.0, 0.90, false) or ActorScript.should_show_habit_guidance(0.40, 0.20, 80.0, 0.90, true):
+		failures.append("健康状态或习性已激活时仍错误显示资源引导")
+	if Catalog.combat_experience_reward("bear", "rabbit", 1) >= Catalog.experience_reward("rabbit", 1):
+		failures.append("强物种捕杀弱小猎物仍获得完整成长经验")
+	if Catalog.combat_experience_reward("rabbit", "bear", 1) != Catalog.experience_reward("bear", 1):
+		failures.append("弱物种击倒强敌被错误削减成长经验")
 	var rabbit_grass_effect := Catalog.habit_food_effect("rabbit", "grass", "grassland", true, "day", "clear", 0.50, 0)
 	if rabbit_grass_effect.is_empty() or float(rabbit_grass_effect.get("health_ratio", 0.0)) < 0.115 or float(rabbit_grass_effect.get("stamina_ratio", 0.0)) < 0.17:
 		failures.append("雪兔在草原草丛取食嫩草没有获得足够的生命与耐力恢复")
+	if int(rabbit_grass_effect.get("xp_bonus", 0)) < 4:
+		failures.append("雪兔完成主场草丛习性没有获得生态适应经验")
 	if not Catalog.habit_food_effect("rabbit", "fruit", "grassland", true).is_empty():
 		failures.append("雪兔可以用非嫩草食物错误触发草窟反刍")
 	var favorable_hunt_score := ActorScript.evaluate_prey_utility({
@@ -252,10 +276,30 @@ func _run_validation() -> void:
 	var food_rng := RandomNumberGenerator.new()
 	food_rng.seed = 62
 	food_patch.setup("grass", food_rng)
+	food_patch.position = Vector3(1.4, 0.0, 0.0)
+	var fruit_patch: FoodPatch = FoodPatchScript.new()
+	fruit_patch.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(fruit_patch)
+	food_rng.seed = 63
+	fruit_patch.setup("fruit", food_rng)
+	fruit_patch.position = Vector3(0.5, 0.0, 0.0)
+	var guidance_world: EcoWorld = WorldScript.new()
+	guidance_world.process_mode = Node.PROCESS_MODE_DISABLED
+	guidance_world.world_size = 100.0
+	container.add_child(guidance_world)
+	guidance_world.food_patches = [food_patch, fruit_patch]
+	game_stub.world = guidance_world
 	game_stub.actors = [foraging_actor]
 	foraging_actor.hunger = 70.0
-	if not foraging_actor.try_consume_resource(food_patch) or foraging_actor.experience <= 0:
+	var fruit_before := fruit_patch.amount
+	if not foraging_actor.habit_resource_guidance_text().contains("嫩草"):
+		failures.append("低血雪兔 HUD 没有指向可用嫩草")
+	if not foraging_actor.try_consume_nearby() or foraging_actor.experience <= 0:
 		failures.append("第一次觅食没有获得成长经验")
+	if not is_equal_approx(fruit_patch.amount, fruit_before) or food_patch.amount >= food_patch.max_amount:
+		failures.append("手动进食没有优先选择可触发本物种习性的资源")
+	if foraging_actor.eat_timer <= 0.0 or foraging_actor.use_skill():
+		failures.append("进食后没有进入禁止技能的咀嚼承诺")
 	if foraging_actor.habit_activation_count != 1 or not foraging_actor.has_habit_buff("escape") or foraging_actor.health <= foraging_actor.max_health * 0.48:
 		failures.append("雪兔进食嫩草没有实际触发回血和轻捷习性")
 	var first_forage_experience := foraging_actor.experience
@@ -265,8 +309,37 @@ func _run_validation() -> void:
 		failures.append("同一食物点可以被反复刷取经验")
 	if foraging_actor.habit_activation_count != 1:
 		failures.append("同一食物点可以反复刷取生态习性")
+	var snake_actor: EcoActor = ActorScript.new()
+	snake_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(snake_actor)
+	snake_actor.setup(game_stub, 71, "snake", false, Vector3(8.0, 0.0, 0.0), 0)
+	var fish_patch: FoodPatch = FoodPatchScript.new()
+	fish_patch.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(fish_patch)
+	food_rng.seed = 64
+	fish_patch.setup("fish", food_rng)
+	fish_patch.position = Vector3(8.8, 0.0, 0.0)
+	guidance_world.food_patches.append(fish_patch)
+	var distant_corpse: EcoCorpse = CorpseScript.new()
+	distant_corpse.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(distant_corpse)
+	distant_corpse.setup("rabbit", 999)
+	distant_corpse.position = Vector3(14.0, 0.0, 0.0)
+	game_stub.corpses = [distant_corpse]
+	game_stub.actors = [snake_actor]
+	snake_actor.habit_rewarded_sources[str(fish_patch.get_instance_id())] = true
+	var fish_before := fish_patch.amount
+	if not snake_actor.try_consume_nearby() or fish_patch.amount >= fish_before:
+		failures.append("远处尸体抢占了手动进食目标，脚边鱼群无法被吃到")
+	snake_actor.free()
+	fish_patch.free()
+	distant_corpse.free()
+	game_stub.corpses.clear()
 	foraging_actor.free()
 	food_patch.free()
+	fruit_patch.free()
+	game_stub.world = null
+	guidance_world.free()
 	game_stub.actors.clear()
 
 	for index in range(Catalog.ORDER.size()):

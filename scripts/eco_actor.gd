@@ -91,6 +91,8 @@ var habit_buff_timer: float = 0.0
 var habit_buff_kind: String = ""
 var habit_buff_name: String = ""
 var habit_activation_count: int = 0
+var habit_guidance_cache_timer: float = 0.0
+var habit_guidance_cache: String = ""
 var obstacle_break_timer: float = 0.0
 var flight_ground_timer: float = 0.0
 var flight_dive_timer: float = 0.0
@@ -258,6 +260,12 @@ static func starvation_health_after(current_health: float, maximum_health: float
 
 static func can_regenerate_stamina(sprinting: bool, recovery_delay: float) -> bool:
 	return not sprinting and recovery_delay <= 0.0
+
+
+static func should_show_habit_guidance(health_ratio: float, stamina_ratio: float, hunger_value: float, seek_health_ratio: float, buff_active: bool) -> bool:
+	if buff_active:
+		return false
+	return health_ratio <= minf(seek_health_ratio, 0.72) or stamina_ratio <= 0.28 or hunger_value >= 68.0
 
 
 static func evaluate_prey_utility(context: Dictionary) -> float:
@@ -1535,6 +1543,7 @@ func _update_timers(delta: float) -> void:
 		if habit_buff_timer <= 0.0:
 			habit_buff_kind = ""
 			habit_buff_name = ""
+	habit_guidance_cache_timer = maxf(habit_guidance_cache_timer - delta, 0.0)
 	obstacle_break_timer = maxf(obstacle_break_timer - delta, 0.0)
 	flight_ground_timer = maxf(flight_ground_timer - delta, 0.0)
 	flight_dive_timer = maxf(flight_dive_timer - delta, 0.0)
@@ -1626,6 +1635,53 @@ func habit_status_text() -> String:
 
 func has_habit_buff(buff_kind: String) -> bool:
 	return habit_buff_timer > 0.0 and habit_buff_kind == buff_kind
+
+
+func habit_resource_guidance_text() -> String:
+	if dead or not is_instance_valid(game) or not is_instance_valid(game.world):
+		return ""
+	var health_ratio := health / maxf(max_health, 1.0)
+	var stamina_ratio := stamina / maxf(max_stamina, 1.0)
+	if not should_show_habit_guidance(health_ratio, stamina_ratio, hunger, Catalog.habit_seek_health_ratio(species_id), habit_buff_timer > 0.0):
+		habit_guidance_cache = ""
+		habit_guidance_cache_timer = 0.0
+		return ""
+	if habit_guidance_cache_timer > 0.0 and habit_guidance_cache != "":
+		return habit_guidance_cache
+	habit_guidance_cache_timer = 0.45
+	var resource := _best_habit_food(52.0)
+	if not is_instance_valid(resource):
+		habit_guidance_cache = "生态本能 · 附近未发现安全的%s" % Catalog.habit_foods_display_text(species_id)
+		return habit_guidance_cache
+	var origin := global_position if is_inside_tree() else position
+	var resource_position: Vector3 = resource.global_position if resource.is_inside_tree() else resource.position
+	var food_kind := "corpse" if resource is EcoCorpse else str(resource.food_kind)
+	var region_id := environment_region_id
+	var in_cover := cover_strength >= 0.40
+	var time_phase := "day"
+	var weather_id := "clear"
+	if game.world is EcoWorld:
+		var eco_world := game.world as EcoWorld
+		region_id = str(eco_world.region_id_at(resource_position))
+		in_cover = float(eco_world.cover_strength_at(resource_position, species_id)) >= 0.40
+		time_phase = eco_world.time_phase
+		weather_id = eco_world.weather_id
+	var prey_size := Catalog.body_size(resource.species_id) if resource is EcoCorpse else 0
+	var effect := Catalog.habit_food_effect(species_id, food_kind, region_id, in_cover, time_phase, weather_id, health_ratio, prey_size)
+	var strength_text := ""
+	if bool(effect.get("home_active", false)) and bool(effect.get("special_active", false)):
+		strength_text = " · 完美习性"
+	elif bool(effect.get("home_active", false)):
+		strength_text = " · 主场强化"
+	elif bool(effect.get("special_active", false)):
+		strength_text = " · 特殊强化"
+	habit_guidance_cache = "生态本能 · %s %s %dm%s" % [
+		Catalog.habit_food_display_name(food_kind),
+		WorldRules.compass_direction(origin, resource_position),
+		roundi(origin.distance_to(resource_position)),
+		strength_text,
+	]
+	return habit_guidance_cache
 
 
 func _update_environment_state(delta: float) -> void:
@@ -2433,8 +2489,8 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 	if candidates.is_empty():
 		candidates = game.get_living_actors()
 	if "corpse" in favored_foods and Catalog.can_eat_corpse(species_id):
-		var corpse: Node3D = game.nearest_corpse(global_position, search_range * (1.30 if Catalog.has_trait(species_id, "scavenger") else 1.0))
-		if is_instance_valid(corpse) and not habit_rewarded_sources.has(_habit_source_key(corpse)) and _corpse_is_safe(corpse, candidates):
+		var corpse := _best_habit_corpse(search_range * (1.30 if Catalog.has_trait(species_id, "scavenger") else 1.0), candidates)
+		if is_instance_valid(corpse):
 			return corpse
 	var has_patch_favorite := false
 	for food_kind in favored_foods:
@@ -2454,6 +2510,8 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 		var patch := candidate_node as FoodPatch
 		if not patch.active or patch.food_kind not in favored_foods or not patch.can_be_eaten_by(species_id):
 			continue
+		if not _habit_resource_inside_active_area(patch):
+			continue
 		if habit_rewarded_sources.has(_habit_source_key(patch)):
 			continue
 		if patch.ecology_hotspot and hotspot_risk == "高危" and risk_averse:
@@ -2469,8 +2527,47 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 	return best_patch
 
 
+func _best_habit_corpse(search_range: float, living_actors: Array[EcoActor]) -> Node3D:
+	var corpse_pool: Array[Node3D] = game.get_available_corpses() if game.has_method("get_available_corpses") else []
+	if corpse_pool.is_empty():
+		var fallback: Node3D = game.nearest_corpse(global_position, search_range)
+		if is_instance_valid(fallback):
+			corpse_pool.append(fallback)
+	var origin := global_position if is_inside_tree() else position
+	var best_corpse: Node3D
+	var best_score := INF
+	var profile := Catalog.habit_profile(species_id)
+	for corpse in corpse_pool:
+		if not is_instance_valid(corpse) or corpse.is_queued_for_deletion() or float(corpse.food_amount) <= 0.0:
+			continue
+		if not _habit_resource_inside_active_area(corpse) or habit_rewarded_sources.has(_habit_source_key(corpse)) or not _corpse_is_safe(corpse, living_actors):
+			continue
+		var distance := origin.distance_to(corpse.global_position)
+		if distance > search_range:
+			continue
+		var prey_size := Catalog.body_size(str(corpse.species_id))
+		var preferred_size := (not profile.has("prey_min") or prey_size >= int(profile["prey_min"])) and (not profile.has("prey_max") or prey_size <= int(profile["prey_max"]))
+		var score := distance * (0.78 if preferred_size else 1.0)
+		if game.world is EcoWorld:
+			score /= 1.0 + Catalog.habitat_affinity(species_id, game.world.region_id_at(corpse.global_position)) * 0.22
+		if score < best_score:
+			best_score = score
+			best_corpse = corpse
+	return best_corpse
+
+
 func _habit_source_key(resource: Node3D) -> String:
 	return str(resource.get_instance_id()) if is_instance_valid(resource) else ""
+
+
+func _habit_resource_inside_active_area(resource: Node3D) -> bool:
+	if not is_instance_valid(resource) or not is_instance_valid(game) or not (game.world is EcoWorld):
+		return is_instance_valid(resource)
+	var eco_world := game.world as EcoWorld
+	if not eco_world.collapse_active:
+		return true
+	var resource_position: Vector3 = resource.global_position if resource.is_inside_tree() else resource.position
+	return Vector2(resource_position.x, resource_position.z).length() <= maxf(eco_world.collapse_radius - 1.5, 1.0)
 
 
 func _corpse_is_safe(corpse: Node3D, living_actors: Array[EcoActor]) -> bool:
@@ -2504,6 +2601,45 @@ func _best_wild_food(search_range: float) -> Node3D:
 		return candidate
 	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false)
 	return safer_food if is_instance_valid(safer_food) else null
+
+
+func _best_nearby_food(search_range: float, living_actors: Array[EcoActor] = []) -> Node3D:
+	var origin := global_position if is_inside_tree() else position
+	var candidates: Array[EcoActor] = living_actors
+	if candidates.is_empty():
+		candidates = game.get_living_actors()
+	if Catalog.can_eat_corpse(species_id):
+		var nearby_corpse: Node3D
+		var corpse_distance := search_range + 0.001
+		var corpse_pool: Array[Node3D] = game.get_available_corpses() if game.has_method("get_available_corpses") else []
+		if corpse_pool.is_empty():
+			var fallback: Node3D = game.nearest_corpse(origin, search_range)
+			if is_instance_valid(fallback):
+				corpse_pool.append(fallback)
+		for corpse in corpse_pool:
+			if not is_instance_valid(corpse) or corpse.is_queued_for_deletion() or float(corpse.food_amount) <= 0.0 or not _corpse_is_safe(corpse, candidates):
+				continue
+			var distance := origin.distance_to(corpse.global_position)
+			if distance <= search_range and distance < corpse_distance:
+				corpse_distance = distance
+				nearby_corpse = corpse
+		if is_instance_valid(nearby_corpse):
+			return nearby_corpse
+	if not (game.world is EcoWorld):
+		return null
+	var nearby_patch: FoodPatch
+	var patch_distance := search_range + 0.001
+	for candidate_node in game.world.food_patches:
+		if not is_instance_valid(candidate_node) or candidate_node.is_queued_for_deletion() or not candidate_node is FoodPatch:
+			continue
+		var patch := candidate_node as FoodPatch
+		if not patch.active or not patch.can_be_eaten_by(species_id):
+			continue
+		var distance := origin.distance_to(patch.global_position)
+		if distance <= search_range and distance < patch_distance:
+			patch_distance = distance
+			nearby_patch = patch
+	return nearby_patch
 
 
 func _begin_ecology_trace_investigation() -> bool:
@@ -2724,11 +2860,13 @@ func _apply_movement(delta: float) -> void:
 		speed *= 1.16
 	if has_habit_buff("escape"):
 		speed *= 1.08
+	if eat_timer > 0.0:
+		speed *= 0.55
 	if slow_timer > 0.0:
 		speed *= slow_multiplier
 	if species_id == "cheetah" and burst_exhaustion_timer > 0.0 and dash_timer <= 0.0:
 		speed *= 0.70
-	var sprinting := wants_sprint and not exhausted and stamina > 0.0 and flat_direction.length() > 0.1
+	var sprinting := wants_sprint and not exhausted and eat_timer <= 0.0 and stamina > 0.0 and flat_direction.length() > 0.1
 	if sprinting and flat_direction.dot(previous_flat_direction) > 0.9:
 		straight_run_timer += delta
 	else:
@@ -2832,7 +2970,7 @@ func _update_ecology_trace(delta: float, sprinting: bool, move_direction: Vector
 
 
 func _try_attack() -> void:
-	if not attack_intent or exhausted or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
+	if not attack_intent or exhausted or eat_timer > 0.0 or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
 		return
 	if is_airborne():
 		_request_landing(1.15)
@@ -2887,7 +3025,7 @@ func _try_attack() -> void:
 
 
 func use_skill(target: EcoActor = null) -> bool:
-	if dead or exhausted or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
+	if dead or exhausted or eat_timer > 0.0 or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
 	# Normal attacks already honor calm_timer. Skills must follow the same rule,
 	# otherwise a fleeing animal can deal the first damage during the teaching
@@ -3712,7 +3850,9 @@ func apply_knockback(direction: Vector3, strength: float) -> void:
 
 
 func try_consume_nearby() -> bool:
-	var resource := _best_food_resource()
+	var preferred_range := 4.8 if Catalog.has_trait(species_id, "flying") else 2.5
+	var preferred_resource := _best_habit_food(preferred_range)
+	var resource := preferred_resource if is_instance_valid(preferred_resource) else _best_nearby_food(preferred_range)
 	if Catalog.has_trait(species_id, "flying") and is_instance_valid(resource):
 		var planar_distance := Vector2(global_position.x - resource.global_position.x, global_position.z - resource.global_position.z).length()
 		if planar_distance <= 4.8 and global_position.y > 0.92:
@@ -3766,8 +3906,8 @@ func try_consume_resource(resource: Node3D) -> bool:
 	if is_player:
 		var food_name: String = str(resource.get_food_name()) if resource is FoodPatch else "猎物尸体"
 		if bool(habit_result.get("triggered", false)):
-			game.show_hint("进食%s触发「%s」：生命 +%d、耐力 +%d · %s" % [
-				food_name, str(habit_result["name"]), ceili(float(habit_result["health"])), ceili(float(habit_result["stamina"])), Catalog.habit_buff_display_name(str(habit_result["buff"])),
+			game.show_hint("进食%s触发「%s」：生命 +%d、耐力 +%d、适应经验 +%d · %s" % [
+				food_name, str(habit_result["name"]), ceili(float(habit_result["health"])), ceili(float(habit_result["stamina"])), int(habit_result.get("xp", 0)), Catalog.habit_buff_display_name(str(habit_result["buff"])),
 			])
 		else:
 			game.show_hint("进食%s，恢复了生命与饱腹" % food_name)
@@ -3796,6 +3936,8 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 		return {}
 	habit_rewarded_sources[source_key] = true
 	habit_activation_count += 1
+	habit_guidance_cache_timer = 0.0
+	habit_guidance_cache = ""
 	var health_before := health
 	var stamina_before := stamina
 	health = minf(health + max_health * float(effect.get("health_ratio", 0.0)), max_health)

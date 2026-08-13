@@ -129,6 +129,10 @@ const HABIT_BUFF_NAMES := {
 	"escape": "轻捷", "recover": "调息", "guard": "守势", "hunt": "猎性", "conceal": "匿踪",
 }
 
+const HABIT_FOOD_NAMES := {
+	"grass": "嫩草", "berries": "野莓", "mushroom": "蘑菇", "fruit": "落果", "roots": "块根", "fish": "鱼群", "corpse": "猎物尸体",
+}
+
 # Ecological habits are deliberately separate from combat traits. Every animal
 # gets one readable food-and-habitat loop, while TRAITS continue to own its
 # combat, movement-domain and social behavior. A source can trigger its habit
@@ -1218,6 +1222,17 @@ static func habit_buff_display_name(buff_id: String) -> String:
 	return str(HABIT_BUFF_NAMES.get(buff_id, "生态调适"))
 
 
+static func habit_food_display_name(food_kind: String) -> String:
+	return str(HABIT_FOOD_NAMES.get(food_kind, "食物"))
+
+
+static func habit_foods_display_text(species_id: String) -> String:
+	var names: Array[String] = []
+	for food_kind in habit_favored_foods(species_id):
+		names.append(habit_food_display_name(food_kind))
+	return "、".join(names)
+
+
 static func habit_food_effect(species_id: String, food_kind: String, region_id: String, in_cover: bool = false, time_phase: String = "day", weather_id: String = "clear", health_ratio: float = 1.0, prey_size: int = 0) -> Dictionary:
 	var profile: Dictionary = ECO_HABITS.get(species_id, {})
 	if profile.is_empty() or food_kind not in profile.get("foods", []):
@@ -1234,7 +1249,7 @@ static func habit_food_effect(species_id: String, food_kind: String, region_id: 
 		"health_ratio": float(profile.get("health", 0.0)) * scale,
 		"stamina_ratio": float(profile.get("stamina", 0.0)) * scale,
 		"hunger_bonus": float(profile.get("hunger", 0.0)) * scale,
-		"xp_bonus": maxi(roundi(float(profile.get("xp", 0)) * scale), 0),
+		"xp_bonus": 2 + (1 if home_active else 0) + (1 if special_active else 0) + maxi(int(profile.get("xp", 0)), 0),
 		"buff": str(profile.get("buff", "recover")),
 		"duration": float(profile.get("duration", 4.0)) * (1.12 if home_active and special_active else 1.0),
 		"home_active": home_active,
@@ -1301,6 +1316,15 @@ static func get_color(species_id: String) -> Color:
 static func experience_reward(species_id: String, victim_level: int = 1) -> int:
 	var base_reward := int(DATA.get(species_id, DATA["rabbit"]).get("xp_reward", 20))
 	return maxi(int(round(base_reward * (1.0 + maxi(victim_level - 1, 0) * 0.14))), 1)
+
+
+static func combat_experience_reward(killer_id: String, victim_id: String, victim_level: int = 1) -> int:
+	var base_reward := experience_reward(victim_id, victim_level)
+	var tier_dominance := combat_tier(killer_id) - combat_tier(victim_id)
+	var size_dominance := body_size(killer_id) - body_size(victim_id)
+	var dominance_gap := clampi(maxi(tier_dominance, size_dominance), 0, 4)
+	var multiplier: float = [1.0, 0.82, 0.68, 0.56, 0.48][dominance_gap]
+	return maxi(roundi(float(base_reward) * multiplier), 1)
 
 
 static func counterplay_experience_reward(target_id: String, target_level: int = 1) -> int:
