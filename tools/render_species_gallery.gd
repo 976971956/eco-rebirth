@@ -7,9 +7,13 @@ const FOREST_GROUND_TEXTURE = preload("res://assets/textures/terrain/forest_floo
 
 class GalleryGame:
 	extends Node
-	var batch_mode: bool = true
+	var batch_mode: bool = false
 	var player: EcoActor
 	var world: Node
+	var world_seed: int = 20260815
+
+	func get_quality_preset() -> String:
+		return "high"
 
 
 func _initialize() -> void:
@@ -53,8 +57,8 @@ func _build_gallery() -> void:
 	scene.add_child(sun)
 	var fill := DirectionalLight3D.new()
 	fill.light_color = Color("#a9d2d5")
-	fill.light_energy = 0.28
-	fill.rotation_degrees = Vector3(-58.0, 142.0, 0.0)
+	fill.light_energy = 0.46
+	fill.rotation_degrees = Vector3(58.0, 142.0, 0.0)
 	scene.add_child(fill)
 
 	var ground := MeshInstance3D.new()
@@ -64,17 +68,25 @@ func _build_gallery() -> void:
 	ground.material_override = Factory.terrain_material(Color("#344d35"), Color("#526743"), 12.0, FOREST_GROUND_TEXTURE, 6.0, 0.24)
 	scene.add_child(ground)
 
-	var species_ids: Array[String] = ["rabbit", "wolf", "deer", "tiger", "elephant", "crocodile"]
-	var x_positions := [-9.2, -5.6, -2.0, 1.8, 5.7, 9.3]
+	var species_ids: Array[String] = ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile"]
+	var x_positions := [9.2, 5.6, 2.0, -1.8, -5.7, -9.3]
 	for index in range(species_ids.size()):
 		var species_id := species_ids[index]
 		var actor: EcoActor = ActorScript.new()
 		actor.process_mode = Node.PROCESS_MODE_DISABLED
 		scene.add_child(actor)
-		actor.setup(game_stub, index + 1, species_id, false, Vector3(x_positions[index], 0.0, 2.5), 0)
-		actor.position.y = 0.0
-		actor.rotation.y = 0.48
+		actor.setup(game_stub, index + 1, species_id, true, Vector3(x_positions[index], 0.0, 2.5), 0)
+		actor.position.y = 0.75 if species_id == "eagle" else 0.0
+		actor.rotation.y = 0.28
 		actor.health_bar_root.visible = false
+		if actor.selection_ring != null:
+			actor.selection_ring.visible = false
+		var player_arrow := actor.get_node_or_null("PlayerArrow") as Node3D
+		if player_arrow != null:
+			player_arrow.visible = false
+		var player_label := actor.get_node_or_null("PlayerLabel") as Label3D
+		if player_label != null:
+			player_label.visible = false
 		var label := Label3D.new()
 		label.text = Catalog.display_name(species_id)
 		label.font = load("res://assets/fonts/NotoSansSC-VF.ttf") as Font
@@ -85,7 +97,7 @@ func _build_gallery() -> void:
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
 		label.pixel_size = 0.011
-		label.position = actor.position + Vector3(0.0, 4.0 + int(Catalog.get_data(species_id)["size"]) * 0.22, 0.0)
+		label.position = actor.position + Vector3(0.0, 3.8 + int(Catalog.get_data(species_id)["size"]) * 0.24, 0.0)
 		scene.add_child(label)
 
 	var camera := Camera3D.new()
@@ -98,7 +110,7 @@ func _build_gallery() -> void:
 
 	for _frame in range(8):
 		await process_frame
-	var output_path := "res://docs/images/v27-organic-species-v3.png"
+	var output_path := "res://docs/images/v30-realistic-species-phase1.png"
 	var image := root.get_texture().get_image()
 	var result := image.save_png(output_path)
 	if result == OK:

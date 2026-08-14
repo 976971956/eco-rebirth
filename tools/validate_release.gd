@@ -7,11 +7,29 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
+const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 
 var failures: Array[String] = []
 
 
-func _init() -> void:
+class ExternalModelGame:
+	extends Node
+	var batch_mode: bool = false
+	var player: EcoActor
+	var world: Node
+	var world_seed: int = 20260815
+	var current_level: int = 1
+	var quality_preset: String = "high"
+
+	func get_quality_preset() -> String:
+		return quality_preset
+
+
+func _initialize() -> void:
+	_run_validation.call_deferred()
+
+
+func _run_validation() -> void:
 	_validate_save_migration()
 	_validate_quality_presets()
 	_validate_spawn_distribution_contract()
@@ -23,6 +41,7 @@ func _init() -> void:
 	_validate_export_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
+	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
 	_validate_opportunity_contract()
 	_validate_cover_ambush_contract()
@@ -35,7 +54,7 @@ func _init() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.21 发布校验通过：生态本能、习性成长、反滚雪球与三端规则正常")
+		print("[release] V1.22 发布校验通过：外部物种 GLB、移动端 LOD、生态玩法与三端规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -207,8 +226,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.21.0\"") and presets.contains("application/short_version=\"1.21.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=310") and presets.contains("application/version=\"310\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.22.0\"") and presets.contains("application/short_version=\"1.22.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=320") and presets.contains("application/version=\"320\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -278,9 +297,118 @@ func _validate_visual_kit_contract() -> void:
 		_expect(shared_vertex_count > 0 and minimum_shared_normal_dot > 0.98, "V3 物种相邻曲面仍使用割裂的逐面法线")
 	var factory_source := FileAccess.get_file_as_string("res://scripts/low_poly_factory.gd")
 	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material"), "V3 有机曲面或连续生态地表实现缺失")
+	var loft := Factory.loft("LoftWindingContract", Color("#7f6248"), [Vector3(0.0, 0.7, 0.9), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 1.25, -1.0)], [Vector2(0.42, 0.36), Vector2(0.66, 0.58), Vector2(0.28, 0.25)], 8)
+	if loft.mesh is ArrayMesh:
+		var loft_arrays := (loft.mesh as ArrayMesh).surface_get_arrays(0)
+		var loft_vertices: PackedVector3Array = loft_arrays[Mesh.ARRAY_VERTEX]
+		var loft_normals: PackedVector3Array = loft_arrays[Mesh.ARRAY_NORMAL]
+		var minimum_winding_dot := 1.0
+		for triangle_start in range(0, loft_vertices.size(), 3):
+			var face_normal := (loft_vertices[triangle_start + 1] - loft_vertices[triangle_start]).cross(loft_vertices[triangle_start + 2] - loft_vertices[triangle_start]).normalized()
+			var average_normal := (loft_normals[triangle_start] + loft_normals[triangle_start + 1] + loft_normals[triangle_start + 2]).normalized()
+			minimum_winding_dot = minf(minimum_winding_dot, face_normal.dot(average_normal))
+		_expect(minimum_winding_dot > 0.0, "有机 loft 网格绕序与外法线相反，模型会出现黑色背面")
+	else:
+		failures.append("有机 loft 网格无法生成")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("tail_visuals") and actor_source.contains("body_pitch_scale"), "V3 动物步态缺少身体起伏或尾部摆动")
 	faceted.free()
+	loft.free()
+
+
+func _validate_external_species_model_contract() -> void:
+	var expected_motion_nodes := {
+		"rabbit": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		"wolf": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		"deer": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		"bear": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		"eagle": {"WingPivot_": 2, "TailPivot": 1},
+		"crocodile": {"LegPivot_": 4},
+	}
+	_expect(VisualCatalog.profile_for(true, "high") == "hero", "高画质玩家没有选择 Hero 物种模型")
+	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
+	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
+	for species_id in VisualCatalog.EXTERNAL_SPECIES:
+		var profile_vertices := {}
+		for profile in ["hero", "mobile"]:
+			var model_path := VisualCatalog.model_path(species_id, profile)
+			_expect(ResourceLoader.exists(model_path), "%s 的 %s GLB 模型缺失" % [species_id, profile])
+			var model := VisualCatalog.instantiate(species_id, profile)
+			if model == null:
+				failures.append("%s 的 %s GLB 模型无法实例化" % [species_id, profile])
+				continue
+			var stats := _external_model_stats(model)
+			profile_vertices[profile] = int(stats["vertices"])
+			_expect(int(stats["meshes"]) >= 6, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
+			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
+			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
+			if profile == "mobile":
+				_expect(int(stats["vertices"]) <= 16000, "%s 的 Mobile 模型超出移动端顶点预算" % species_id)
+			for node_prefix in expected_motion_nodes[species_id]:
+				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
+				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
+			model.free()
+		if profile_vertices.has("hero") and profile_vertices.has("mobile"):
+			_expect(int(profile_vertices["hero"]) > int(profile_vertices["mobile"]), "%s 的 Hero 模型细节没有高于 Mobile LOD" % species_id)
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("uses_external_model = _build_external_species_visual()"), "角色运行时没有优先加载外部物种模型")
+	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
+	_expect(actor_source.contains("if not uses_external_model:"), "外部模型失败时没有保留程序模型降级路径")
+	var game_stub := ExternalModelGame.new()
+	root.add_child(game_stub)
+	var hero_actor: EcoActor = ActorScript.new()
+	hero_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game_stub.add_child(hero_actor)
+	hero_actor.setup(game_stub, 901, "rabbit", true, Vector3.ZERO, 0)
+	_expect(hero_actor.uses_external_model and hero_actor.external_model_profile == "hero", "真实角色流程没有为高画质玩家加载 Hero GLB")
+	_expect(hero_actor.leg_pivots.size() == 4 and hero_actor.ear_pivots.size() == 2, "真实角色流程没有绑定雪兔的腿或耳部枢轴")
+	game_stub.quality_preset = "low"
+	var mobile_actor: EcoActor = ActorScript.new()
+	mobile_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game_stub.add_child(mobile_actor)
+	mobile_actor.setup(game_stub, 902, "wolf", false, Vector3.ZERO, 0)
+	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
+	game_stub.batch_mode = true
+	var fallback_actor: EcoActor = ActorScript.new()
+	fallback_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game_stub.add_child(fallback_actor)
+	fallback_actor.setup(game_stub, 903, "rabbit", false, Vector3.ZERO, 0)
+	_expect(not fallback_actor.uses_external_model and fallback_actor.body_root.get_child_count() > 0, "无画面/资源降级流程没有恢复程序模型")
+	hero_actor.free()
+	mobile_actor.free()
+	fallback_actor.free()
+	game_stub.free()
+
+
+func _external_model_stats(root_node: Node) -> Dictionary:
+	var stats := {
+		"meshes": 0,
+		"vertices": 0,
+		"colored_surfaces": 0,
+		"named_nodes": {},
+	}
+	_accumulate_external_model_stats(root_node, stats)
+	return stats
+
+
+func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
+	var node_name := str(node.name)
+	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
+		if node_name.begins_with(prefix):
+			stats["named_nodes"][prefix] = int(stats["named_nodes"].get(prefix, 0)) + 1
+	if node is MeshInstance3D:
+		var mesh := (node as MeshInstance3D).mesh
+		if mesh != null:
+			stats["meshes"] = int(stats["meshes"]) + 1
+			for surface_index in range(mesh.get_surface_count()):
+				var arrays := mesh.surface_get_arrays(surface_index)
+				if arrays.size() > Mesh.ARRAY_VERTEX and arrays[Mesh.ARRAY_VERTEX] != null:
+					stats["vertices"] = int(stats["vertices"]) + arrays[Mesh.ARRAY_VERTEX].size()
+				var material := mesh.surface_get_material(surface_index) as StandardMaterial3D
+				if material != null and not material.albedo_color.is_equal_approx(Color.WHITE):
+					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
+	for child in node.get_children():
+		_accumulate_external_model_stats(child, stats)
 
 
 func _validate_adaptive_ui_contract() -> void:

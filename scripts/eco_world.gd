@@ -190,9 +190,11 @@ func _build_environment() -> void:
 	var sky_fill := DirectionalLight3D.new()
 	sky_fill.name = "SkyFill"
 	sky_fill.light_color = Color("#9fc4cf")
-	sky_fill.light_energy = 0.18 if time_phase == "day" else 0.10
+	# Compatibility/mobile renderers need a soft opposite-side fill so curved
+	# animal coats keep their volume instead of collapsing into near-black facets.
+	sky_fill.light_energy = 0.30 if time_phase == "day" else 0.14
 	sky_fill.shadow_enabled = false
-	sky_fill.rotation_degrees = Vector3(-62.0, 138.0, 0.0)
+	sky_fill.rotation_degrees = Vector3(62.0, 138.0, 0.0)
 	add_child(sky_fill)
 
 

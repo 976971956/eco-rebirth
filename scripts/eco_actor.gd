@@ -6,6 +6,7 @@ const Factory = preload("res://scripts/low_poly_factory.gd")
 const SkillVFX = preload("res://scripts/skill_vfx.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 const WorldRules = preload("res://scripts/eco_world.gd")
+const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -174,7 +175,10 @@ var leg_pivots: Array[Node3D] = []
 var leg_phases: Array[float] = []
 var leg_stride_scales: Array[float] = []
 var wing_pivots: Array[Node3D] = []
+var ear_pivots: Array[Node3D] = []
 var tail_visuals: Array[Node3D] = []
+var uses_external_model: bool = false
+var external_model_profile: String = ""
 var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
@@ -381,42 +385,79 @@ func _build_visual() -> void:
 	body_root = Node3D.new()
 	body_root.name = "Animal"
 	visual_root.add_child(body_root)
-	match species_id:
-		"rabbit": _build_rabbit()
-		"fox": _build_canine(true)
-		"wolf": _build_canine(false)
-		"deer": _build_deer()
-		"snake": _build_snake()
-		"bear": _build_bear()
-		"boar": _build_boar()
-		"raccoon": _build_raccoon()
-		"porcupine": _build_porcupine()
-		"lynx": _build_feline(false)
-		"capybara": _build_capybara()
-		"otter": _build_otter()
-		"goat": _build_goat()
-		"wolverine": _build_wolverine()
-		"bison": _build_bison()
-		"zebra": _build_zebra()
-		"elephant": _build_elephant()
-		"crocodile": _build_crocodile()
-		"tiger": _build_feline(true)
-		"monkey": _build_monkey()
-		"owl": _build_bird(true)
-		"moose": _build_moose()
-		"turtle": _build_turtle()
-		"cheetah": _build_cheetah()
-		"rhino": _build_rhino()
-		"gorilla": _build_gorilla()
-		"eagle": _build_bird(false)
-		"hippo": _build_hippo()
-		"hyena": _build_hyena()
-		"lion": _build_lion()
+	uses_external_model = _build_external_species_visual()
+	if not uses_external_model:
+		match species_id:
+			"rabbit": _build_rabbit()
+			"fox": _build_canine(true)
+			"wolf": _build_canine(false)
+			"deer": _build_deer()
+			"snake": _build_snake()
+			"bear": _build_bear()
+			"boar": _build_boar()
+			"raccoon": _build_raccoon()
+			"porcupine": _build_porcupine()
+			"lynx": _build_feline(false)
+			"capybara": _build_capybara()
+			"otter": _build_otter()
+			"goat": _build_goat()
+			"wolverine": _build_wolverine()
+			"bison": _build_bison()
+			"zebra": _build_zebra()
+			"elephant": _build_elephant()
+			"crocodile": _build_crocodile()
+			"tiger": _build_feline(true)
+			"monkey": _build_monkey()
+			"owl": _build_bird(true)
+			"moose": _build_moose()
+			"turtle": _build_turtle()
+			"cheetah": _build_cheetah()
+			"rhino": _build_rhino()
+			"gorilla": _build_gorilla()
+			"eagle": _build_bird(false)
+			"hippo": _build_hippo()
+			"hyena": _build_hyena()
+			"lion": _build_lion()
 	_collect_tail_visuals()
 	base_visual_scale = body_root.scale
 	_build_health_bar()
 	if is_player:
 		_build_player_ring()
+
+
+func _build_external_species_visual() -> bool:
+	if not VisualCatalog.supports(species_id) or not is_instance_valid(game) or bool(game.get("batch_mode")):
+		return false
+	var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
+	external_model_profile = VisualCatalog.profile_for(is_player, quality)
+	var model := VisualCatalog.instantiate(species_id, external_model_profile)
+	if not is_instance_valid(model):
+		external_model_profile = ""
+		return false
+	body_root.add_child(model)
+	_bind_external_motion_nodes(model)
+	return true
+
+
+func _bind_external_motion_nodes(root: Node) -> void:
+	for child in root.get_children():
+		if not child is Node3D:
+			continue
+		var visual_node := child as Node3D
+		var node_name := str(visual_node.name)
+		if node_name.begins_with("LegPivot_"):
+			leg_pivots.append(visual_node)
+			var suffix := node_name.trim_prefix("LegPivot_")
+			leg_phases.append(0.0 if suffix in ["LF", "RH"] else PI)
+			if species_id == "rabbit":
+				leg_stride_scales.append(0.78 if suffix.ends_with("F") else 1.28)
+			else:
+				leg_stride_scales.append(1.0 if suffix.ends_with("F") else 0.92)
+		elif node_name.begins_with("WingPivot_"):
+			wing_pivots.append(visual_node)
+		elif node_name.begins_with("EarPivot_"):
+			ear_pivots.append(visual_node)
+		_bind_external_motion_nodes(visual_node)
 
 
 func _build_player_ring() -> void:
@@ -1473,10 +1514,23 @@ func _add_legs(color: Color, radius: float, length: float, spread_x: float, spre
 
 func _collect_tail_visuals() -> void:
 	tail_visuals.clear()
+	_collect_tail_visuals_recursive(body_root)
+
+
+func _collect_tail_visuals_recursive(root: Node) -> void:
 	var animated_tail_names := ["Tail", "CatTail", "LionTail", "CheetahTail", "RudderTail", "ElephantTail"]
-	for child in body_root.get_children():
-		if child is Node3D and str(child.name) in animated_tail_names:
-			tail_visuals.append(child as Node3D)
+	for child in root.get_children():
+		if not child is Node3D:
+			continue
+		var visual_node := child as Node3D
+		var node_name := str(visual_node.name)
+		if node_name == "TailPivot":
+			tail_visuals.append(visual_node)
+			continue
+		if node_name in animated_tail_names:
+			tail_visuals.append(visual_node)
+		else:
+			_collect_tail_visuals_recursive(visual_node)
 
 
 func _add_primate_limbs(color: Color, arm_length: float, leg_length: float, shoulder_x: float, hip_x: float, heavy: bool) -> void:
@@ -4165,6 +4219,13 @@ func _update_visual_motion(delta: float) -> void:
 		var flap := sin(move_time * 1.65) * (0.42 + minf(flat_speed / maxf(float(data["speed"]), 0.1), 1.0) * 0.28) * airborne_blend
 		wing.rotation.z = lerp_angle(wing.rotation.z, -side_sign * flap, 1.0 - exp(-delta * 13.0))
 		wing.rotation.x = lerp_angle(wing.rotation.x, -0.10 + sin(move_time * 0.72) * 0.06, 1.0 - exp(-delta * 9.0))
+	for ear_index in range(ear_pivots.size()):
+		var ear := ear_pivots[ear_index]
+		if not is_instance_valid(ear):
+			continue
+		var listening_motion := sin(move_time * 0.31 + float(actor_id) * 0.47 + ear_index * 1.7) * 0.055
+		var running_sweep := minf(speed_ratio, 1.0) * (0.10 if species_id == "rabbit" else 0.045)
+		ear.rotation.x = lerp_angle(ear.rotation.x, listening_motion + running_sweep, 1.0 - exp(-delta * 7.0))
 	for tail_visual in tail_visuals:
 		if not is_instance_valid(tail_visual):
 			continue

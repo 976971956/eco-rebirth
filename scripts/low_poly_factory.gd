@@ -358,9 +358,9 @@ static func loft(name_text: String, color: Color, centers: Array, radii: Array, 
 		var second_normals: PackedVector3Array = normal_rings[ring_index + 1]
 		for side_index in range(side_count):
 			var next_side := (side_index + 1) % side_count
-			_add_smooth_colored_triangle(surface, first[side_index], second[next_side], second[side_index], first_normals[side_index], second_normals[next_side], second_normals[side_index], color, face_index)
+			_add_oriented_smooth_colored_triangle(surface, first[side_index], second[next_side], second[side_index], first_normals[side_index], second_normals[next_side], second_normals[side_index], color, face_index)
 			face_index += 1
-			_add_smooth_colored_triangle(surface, first[side_index], first[next_side], second[next_side], first_normals[side_index], first_normals[next_side], second_normals[next_side], color, face_index)
+			_add_oriented_smooth_colored_triangle(surface, first[side_index], first[next_side], second[next_side], first_normals[side_index], first_normals[next_side], second_normals[next_side], color, face_index)
 			face_index += 1
 
 	var start_center: Vector3 = centers[0]
@@ -371,9 +371,9 @@ static func loft(name_text: String, color: Color, centers: Array, radii: Array, 
 	var end_cap_normal: Vector3 = tangents[tangents.size() - 1]
 	for side_index in range(side_count):
 		var next_side := (side_index + 1) % side_count
-		_add_smooth_colored_triangle(surface, start_center, start_ring[next_side], start_ring[side_index], start_cap_normal, start_cap_normal, start_cap_normal, color, face_index)
+		_add_oriented_smooth_colored_triangle(surface, start_center, start_ring[next_side], start_ring[side_index], start_cap_normal, start_cap_normal, start_cap_normal, color, face_index)
 		face_index += 1
-		_add_smooth_colored_triangle(surface, end_center, end_ring[side_index], end_ring[next_side], end_cap_normal, end_cap_normal, end_cap_normal, color, face_index)
+		_add_oriented_smooth_colored_triangle(surface, end_center, end_ring[side_index], end_ring[next_side], end_cap_normal, end_cap_normal, end_cap_normal, color, face_index)
 		face_index += 1
 
 	node.mesh = surface.commit()
@@ -389,6 +389,22 @@ static func _add_smooth_sphere_facet(surface: SurfaceTool, a: Vector3, b: Vector
 		b = c
 		c = swap
 	_add_smooth_colored_triangle(surface, a, b, c, a.normalized(), b.normalized(), c.normalized(), color, face_index)
+
+
+static func _add_oriented_smooth_colored_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal_a: Vector3, normal_b: Vector3, normal_c: Vector3, color: Color, face_index: int) -> void:
+	# Curved center-lines can rotate the loft basis between neighbouring rings.
+	# Keep geometric winding aligned with the supplied outward normals so glTF
+	# importers do not classify visible coat surfaces as back faces.
+	var face_normal := (b - a).cross(c - a).normalized()
+	var average_normal := (normal_a + normal_b + normal_c).normalized()
+	if face_normal.dot(average_normal) < 0.0:
+		var swap_vertex := b
+		b = c
+		c = swap_vertex
+		var swap_normal := normal_b
+		normal_b = normal_c
+		normal_c = swap_normal
+	_add_smooth_colored_triangle(surface, a, b, c, normal_a, normal_b, normal_c, color, face_index)
 
 
 static func _add_smooth_colored_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal_a: Vector3, normal_b: Vector3, normal_c: Vector3, color: Color, _face_index: int) -> void:

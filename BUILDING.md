@@ -1,4 +1,4 @@
-# 《生态轮回》V1.21 运行与导出
+# 《生态轮回》V1.22 运行与导出
 
 ## 直接运行
 
@@ -27,6 +27,8 @@ godot --path .
 | 暂停 | Esc | 右上暂停按钮 |
 
 普通攻击只在攻击范围内触发。食草物种吃绿色植物，肉食物种吃尸体，狐狸和熊两者都能吃。
+
+V1.22 为雪兔、灰狼、林鹿、棕熊、高原金雕和沼泽鳄加入 Hero/Mobile 两档外部 GLB。玩家在平衡/高画质使用 Hero，AI 和性能画质使用 Mobile；资源缺失或无画面批量测试会自动回退到程序模型。GLB 的腿、耳、翅膀和尾部枢轴复用现有步态逻辑，碰撞、数值与 AI 没有改变。
 
 V1.21 会在生命、耐力或饥饿进入风险区时，用右上“生态本能”显示最近安全习性资源的方向、距离和强化条件。手动进食优先选择可触发习性的近距离资源；首次触发习性提供生态适应经验。强物种捕杀明显弱于自己的猎物时，成长经验会递减，但食物收益和击杀记录保持不变。进食后有 1 秒咀嚼承诺，只能慢走且不能冲刺、攻击或释放技能。
 
@@ -129,7 +131,7 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 - 小屏触控布局使用更大字号、紧凑信息框、至少 52 像素的普通按钮和 96–150 像素的主要动作按钮；较高平板自动恢复舒展信息密度；
 - Compatibility 渲染器，可运行于 WebGL 2 和移动端 OpenGL；
 - 无线程、无 GDExtension、无桌面专属 API；
-- 低多边形程序化动物和森林，场景不依赖大型外部模型；
+- 六种代表动物使用轻量 Hero/Mobile GLB，其余物种保留程序模型；不依赖运行时第三方插件或桌面专属格式；
 - 触屏设备自动显示虚拟摇杆和动作按钮；
 - `ConfigFile` 存档写入各平台的 `user://` 沙盒；
 - 存档带独立数据版本号，并自动兼容、迁移旧格式数据；
@@ -144,10 +146,17 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 godot --headless --path . --script res://tools/validate_species.gd
 ```
 
-检查旧存档迁移、画质档位和教学步骤：
+检查旧存档迁移、画质档位、教学步骤，以及外部 GLB 的材质、LOD、动画枢轴与移动端几何预算：
 
 ```bash
 godot --headless --path . --script res://tools/validate_release.gd
+```
+
+如修改了六种代表物种的生成代码，可重新生成并导入 GLB：
+
+```bash
+godot --headless --path . --script res://tools/generate_species_glb.gd
+godot --headless --path . --editor --quit
 ```
 
 无画面启动并运行生态模拟：
