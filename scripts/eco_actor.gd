@@ -7,6 +7,7 @@ const SkillVFX = preload("res://scripts/skill_vfx.gd")
 const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 const WorldRules = preload("res://scripts/eco_world.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
+const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -179,6 +180,10 @@ var ear_pivots: Array[Node3D] = []
 var tail_visuals: Array[Node3D] = []
 var uses_external_model: bool = false
 var external_model_profile: String = ""
+var external_skeleton: Skeleton3D
+var external_animation_state: String = "idle"
+var external_attack_animation_timer: float = 0.0
+var external_hit_animation_timer: float = 0.0
 var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
@@ -445,7 +450,11 @@ func _bind_external_motion_nodes(root: Node) -> void:
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if node_name.begins_with("LegPivot_"):
+		if visual_node is Skeleton3D and node_name == SkeletonRig.RIG_NAME:
+			external_skeleton = visual_node as Skeleton3D
+		elif visual_node is BoneAttachment3D:
+			continue
+		elif node_name.begins_with("LegPivot_"):
 			leg_pivots.append(visual_node)
 			var suffix := node_name.trim_prefix("LegPivot_")
 			leg_phases.append(0.0 if suffix in ["LF", "RH"] else PI)
@@ -1523,6 +1532,8 @@ func _collect_tail_visuals_recursive(root: Node) -> void:
 		if not child is Node3D:
 			continue
 		var visual_node := child as Node3D
+		if visual_node is BoneAttachment3D and is_instance_valid(external_skeleton):
+			continue
 		var node_name := str(visual_node.name)
 		if node_name == "TailPivot":
 			tail_visuals.append(visual_node)
@@ -1581,6 +1592,8 @@ func _physics_process(delta: float) -> void:
 
 func _update_timers(delta: float) -> void:
 	attack_timer = maxf(attack_timer - delta, 0.0)
+	external_attack_animation_timer = maxf(external_attack_animation_timer - delta, 0.0)
+	external_hit_animation_timer = maxf(external_hit_animation_timer - delta, 0.0)
 	skill_timer = maxf(skill_timer - delta, 0.0)
 	eat_timer = maxf(eat_timer - delta, 0.0)
 	stamina_regen_delay = maxf(stamina_regen_delay - delta, 0.0)
@@ -4231,6 +4244,21 @@ func _update_visual_motion(delta: float) -> void:
 			continue
 		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * 0.065 * gait_blend
 		tail_visual.rotation.y = lerp_angle(tail_visual.rotation.y, tail_swing, 1.0 - exp(-delta * 8.0))
+	if is_instance_valid(external_skeleton):
+		external_animation_state = SkeletonRig.resolve_state(gait_blend, external_attack_animation_timer, external_hit_animation_timer)
+		var attack_progress := 1.0 - external_attack_animation_timer / SkeletonRig.ATTACK_DURATION
+		var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
+		SkeletonRig.apply_pose(
+			external_skeleton,
+			external_animation_state,
+			move_time,
+			stride_amplitude,
+			speed_ratio,
+			attack_progress,
+			hit_progress,
+			float(actor_id) * 0.47,
+			delta
+		)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
@@ -4273,6 +4301,8 @@ func _gait_stride_amplitude() -> float:
 func _play_attack_pulse() -> void:
 	if body_root == null:
 		return
+	if is_instance_valid(external_skeleton):
+		external_attack_animation_timer = SkeletonRig.ATTACK_DURATION
 	var tween := create_tween()
 	tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.03, 0.94, 1.12), 0.07)
 	tween.tween_property(body_root, "scale", base_visual_scale, 0.12)
@@ -4311,6 +4341,8 @@ func _play_species_skill_animation() -> void:
 func _play_hit_pulse() -> void:
 	if visual_root == null:
 		return
+	if is_instance_valid(external_skeleton):
+		external_hit_animation_timer = SkeletonRig.HIT_DURATION
 	var tween := create_tween()
 	tween.tween_property(visual_root, "scale", Vector3(1.08, 0.88, 1.08), 0.06)
 	tween.tween_property(visual_root, "scale", Vector3.ONE, 0.13)

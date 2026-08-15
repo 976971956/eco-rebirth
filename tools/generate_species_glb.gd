@@ -18,7 +18,7 @@ func _generate() -> void:
 	for species_id in REPRESENTATIVE_SPECIES:
 		for profile in ["hero", "mobile"]:
 			var model := _build_species(species_id, profile == "hero")
-			_bake_export_materials(model)
+			_bake_export_materials(model, species_id)
 			var species_dir := "%s/%s" % [OUTPUT_ROOT, species_id]
 			DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(species_dir))
 			var output_path := "%s/%s_%s.glb" % [species_dir, species_id, profile]
@@ -43,12 +43,12 @@ func _generate() -> void:
 		quit(1)
 
 
-func _bake_export_materials(root: Node) -> void:
+func _bake_export_materials(root: Node, species_id: String) -> void:
 	if root is MeshInstance3D:
 		var mesh_instance := root as MeshInstance3D
 		if mesh_instance.mesh != null and mesh_instance.material_override != null:
 			var baked_mesh := mesh_instance.mesh.duplicate()
-			var baked_material := _portable_export_material(mesh_instance.mesh, mesh_instance.material_override)
+			var baked_material := _portable_export_material(mesh_instance.mesh, mesh_instance.material_override, str(mesh_instance.name), species_id)
 			if baked_mesh is PrimitiveMesh:
 				(baked_mesh as PrimitiveMesh).material = baked_material
 			elif baked_mesh is ArrayMesh:
@@ -57,10 +57,10 @@ func _bake_export_materials(root: Node) -> void:
 			mesh_instance.mesh = baked_mesh
 			mesh_instance.material_override = null
 	for child in root.get_children():
-		_bake_export_materials(child)
+		_bake_export_materials(child, species_id)
 
 
-func _portable_export_material(mesh: Mesh, source_material: Material) -> StandardMaterial3D:
+func _portable_export_material(mesh: Mesh, source_material: Material, mesh_name: String, species_id: String) -> StandardMaterial3D:
 	var color := Color.WHITE
 	if source_material is StandardMaterial3D:
 		color = (source_material as StandardMaterial3D).albedo_color
@@ -80,17 +80,48 @@ func _portable_export_material(mesh: Mesh, source_material: Material) -> Standar
 			var divisor := float(colors.size())
 			color = Color(red / divisor, green / divisor, blue / divisor, alpha / divisor)
 	var material := StandardMaterial3D.new()
+	var material_slot := _pbr_material_slot(mesh_name)
+	material.resource_name = "%s_%s_pbr" % [species_id, material_slot]
 	material.albedo_color = color
-	material.roughness = 0.86
 	material.metallic = 0.0
-	material.metallic_specular = 0.16
 	material.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
-	# A very small coat-coloured emission floor keeps joints readable under harsh
-	# directional shadows without flattening the model into an unlit asset.
 	material.emission_enabled = true
-	material.emission = color.darkened(0.48)
-	material.emission_energy_multiplier = 0.16
+	material.emission = color.darkened(0.58)
+	match material_slot:
+		"coat":
+			material.roughness = 0.94
+			material.metallic_specular = 0.11
+			material.emission_energy_multiplier = 0.07
+		"eye":
+			material.roughness = 0.24
+			material.metallic_specular = 0.52
+			material.emission_energy_multiplier = 0.10
+		"nose":
+			material.roughness = 0.42
+			material.metallic_specular = 0.34
+			material.emission_energy_multiplier = 0.08
+		"paw":
+			material.roughness = 0.82
+			material.metallic_specular = 0.14
+			material.emission_energy_multiplier = 0.06
+		_:
+			material.roughness = 0.76
+			material.metallic_specular = 0.18
+			material.emission_energy_multiplier = 0.07
 	return material
+
+
+func _pbr_material_slot(mesh_name: String) -> String:
+	var lowered := mesh_name.to_lower()
+	if "eye" in lowered or "iris" in lowered or "pupil" in lowered or "catchlight" in lowered:
+		return "eye"
+	if "nose" in lowered or "beak" in lowered:
+		return "nose"
+	if "paw" in lowered or "hoof" in lowered or "talon" in lowered or "claw" in lowered:
+		return "paw"
+	if "body" in lowered or "fur" in lowered or "quarter" in lowered or "ruff" in lowered or "wing" in lowered or "tail" in lowered:
+		return "coat"
+	return "detail"
 
 
 func _build_species(species_id: String, hero: bool) -> Node3D:
@@ -103,7 +134,23 @@ func _build_species(species_id: String, hero: bool) -> Node3D:
 		"bear": _build_bear(root, hero)
 		"eagle": _build_eagle(root, hero)
 		"crocodile": _build_crocodile(root, hero)
+	if species_id in ["rabbit", "wolf"]:
+		_group_skeletal_body(root)
 	return root
+
+
+func _group_skeletal_body(root: Node3D) -> void:
+	var existing_children := root.get_children()
+	var spine := Node3D.new()
+	spine.name = "SpinePivot"
+	root.add_child(spine)
+	for child in existing_children:
+		if not child is Node3D:
+			continue
+		var node_name := str(child.name)
+		if node_name.begins_with("LegPivot_") or node_name.begins_with("EarPivot_") or node_name == "TailPivot":
+			continue
+		child.reparent(spine, false)
 
 
 func _detail(hero: bool) -> Dictionary:

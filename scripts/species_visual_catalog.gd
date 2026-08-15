@@ -1,8 +1,10 @@
 class_name SpeciesVisualCatalog
 extends RefCounted
 
+const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const MODEL_ROOT := "res://assets/models/animals"
 const EXTERNAL_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile"]
+const SKELETAL_SPECIES := ["rabbit", "wolf"]
 
 
 static func supports(species_id: String) -> bool:
@@ -32,4 +34,5 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 		instance.name = "ExternalSpeciesModel"
 		instance.set_meta("species_id", species_id)
 		instance.set_meta("visual_profile", profile)
+		SkeletonRig.upgrade(instance, species_id)
 	return instance

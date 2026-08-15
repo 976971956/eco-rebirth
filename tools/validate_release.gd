@@ -8,6 +8,7 @@ const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
+const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 
 var failures: Array[String] = []
 
@@ -54,7 +55,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.22 发布校验通过：外部物种 GLB、移动端 LOD、生态玩法与三端规则正常")
+		print("[release] V1.23 发布校验通过：双物种 Skeleton3D 四态骨骼、PBR 槽、移动端 LOD 与生态规则正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -226,8 +227,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.22.0\"") and presets.contains("application/short_version=\"1.22.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=320") and presets.contains("application/version=\"320\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.23.0\"") and presets.contains("application/short_version=\"1.23.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=330") and presets.contains("application/version=\"330\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -328,6 +329,10 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(true, "high") == "hero", "高画质玩家没有选择 Hero 物种模型")
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
+	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf"], "第二阶段骨骼样板物种清单异常")
+	_expect(SkeletonRig.ANIMATION_STATES == ["idle", "run", "attack", "hit"], "骨骼控制器没有提供完整四态动画接口")
+	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0) == "idle" and SkeletonRig.resolve_state(0.8, 0.0, 0.0) == "run", "骨骼待机/奔跑状态切换异常")
+	_expect(SkeletonRig.resolve_state(0.8, 0.1, 0.0) == "attack" and SkeletonRig.resolve_state(0.8, 0.1, 0.1) == "hit", "骨骼攻击/受击状态优先级异常")
 	for species_id in VisualCatalog.EXTERNAL_SPECIES:
 		var profile_vertices := {}
 		for profile in ["hero", "mobile"]:
@@ -344,6 +349,10 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
 			if profile == "mobile":
 				_expect(int(stats["vertices"]) <= 16000, "%s 的 Mobile 模型超出移动端顶点预算" % species_id)
+			if species_id in VisualCatalog.SKELETAL_SPECIES:
+				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 运行时模型没有唯一 Skeleton3D" % [species_id, profile])
+				_expect(int(stats["bones"]) >= 9, "%s 的 %s 骨骼数量不足，躯干或四肢绑定可能丢失" % [species_id, profile])
+				_expect((stats["pbr_slots"] as Dictionary).size() >= 4, "%s 的 %s 缺少毛皮、眼部、鼻部和足部 PBR 材质槽" % [species_id, profile])
 			for node_prefix in expected_motion_nodes[species_id]:
 				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
 				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
@@ -361,13 +370,27 @@ func _validate_external_species_model_contract() -> void:
 	game_stub.add_child(hero_actor)
 	hero_actor.setup(game_stub, 901, "rabbit", true, Vector3.ZERO, 0)
 	_expect(hero_actor.uses_external_model and hero_actor.external_model_profile == "hero", "真实角色流程没有为高画质玩家加载 Hero GLB")
-	_expect(hero_actor.leg_pivots.size() == 4 and hero_actor.ear_pivots.size() == 2, "真实角色流程没有绑定雪兔的腿或耳部枢轴")
+	_expect(is_instance_valid(hero_actor.external_skeleton) and hero_actor.external_skeleton.get_bone_count() >= 9, "真实角色流程没有绑定雪兔 Skeleton3D")
+	_expect(hero_actor.leg_pivots.is_empty() and hero_actor.ear_pivots.is_empty() and hero_actor.tail_visuals.is_empty(), "骨骼物种仍被旧节点枢轴重复驱动")
+	var run_pose := SkeletonRig.pose_targets("run", 1.2, 0.6, 1.0, 0.0, 0.0, 0.2)
+	var attack_pose := SkeletonRig.pose_targets("attack", 1.2, 0.6, 1.0, 0.5, 0.0, 0.2)
+	var hit_pose := SkeletonRig.pose_targets("hit", 1.2, 0.6, 1.0, 0.0, 0.5, 0.2)
+	_expect(Vector3(run_pose.get("Leg_LF", Vector3.ZERO)).length() > 0.1, "骨骼奔跑状态没有驱动腿部")
+	_expect(Vector3(attack_pose.get("Spine", Vector3.ZERO)).length() > 0.1, "骨骼攻击状态没有驱动躯干前扑")
+	_expect(Vector3(hit_pose.get("Spine", Vector3.ZERO)).length() > 0.1, "骨骼受击状态没有驱动躯干后坐")
+	hero_actor._play_attack_pulse()
+	hero_actor._update_visual_motion(0.016)
+	_expect(hero_actor.external_animation_state == "attack", "真实普通攻击事件没有切换骨骼攻击状态")
+	hero_actor._play_hit_pulse()
+	hero_actor._update_visual_motion(0.016)
+	_expect(hero_actor.external_animation_state == "hit", "真实受击事件没有以更高优先级切换骨骼受击状态")
 	game_stub.quality_preset = "low"
 	var mobile_actor: EcoActor = ActorScript.new()
 	mobile_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	game_stub.add_child(mobile_actor)
 	mobile_actor.setup(game_stub, 902, "wolf", false, Vector3.ZERO, 0)
 	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
+	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 9, "真实角色流程没有为灰狼 Mobile 模型绑定 Skeleton3D")
 	game_stub.batch_mode = true
 	var fallback_actor: EcoActor = ActorScript.new()
 	fallback_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -385,6 +408,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"meshes": 0,
 		"vertices": 0,
 		"colored_surfaces": 0,
+		"skeletons": 0,
+		"bones": 0,
+		"pbr_slots": {},
 		"named_nodes": {},
 	}
 	_accumulate_external_model_stats(root_node, stats)
@@ -396,6 +422,9 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
 		if node_name.begins_with(prefix):
 			stats["named_nodes"][prefix] = int(stats["named_nodes"].get(prefix, 0)) + 1
+	if node is Skeleton3D:
+		stats["skeletons"] = int(stats["skeletons"]) + 1
+		stats["bones"] = int(stats["bones"]) + (node as Skeleton3D).get_bone_count()
 	if node is MeshInstance3D:
 		var mesh := (node as MeshInstance3D).mesh
 		if mesh != null:
@@ -407,6 +436,10 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 				var material := mesh.surface_get_material(surface_index) as StandardMaterial3D
 				if material != null and not material.albedo_color.is_equal_approx(Color.WHITE):
 					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
+					var material_name := material.resource_name
+					for slot_name in ["coat", "eye", "nose", "paw", "detail"]:
+						if "_%s_pbr" % slot_name in material_name:
+							stats["pbr_slots"][slot_name] = true
 	for child in node.get_children():
 		_accumulate_external_model_stats(child, stats)
 
