@@ -3,12 +3,14 @@ extends RefCounted
 
 const RIG_NAME := "SpeciesSkeleton3D"
 const RIGGED_SPECIES := ["rabbit", "wolf", "deer", "bear"]
-const WEIGHTED_SKIN_SPECIES := ["wolf"]
+const WEIGHTED_SKIN_SPECIES := ["rabbit", "wolf"]
 const SKILL_SOCKET_NAMES := ["SkillSocket_Mouth", "SkillSocket_Chest"]
 const ANIMATION_STATES := ["idle", "run", "attack", "hit"]
+const RABBIT_ANIMATION_STATES := ["idle", "run", "forage", "attack", "skill", "hit", "dead"]
 const DRIVEN_BONES := ["Spine", "Chest", "Neck", "Head", "Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH", "Ear_L", "Ear_R", "Tail"]
 const ATTACK_DURATION := 0.26
 const HIT_DURATION := 0.28
+const RABBIT_SKILL_DURATION := 0.38
 const RIG_PROFILES := {
 	"rabbit": {
 		"gait": "bound", "gait_rate": 1.24, "front_stride": 0.68, "hind_stride": 1.38,
@@ -72,33 +74,48 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 		var attachment := _add_attachment(skeleton, str(pivot.name), bone_name)
 		attachments[bone_name] = attachment
 
-		if species_id == "wolf" and bone_name == "Spine":
-			_add_wolf_body_chain(skeleton, attachments)
-			_distribute_wolf_spine_children(pivot, model, skeleton, attachments)
+		if species_id in WEIGHTED_SKIN_SPECIES and bone_name == "Spine":
+			_add_weighted_body_chain(skeleton, attachments, species_id)
+			_distribute_weighted_spine_children(pivot, model, skeleton, attachments, species_id)
 		else:
 			_move_pivot_to_attachment(pivot, model, skeleton, attachment, bone_name)
 
-	if species_id == "wolf":
-		_add_wolf_skill_sockets(attachments)
-		var organic_body := _find_node_named(model, "WolfOrganicBody") as MeshInstance3D
+	if species_id in WEIGHTED_SKIN_SPECIES:
+		_add_weighted_skill_sockets(attachments, species_id)
+		var organic_name := "RabbitOrganicBody" if species_id == "rabbit" else "WolfOrganicBody"
+		var organic_body := _find_node_named(model, organic_name) as MeshInstance3D
 		if organic_body != null:
-			_apply_wolf_weighted_skin(organic_body, skeleton)
+			_apply_weighted_skin(organic_body, skeleton, species_id)
 
 	skeleton.reset_bone_poses()
 	skeleton.set_meta("species_id", species_id)
 	skeleton.set_meta("rig_version", 3 if species_id in WEIGHTED_SKIN_SPECIES else 2)
 	skeleton.set_meta("skin_mode", "weighted_prototype" if species_id in WEIGHTED_SKIN_SPECIES else "rigid_parts")
 	skeleton.set_meta("locomotion_profile", str(RIG_PROFILES[species_id]["gait"]))
-	skeleton.set_meta("animation_states", ANIMATION_STATES.duplicate())
+	skeleton.set_meta("animation_states", RABBIT_ANIMATION_STATES.duplicate() if species_id == "rabbit" else ANIMATION_STATES.duplicate())
 	model.set_meta("uses_skeleton_rig", true)
 	return skeleton
 
 
-static func resolve_state(gait_blend: float, attack_remaining: float, hit_remaining: float) -> String:
+static func resolve_state(
+	gait_blend: float,
+	attack_remaining: float,
+	hit_remaining: float,
+	forage_remaining: float = 0.0,
+	skill_remaining: float = 0.0,
+	is_dead: bool = false,
+	species_id: String = "wolf"
+) -> String:
+	if species_id == "rabbit" and is_dead:
+		return "dead"
 	if hit_remaining > 0.0:
 		return "hit"
+	if species_id == "rabbit" and skill_remaining > 0.0:
+		return "skill"
 	if attack_remaining > 0.0:
 		return "attack"
+	if species_id == "rabbit" and forage_remaining > 0.0:
+		return "forage"
 	return "run" if gait_blend > 0.10 else "idle"
 
 
@@ -181,10 +198,28 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(ear_sweep + ear_listen, 0.0, -0.025)
 			targets["Ear_R"] = Vector3(ear_sweep - ear_listen * 0.72, 0.0, 0.025)
 			targets["Tail"] = Vector3(0.03 * float(profile["tail_run"]), sin(motion_time * 1.15 + actor_phase) * 0.12 * float(profile["tail_run"]), 0.0)
-			if species_id == "wolf":
+			if species_id in WEIGHTED_SKIN_SPECIES:
 				targets["Chest"] = Vector3(-targets["Spine"].x * 0.72, 0.0, -targets["Spine"].z * 0.46)
-				targets["Neck"] = Vector3(0.018 * run_strength, 0.0, sin(motion_time * float(profile["gait_rate"]) + 0.7) * 0.018)
-				targets["Head"] = Vector3(-0.012 * run_strength, 0.0, -targets["Neck"].z * 0.62)
+				var neck_bob := 0.038 if species_id == "rabbit" else 0.018
+				targets["Neck"] = Vector3(neck_bob * run_strength, 0.0, sin(motion_time * float(profile["gait_rate"]) + 0.7) * neck_bob)
+				targets["Head"] = Vector3(-neck_bob * 0.68 * run_strength, 0.0, -targets["Neck"].z * 0.62)
+				if species_id == "rabbit":
+					var bound_curve := maxf(sin(motion_time * float(profile["gait_rate"])), -0.35)
+					targets["Spine"].x += bound_curve * 0.055 * run_strength
+					targets["Chest"].x -= bound_curve * 0.040 * run_strength
+					targets["Ear_L"].x += maxf(bound_curve, 0.0) * 0.12
+					targets["Ear_R"].x += maxf(bound_curve, 0.0) * 0.12
+		"forage":
+			if species_id == "rabbit":
+				var chew := sin(motion_time * 3.4 + actor_phase) * 0.035
+				targets["Spine"] = Vector3(-0.08, 0.0, 0.0)
+				targets["Chest"] = Vector3(0.18, 0.0, 0.0)
+				targets["Neck"] = Vector3(0.58 + chew, 0.0, 0.0)
+				targets["Head"] = Vector3(0.42 - chew * 0.7, 0.0, 0.0)
+				targets["Ear_L"] = Vector3(0.28, 0.0, -0.08)
+				targets["Ear_R"] = Vector3(0.23, 0.0, 0.08)
+				targets["Leg_LF"] = Vector3(-0.12, 0.0, 0.0)
+				targets["Leg_RF"] = Vector3(-0.12, 0.0, 0.0)
 		"attack":
 			var attack_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
 			targets["Spine"] = Vector3(float(profile["attack_spine"]) * attack_curve, 0.0, 0.0)
@@ -195,10 +230,24 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(0.24 * attack_curve * float(profile["ear_run"]), 0.0, -0.05)
 			targets["Ear_R"] = Vector3(0.24 * attack_curve * float(profile["ear_run"]), 0.0, 0.05)
 			targets["Tail"] = Vector3(-0.06 * attack_curve, -0.18 * attack_curve * float(profile["tail_run"]), 0.0)
-			if species_id == "wolf":
+			if species_id in WEIGHTED_SKIN_SPECIES:
 				targets["Chest"] = Vector3(-0.07 * attack_curve, 0.0, 0.0)
-				targets["Neck"] = Vector3(-0.09 * attack_curve, 0.0, 0.0)
-				targets["Head"] = Vector3(0.04 * attack_curve, 0.0, 0.0)
+				targets["Neck"] = Vector3((-0.04 if species_id == "rabbit" else -0.09) * attack_curve, 0.0, 0.0)
+				targets["Head"] = Vector3((0.12 if species_id == "rabbit" else 0.04) * attack_curve, 0.0, 0.0)
+		"skill":
+			if species_id == "rabbit":
+				var leap_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
+				targets["Spine"] = Vector3(-0.20 * leap_curve, 0.0, 0.0)
+				targets["Chest"] = Vector3(0.12 * leap_curve, 0.0, 0.0)
+				targets["Neck"] = Vector3(-0.08 * leap_curve, 0.0, 0.0)
+				targets["Head"] = Vector3(0.06 * leap_curve, 0.0, 0.0)
+				for bone_name in ["Leg_LF", "Leg_RF"]:
+					targets[bone_name] = Vector3(-0.52 * leap_curve, 0.0, 0.0)
+				for bone_name in ["Leg_LH", "Leg_RH"]:
+					targets[bone_name] = Vector3(0.82 * leap_curve, 0.0, 0.0)
+				targets["Ear_L"] = Vector3(0.42 * leap_curve, 0.0, -0.06)
+				targets["Ear_R"] = Vector3(0.42 * leap_curve, 0.0, 0.06)
+				targets["Tail"] = Vector3(-0.12 * leap_curve, 0.18 * leap_curve, 0.0)
 		"hit":
 			var hit_curve := sin(clampf(hit_progress, 0.0, 1.0) * PI)
 			var recoil_side := -1.0 if sin(actor_phase * 1.73) < 0.0 else 1.0
@@ -210,10 +259,23 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(0.34 * hit_curve, 0.0, -0.09)
 			targets["Ear_R"] = Vector3(0.34 * hit_curve, 0.0, 0.09)
 			targets["Tail"] = Vector3(0.08 * hit_curve, recoil_side * 0.16 * hit_curve, 0.0)
-			if species_id == "wolf":
+			if species_id in WEIGHTED_SKIN_SPECIES:
 				targets["Chest"] = Vector3(0.03 * hit_curve, 0.0, recoil_side * 0.07 * hit_curve)
 				targets["Neck"] = Vector3(0.02 * hit_curve, 0.0, -recoil_side * 0.05 * hit_curve)
 				targets["Head"] = Vector3(0.04 * hit_curve, 0.0, -recoil_side * 0.07 * hit_curve)
+		"dead":
+			if species_id == "rabbit":
+				targets["Spine"] = Vector3(0.08, 0.0, 1.18)
+				targets["Chest"] = Vector3(0.10, 0.0, 0.22)
+				targets["Neck"] = Vector3(0.18, 0.0, 0.12)
+				targets["Head"] = Vector3(0.12, 0.0, 0.10)
+				targets["Leg_LF"] = Vector3(0.44, 0.0, -0.18)
+				targets["Leg_RF"] = Vector3(-0.24, 0.0, 0.14)
+				targets["Leg_LH"] = Vector3(0.35, 0.0, -0.16)
+				targets["Leg_RH"] = Vector3(-0.18, 0.0, 0.12)
+				targets["Ear_L"] = Vector3(0.48, 0.0, -0.12)
+				targets["Ear_R"] = Vector3(0.52, 0.0, 0.12)
+				targets["Tail"] = Vector3(0.0, -0.18, 0.0)
 	return targets
 
 
@@ -265,7 +327,7 @@ static func _ordered_pivots(pivots: Array[Node3D]) -> Array[Node3D]:
 
 
 static func _bone_parent_name(species_id: String, bone_name: String) -> String:
-	if species_id != "wolf":
+	if not species_id in WEIGHTED_SKIN_SPECIES:
 		return "Root"
 	if bone_name in ["Leg_LF", "Leg_RF"]:
 		return "Chest"
@@ -297,8 +359,12 @@ static func _add_attachment(skeleton: Skeleton3D, attachment_name: String, bone_
 	return attachment
 
 
-static func _add_wolf_body_chain(skeleton: Skeleton3D, attachments: Dictionary) -> void:
+static func _add_weighted_body_chain(skeleton: Skeleton3D, attachments: Dictionary, species_id: String) -> void:
 	var chain_global_rests := {
+		"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.10, -0.48)),
+		"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.28, -1.02)),
+		"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.36, -1.50)),
+	} if species_id == "rabbit" else {
 		"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.42, -0.45)),
 		"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.67, -1.12)),
 		"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.69, -1.78)),
@@ -310,22 +376,23 @@ static func _add_wolf_body_chain(skeleton: Skeleton3D, attachments: Dictionary) 
 		parent_name = bone_name
 
 
-static func _distribute_wolf_spine_children(
+static func _distribute_weighted_spine_children(
 	pivot: Node3D,
 	model: Node3D,
 	skeleton: Skeleton3D,
-	attachments: Dictionary
+	attachments: Dictionary,
+	species_id: String
 ) -> void:
 	for child in pivot.get_children():
 		if not child is Node3D:
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if node_name == "WolfOrganicBody":
+		if node_name == ("RabbitOrganicBody" if species_id == "rabbit" else "WolfOrganicBody"):
 			_move_node_to_model(visual_node, model)
 			continue
 		var target_bone := "Spine"
-		if node_name == "ShoulderMass":
+		if node_name in ["ShoulderMass", "ChestFur"]:
 			target_bone = "Chest"
 		elif node_name in ["CheekRuff", "Muzzle", "Nose", "EyeSocket", "Iris", "Pupil", "EyeCatchlight", "Whisker"]:
 			target_bone = "Head"
@@ -372,20 +439,20 @@ static func _move_node_to_attachment(
 	node.transform = bone_rest.affine_inverse() * model_transform
 
 
-static func _add_wolf_skill_sockets(attachments: Dictionary) -> void:
+static func _add_weighted_skill_sockets(attachments: Dictionary, species_id: String) -> void:
 	var mouth := Node3D.new()
 	mouth.name = "SkillSocket_Mouth"
 	attachments["Head"].add_child(mouth)
-	mouth.position = Vector3(0.0, -0.10, -0.64)
+	mouth.position = Vector3(0.0, -0.07, -0.50 if species_id == "rabbit" else -0.64)
 	mouth.set_meta("socket_role", "bite_origin")
 	var chest := Node3D.new()
 	chest.name = "SkillSocket_Chest"
 	attachments["Chest"].add_child(chest)
-	chest.position = Vector3(0.0, 0.08, -0.06)
-	chest.set_meta("socket_role", "rally_origin")
+	chest.position = Vector3(0.0, 0.06 if species_id == "rabbit" else 0.08, -0.04 if species_id == "rabbit" else -0.06)
+	chest.set_meta("socket_role", "moonstep_origin" if species_id == "rabbit" else "rally_origin")
 
 
-static func _apply_wolf_weighted_skin(mesh_instance: MeshInstance3D, skeleton: Skeleton3D) -> void:
+static func _apply_weighted_skin(mesh_instance: MeshInstance3D, skeleton: Skeleton3D, species_id: String) -> void:
 	if mesh_instance.mesh == null:
 		return
 	var source := mesh_instance.mesh
@@ -403,7 +470,7 @@ static func _apply_wolf_weighted_skin(mesh_instance: MeshInstance3D, skeleton: S
 		bone_indices.resize(vertices.size() * 4)
 		weights.resize(vertices.size() * 4)
 		for vertex_index in range(vertices.size()):
-			var vertex_weights := _wolf_vertex_weights(vertices[vertex_index])
+			var vertex_weights := _weighted_vertex_weights(vertices[vertex_index], species_id)
 			var positive_weights := 0
 			for influence_index in range(4):
 				var array_index := vertex_index * 4 + influence_index
@@ -432,7 +499,20 @@ static func _apply_wolf_weighted_skin(mesh_instance: MeshInstance3D, skeleton: S
 	skeleton.set_meta("weighted_mesh", str(mesh_instance.name))
 
 
-static func _wolf_vertex_weights(vertex: Vector3) -> PackedFloat32Array:
+static func _weighted_vertex_weights(vertex: Vector3, species_id: String) -> PackedFloat32Array:
+	if species_id == "rabbit":
+		if vertex.z > 0.28:
+			return PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
+		if vertex.z > -0.56:
+			var rabbit_chest_blend := smoothstep(0.28, -0.56, vertex.z)
+			return PackedFloat32Array([1.0 - rabbit_chest_blend, rabbit_chest_blend, 0.0, 0.0])
+		if vertex.z > -1.10:
+			var rabbit_neck_blend := smoothstep(-0.56, -1.10, vertex.z)
+			return PackedFloat32Array([0.0, 1.0 - rabbit_neck_blend, rabbit_neck_blend, 0.0])
+		if vertex.z > -1.48:
+			var rabbit_head_blend := smoothstep(-1.10, -1.48, vertex.z)
+			return PackedFloat32Array([0.0, 0.0, 1.0 - rabbit_head_blend, rabbit_head_blend])
+		return PackedFloat32Array([0.0, 0.0, 0.0, 1.0])
 	var result := PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
 	if vertex.z > 0.30:
 		return result

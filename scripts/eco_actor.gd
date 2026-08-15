@@ -3134,6 +3134,7 @@ func use_skill(target: EcoActor = null) -> bool:
 			var direction := desired_direction if desired_direction.length() > 0.1 else -transform.basis.z
 			dash_direction = Vector3(direction.x, 0.0, direction.z).normalized()
 			dash_timer = 0.38
+			external_skill_animation_timer = SkeletonRig.RABBIT_SKILL_DURATION
 			hidden_timer = 1.35
 			for other in game.get_living_actors():
 				if other != self and not other.is_player and other.ai_target == self:
@@ -3142,8 +3143,10 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.state_commit_timer = 1.10
 					affected_count += 1
 			SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.4)
-			SkillVFX.radial_burst(effect_parent, global_position, effect_color, 2.2, 10, 0.13, 0.38)
-			SkillVFX.ring(effect_parent, global_position, effect_color, 0.42, 2.25, 0.34)
+			var moonstep_origin := skill_socket_world_position("SkillSocket_Chest", 1.10)
+			SkillVFX.radial_burst(effect_parent, moonstep_origin, effect_color, 2.2, 10, 0.13, 0.38)
+			SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Mouth", 1.26), effect_color.lightened(0.18), 0.82, 5, 0.08, 0.22)
+			SkillVFX.ring(effect_parent, moonstep_origin, effect_color, 0.42, 2.25, 0.34)
 			used = true
 		"fox":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.5:
@@ -4138,6 +4141,10 @@ func die(killer: EcoActor) -> void:
 	if is_instance_valid(killer):
 		killer.kills += 1
 	died.emit(self, killer)
+	if species_id == "rabbit" and is_instance_valid(external_skeleton):
+		external_animation_state = "dead"
+		SkeletonRig.apply_pose(external_skeleton, "dead", move_time, 0.0, 0.0, 1.0, 1.0, float(actor_id) * 0.47, 1.0, species_id)
+		external_skeleton.force_update_all_bone_transforms()
 	var tween := create_tween()
 	tween.tween_property(visual_root, "scale", Vector3(1.2, 0.12, 1.2), 0.35)
 	# Player death pauses the tree when the result panel appears. An awaited
@@ -4293,8 +4300,18 @@ func _update_visual_motion(delta: float) -> void:
 			var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
 			CrocodileRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, attack_progress, roll_progress, hit_progress, float(actor_id) * 0.47, delta)
 		else:
-			external_animation_state = SkeletonRig.resolve_state(gait_blend, external_attack_animation_timer, external_hit_animation_timer)
-			var attack_progress := 1.0 - external_attack_animation_timer / SkeletonRig.ATTACK_DURATION
+			external_animation_state = SkeletonRig.resolve_state(
+				gait_blend,
+				external_attack_animation_timer,
+				external_hit_animation_timer,
+				eat_timer,
+				external_skill_animation_timer,
+				dead,
+				species_id
+			)
+			var action_timer := external_skill_animation_timer if external_animation_state == "skill" else external_attack_animation_timer
+			var action_duration := SkeletonRig.RABBIT_SKILL_DURATION if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
+			var attack_progress := 1.0 - action_timer / action_duration
 			var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
 			SkeletonRig.apply_pose(
 				external_skeleton,
