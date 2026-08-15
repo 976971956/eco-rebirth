@@ -74,7 +74,7 @@ static func dash_trail(parent: Node, world_position: Vector3, direction: Vector3
 	tween.finished.connect(root.queue_free)
 
 
-static func fang_strike(parent: Node, world_position: Vector3, direction: Vector3, color: Color, scale_value: float = 1.0) -> void:
+static func fang_strike(parent: Node, world_position: Vector3, direction: Vector3, color: Color, scale_value: float = 1.0, height_offset: float = 0.82) -> void:
 	if not is_instance_valid(parent):
 		return
 	var flat_direction := Vector3(direction.x, 0.0, direction.z).normalized()
@@ -83,7 +83,7 @@ static func fang_strike(parent: Node, world_position: Vector3, direction: Vector
 	var root := Node3D.new()
 	root.name = "FangStrike"
 	parent.add_child(root)
-	root.global_position = Vector3(world_position.x, world_position.y + 0.82, world_position.z)
+	root.global_position = Vector3(world_position.x, world_position.y + height_offset, world_position.z)
 	root.rotation.y = atan2(-flat_direction.x, -flat_direction.z)
 	for side in [-1.0, 1.0]:
 		var fang := Factory.cone("Fang", color, 0.14 * scale_value, 0.92 * scale_value, Vector3(side * 0.23 * scale_value, 0.0, -0.18 * scale_value), 7)

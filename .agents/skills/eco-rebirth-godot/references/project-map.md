@@ -13,7 +13,7 @@
 | `scripts/audio_manager.gd` | Procedural adaptive music, ambient sound, SFX pool, audio persistence |
 | `scripts/low_poly_factory.gd` | Faceted procedural animal/environment meshes plus shared terrain and animated water shaders |
 | `scripts/species_visual_catalog.gd` | External Hero/Mobile GLB registry and skeletal-species routing |
-| `scripts/species_skeleton_rig.gd` | Reusable rabbit/wolf/deer/bear `Skeleton3D` rigid binding and species-tuned idle/run/attack/hit pose controller |
+| `scripts/species_skeleton_rig.gd` | Reusable rabbit/wolf/deer/bear `Skeleton3D`; wolf weighted-skin/body-chain/socket prototype; species-tuned idle/run/attack/hit pose controller |
 | `scripts/skill_vfx.gd` and `scripts/skill_projectile.gd` | Skill presentation and projectiles |
 | `tools/*.gd` | Deterministic validation, balance simulation, reports, and UI preview rendering |
 
@@ -33,7 +33,7 @@
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
-- Keep the V1.24 hybrid art path mobile/Web safe: six representative species use versioned Hero/Mobile GLBs; rabbit/wolf/deer/bear share one four-state `Skeleton3D` rig with species-specific gait profiles and one 256×256 fur PBR texture set; AI always uses Mobile, and the other 24 species plus missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
+- Keep the V1.25 hybrid art path mobile/Web safe: six representative species use versioned Hero/Mobile GLBs; rabbit/wolf/deer/bear share one four-state `Skeleton3D` rig and one 256×256 fur PBR texture set; wolf alone uses the validated weighted-body/socket prototype while the other three retain rigid attachments. AI always uses Mobile, and the other 24 species plus missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
 
 ## Document routing
 

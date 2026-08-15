@@ -181,6 +181,7 @@ var tail_visuals: Array[Node3D] = []
 var uses_external_model: bool = false
 var external_model_profile: String = ""
 var external_skeleton: Skeleton3D
+var external_skill_sockets: Dictionary = {}
 var external_animation_state: String = "idle"
 var external_attack_animation_timer: float = 0.0
 var external_hit_animation_timer: float = 0.0
@@ -441,6 +442,7 @@ func _build_external_species_visual() -> bool:
 		return false
 	body_root.add_child(model)
 	_bind_external_motion_nodes(model)
+	_bind_external_skill_sockets(model)
 	return true
 
 
@@ -467,6 +469,21 @@ func _bind_external_motion_nodes(root: Node) -> void:
 		elif node_name.begins_with("EarPivot_"):
 			ear_pivots.append(visual_node)
 		_bind_external_motion_nodes(visual_node)
+
+
+func _bind_external_skill_sockets(model: Node3D) -> void:
+	external_skill_sockets.clear()
+	for socket_name in SkeletonRig.SKILL_SOCKET_NAMES:
+		var socket := SkeletonRig.find_socket(model, socket_name)
+		if socket != null:
+			external_skill_sockets[socket_name] = socket
+
+
+func skill_socket_world_position(socket_name: String, fallback_height: float = 1.0) -> Vector3:
+	var socket := external_skill_sockets.get(socket_name) as Node3D
+	if is_instance_valid(socket):
+		return socket.global_position
+	return global_position + Vector3.UP * fallback_height
 
 
 func _build_player_ring() -> void:
@@ -3154,6 +3171,8 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.5)
 				target.take_damage(_skill_damage(1.40), self)
 				affected_count = _rally_pack(target, 18.0)
+				SkillVFX.fang_strike(effect_parent, skill_socket_world_position("SkillSocket_Mouth", 1.55), dash_direction, effect_color.lightened(0.14), 0.78, 0.0)
+				SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Chest", 1.35), effect_color.lightened(0.10), 1.15, 6, 0.10, 0.28)
 				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.28)
 				SkillVFX.ring(effect_parent, global_position, effect_color, 0.72, 4.1, 0.42)
 				SkillVFX.ring(effect_parent, global_position, effect_color, 0.72, 5.5, 0.48, 0.12)

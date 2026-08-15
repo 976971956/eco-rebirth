@@ -3,8 +3,10 @@ extends RefCounted
 
 const RIG_NAME := "SpeciesSkeleton3D"
 const RIGGED_SPECIES := ["rabbit", "wolf", "deer", "bear"]
+const WEIGHTED_SKIN_SPECIES := ["wolf"]
+const SKILL_SOCKET_NAMES := ["SkillSocket_Mouth", "SkillSocket_Chest"]
 const ANIMATION_STATES := ["idle", "run", "attack", "hit"]
-const DRIVEN_BONES := ["Spine", "Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH", "Ear_L", "Ear_R", "Tail"]
+const DRIVEN_BONES := ["Spine", "Chest", "Neck", "Head", "Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH", "Ear_L", "Ear_R", "Tail"]
 const ATTACK_DURATION := 0.26
 const HIT_DURATION := 0.28
 const RIG_PROFILES := {
@@ -17,7 +19,7 @@ const RIG_PROFILES := {
 	"wolf": {
 		"gait": "trot", "gait_rate": 1.0, "front_stride": 0.86, "hind_stride": 1.15,
 		"spine_run": 1.0, "ear_run": 1.0, "tail_run": 1.0,
-		"attack_spine": -0.21, "attack_front": -0.42, "attack_hind": 0.26,
+		"attack_spine": -0.11, "attack_front": -0.42, "attack_hind": 0.26,
 		"hit_spine": 0.12, "hit_side": 0.24,
 	},
 	"deer": {
@@ -49,6 +51,7 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 	_collect_motion_pivots(model, pivots)
 	if pivots.is_empty():
 		return null
+	pivots = _ordered_pivots(pivots)
 
 	var skeleton := Skeleton3D.new()
 	skeleton.name = RIG_NAME
@@ -56,39 +59,35 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 	skeleton.add_bone("Root")
 	skeleton.set_bone_rest(0, Transform3D.IDENTITY)
 
+	var attachments := {}
 	for pivot in pivots:
 		if not is_instance_valid(pivot) or pivot == model:
 			continue
 		var bone_name := _bone_name_for_pivot(str(pivot.name))
 		if bone_name == "" or skeleton.find_bone(bone_name) >= 0:
 			continue
-		var rest_transform := _relative_transform(pivot, model)
-		var bone_index := skeleton.get_bone_count()
-		skeleton.add_bone(bone_name)
-		skeleton.set_bone_parent(bone_index, 0)
-		skeleton.set_bone_rest(bone_index, rest_transform)
+		var parent_name := _bone_parent_name(species_id, bone_name)
+		var global_rest := _relative_transform(pivot, model)
+		_add_bone(skeleton, bone_name, parent_name, global_rest)
+		var attachment := _add_attachment(skeleton, str(pivot.name), bone_name)
+		attachments[bone_name] = attachment
 
-		var attachment := BoneAttachment3D.new()
-		attachment.name = str(pivot.name)
-		skeleton.add_child(attachment)
-		attachment.bone_name = bone_name
-		attachment.set_meta("species_bone", bone_name)
-
-		if pivot is MeshInstance3D:
-			pivot.owner = null
-			pivot.name = "%s_Mesh" % bone_name
-			pivot.reparent(attachment, false)
-			pivot.transform = Transform3D.IDENTITY
+		if species_id == "wolf" and bone_name == "Spine":
+			_add_wolf_body_chain(skeleton, attachments)
+			_distribute_wolf_spine_children(pivot, model, skeleton, attachments)
 		else:
-			for child in pivot.get_children():
-				if child is Node3D:
-					child.owner = null
-					child.reparent(attachment, false)
-			pivot.free()
+			_move_pivot_to_attachment(pivot, model, skeleton, attachment, bone_name)
+
+	if species_id == "wolf":
+		_add_wolf_skill_sockets(attachments)
+		var organic_body := _find_node_named(model, "WolfOrganicBody") as MeshInstance3D
+		if organic_body != null:
+			_apply_wolf_weighted_skin(organic_body, skeleton)
 
 	skeleton.reset_bone_poses()
 	skeleton.set_meta("species_id", species_id)
-	skeleton.set_meta("rig_version", 2)
+	skeleton.set_meta("rig_version", 3 if species_id in WEIGHTED_SKIN_SPECIES else 2)
+	skeleton.set_meta("skin_mode", "weighted_prototype" if species_id in WEIGHTED_SKIN_SPECIES else "rigid_parts")
 	skeleton.set_meta("locomotion_profile", str(RIG_PROFILES[species_id]["gait"]))
 	skeleton.set_meta("animation_states", ANIMATION_STATES.duplicate())
 	model.set_meta("uses_skeleton_rig", true)
@@ -156,6 +155,9 @@ static func pose_targets(
 	targets["Ear_R"] = Vector3(-ear_listen * 0.72, 0.0, 0.018)
 	targets["Tail"] = Vector3(0.0, sin(motion_time * 0.72 + actor_phase) * 0.065 * float(profile["tail_run"]), 0.0)
 	targets["Spine"] = Vector3(sin(motion_time * 1.32) * 0.012, 0.0, sin(motion_time * 0.66) * 0.010)
+	targets["Chest"] = Vector3.ZERO
+	targets["Neck"] = Vector3.ZERO
+	targets["Head"] = Vector3.ZERO
 	for bone_name in ["Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH"]:
 		targets[bone_name] = Vector3.ZERO
 
@@ -179,6 +181,10 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(ear_sweep + ear_listen, 0.0, -0.025)
 			targets["Ear_R"] = Vector3(ear_sweep - ear_listen * 0.72, 0.0, 0.025)
 			targets["Tail"] = Vector3(0.03 * float(profile["tail_run"]), sin(motion_time * 1.15 + actor_phase) * 0.12 * float(profile["tail_run"]), 0.0)
+			if species_id == "wolf":
+				targets["Chest"] = Vector3(-targets["Spine"].x * 0.72, 0.0, -targets["Spine"].z * 0.46)
+				targets["Neck"] = Vector3(0.018 * run_strength, 0.0, sin(motion_time * float(profile["gait_rate"]) + 0.7) * 0.018)
+				targets["Head"] = Vector3(-0.012 * run_strength, 0.0, -targets["Neck"].z * 0.62)
 		"attack":
 			var attack_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
 			targets["Spine"] = Vector3(float(profile["attack_spine"]) * attack_curve, 0.0, 0.0)
@@ -189,6 +195,10 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(0.24 * attack_curve * float(profile["ear_run"]), 0.0, -0.05)
 			targets["Ear_R"] = Vector3(0.24 * attack_curve * float(profile["ear_run"]), 0.0, 0.05)
 			targets["Tail"] = Vector3(-0.06 * attack_curve, -0.18 * attack_curve * float(profile["tail_run"]), 0.0)
+			if species_id == "wolf":
+				targets["Chest"] = Vector3(-0.07 * attack_curve, 0.0, 0.0)
+				targets["Neck"] = Vector3(-0.09 * attack_curve, 0.0, 0.0)
+				targets["Head"] = Vector3(0.04 * attack_curve, 0.0, 0.0)
 		"hit":
 			var hit_curve := sin(clampf(hit_progress, 0.0, 1.0) * PI)
 			var recoil_side := -1.0 if sin(actor_phase * 1.73) < 0.0 else 1.0
@@ -200,7 +210,17 @@ static func pose_targets(
 			targets["Ear_L"] = Vector3(0.34 * hit_curve, 0.0, -0.09)
 			targets["Ear_R"] = Vector3(0.34 * hit_curve, 0.0, 0.09)
 			targets["Tail"] = Vector3(0.08 * hit_curve, recoil_side * 0.16 * hit_curve, 0.0)
+			if species_id == "wolf":
+				targets["Chest"] = Vector3(0.03 * hit_curve, 0.0, recoil_side * 0.07 * hit_curve)
+				targets["Neck"] = Vector3(0.02 * hit_curve, 0.0, -recoil_side * 0.05 * hit_curve)
+				targets["Head"] = Vector3(0.04 * hit_curve, 0.0, -recoil_side * 0.07 * hit_curve)
 	return targets
+
+
+static func find_socket(model: Node, socket_name: String) -> Node3D:
+	if model == null or not socket_name in SKILL_SOCKET_NAMES:
+		return null
+	return _find_node_named(model, socket_name) as Node3D
 
 
 static func _gait_phases(gait: String) -> Dictionary:
@@ -232,6 +252,210 @@ static func _collect_motion_pivots(root: Node, output: Array[Node3D]) -> void:
 			output.append(node)
 		else:
 			_collect_motion_pivots(node, output)
+
+
+static func _ordered_pivots(pivots: Array[Node3D]) -> Array[Node3D]:
+	var ordered: Array[Node3D] = []
+	for pivot in pivots:
+		if str(pivot.name) == "SpinePivot":
+			ordered.push_front(pivot)
+		else:
+			ordered.append(pivot)
+	return ordered
+
+
+static func _bone_parent_name(species_id: String, bone_name: String) -> String:
+	if species_id != "wolf":
+		return "Root"
+	if bone_name in ["Leg_LF", "Leg_RF"]:
+		return "Chest"
+	if bone_name in ["Ear_L", "Ear_R"]:
+		return "Head"
+	if bone_name in ["Leg_LH", "Leg_RH", "Tail"]:
+		return "Spine"
+	return "Root"
+
+
+static func _add_bone(skeleton: Skeleton3D, bone_name: String, parent_name: String, global_rest: Transform3D) -> int:
+	var parent_index := skeleton.find_bone(parent_name)
+	if parent_index < 0:
+		parent_index = 0
+	var local_rest := skeleton.get_bone_global_rest(parent_index).affine_inverse() * global_rest
+	var bone_index := skeleton.get_bone_count()
+	skeleton.add_bone(bone_name)
+	skeleton.set_bone_parent(bone_index, parent_index)
+	skeleton.set_bone_rest(bone_index, local_rest)
+	return bone_index
+
+
+static func _add_attachment(skeleton: Skeleton3D, attachment_name: String, bone_name: String) -> BoneAttachment3D:
+	var attachment := BoneAttachment3D.new()
+	attachment.name = attachment_name
+	skeleton.add_child(attachment)
+	attachment.bone_name = bone_name
+	attachment.set_meta("species_bone", bone_name)
+	return attachment
+
+
+static func _add_wolf_body_chain(skeleton: Skeleton3D, attachments: Dictionary) -> void:
+	var chain_global_rests := {
+		"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.42, -0.45)),
+		"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.67, -1.12)),
+		"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.69, -1.78)),
+	}
+	var parent_name := "Spine"
+	for bone_name in ["Chest", "Neck", "Head"]:
+		_add_bone(skeleton, bone_name, parent_name, chain_global_rests[bone_name])
+		attachments[bone_name] = _add_attachment(skeleton, "%sAttachment" % bone_name, bone_name)
+		parent_name = bone_name
+
+
+static func _distribute_wolf_spine_children(
+	pivot: Node3D,
+	model: Node3D,
+	skeleton: Skeleton3D,
+	attachments: Dictionary
+) -> void:
+	for child in pivot.get_children():
+		if not child is Node3D:
+			continue
+		var visual_node := child as Node3D
+		var node_name := str(visual_node.name)
+		if node_name == "WolfOrganicBody":
+			_move_node_to_model(visual_node, model)
+			continue
+		var target_bone := "Spine"
+		if node_name == "ShoulderMass":
+			target_bone = "Chest"
+		elif node_name in ["CheekRuff", "Muzzle", "Nose", "EyeSocket", "Iris", "Pupil", "EyeCatchlight", "Whisker"]:
+			target_bone = "Head"
+		_move_node_to_attachment(visual_node, model, skeleton, attachments[target_bone], target_bone)
+	pivot.free()
+
+
+static func _move_pivot_to_attachment(
+	pivot: Node3D,
+	model: Node3D,
+	skeleton: Skeleton3D,
+	attachment: BoneAttachment3D,
+	bone_name: String
+) -> void:
+	if pivot is MeshInstance3D:
+		pivot.name = "%s_Mesh" % bone_name
+		_move_node_to_attachment(pivot, model, skeleton, attachment, bone_name)
+		return
+	for child in pivot.get_children():
+		if child is Node3D:
+			_move_node_to_attachment(child as Node3D, model, skeleton, attachment, bone_name)
+	pivot.free()
+
+
+static func _move_node_to_model(node: Node3D, model: Node3D) -> void:
+	var model_transform := _relative_transform(node, model)
+	node.owner = null
+	node.reparent(model, false)
+	node.transform = model_transform
+
+
+static func _move_node_to_attachment(
+	node: Node3D,
+	model: Node3D,
+	skeleton: Skeleton3D,
+	attachment: BoneAttachment3D,
+	bone_name: String
+) -> void:
+	var model_transform := _relative_transform(node, model)
+	var bone_index := skeleton.find_bone(bone_name)
+	var bone_rest := skeleton.get_bone_global_rest(bone_index) if bone_index >= 0 else Transform3D.IDENTITY
+	node.owner = null
+	node.reparent(attachment, false)
+	node.transform = bone_rest.affine_inverse() * model_transform
+
+
+static func _add_wolf_skill_sockets(attachments: Dictionary) -> void:
+	var mouth := Node3D.new()
+	mouth.name = "SkillSocket_Mouth"
+	attachments["Head"].add_child(mouth)
+	mouth.position = Vector3(0.0, -0.10, -0.64)
+	mouth.set_meta("socket_role", "bite_origin")
+	var chest := Node3D.new()
+	chest.name = "SkillSocket_Chest"
+	attachments["Chest"].add_child(chest)
+	chest.position = Vector3(0.0, 0.08, -0.06)
+	chest.set_meta("socket_role", "rally_origin")
+
+
+static func _apply_wolf_weighted_skin(mesh_instance: MeshInstance3D, skeleton: Skeleton3D) -> void:
+	if mesh_instance.mesh == null:
+		return
+	var source := mesh_instance.mesh
+	var skinned := ArrayMesh.new()
+	var bone_names := ["Spine", "Chest", "Neck", "Head"]
+	var total_vertices := 0
+	var blended_vertices := 0
+	for surface_index in range(source.get_surface_count()):
+		var arrays := source.surface_get_arrays(surface_index)
+		if arrays.size() <= Mesh.ARRAY_VERTEX or not arrays[Mesh.ARRAY_VERTEX] is PackedVector3Array:
+			continue
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var bone_indices := PackedInt32Array()
+		var weights := PackedFloat32Array()
+		bone_indices.resize(vertices.size() * 4)
+		weights.resize(vertices.size() * 4)
+		for vertex_index in range(vertices.size()):
+			var vertex_weights := _wolf_vertex_weights(vertices[vertex_index])
+			var positive_weights := 0
+			for influence_index in range(4):
+				var array_index := vertex_index * 4 + influence_index
+				bone_indices[array_index] = influence_index
+				weights[array_index] = float(vertex_weights[influence_index])
+				if weights[array_index] > 0.001:
+					positive_weights += 1
+			if positive_weights > 1:
+				blended_vertices += 1
+		arrays[Mesh.ARRAY_BONES] = bone_indices
+		arrays[Mesh.ARRAY_WEIGHTS] = weights
+		skinned.add_surface_from_arrays(source.surface_get_primitive_type(surface_index), arrays)
+		skinned.surface_set_material(skinned.get_surface_count() - 1, source.surface_get_material(surface_index))
+		total_vertices += vertices.size()
+	var skin := Skin.new()
+	for bone_name in bone_names:
+		var bone_index := skeleton.find_bone(bone_name)
+		if bone_index >= 0:
+			skin.add_named_bind(bone_name, skeleton.get_bone_global_rest(bone_index).affine_inverse())
+	mesh_instance.mesh = skinned
+	mesh_instance.skin = skin
+	mesh_instance.skeleton = mesh_instance.get_path_to(skeleton)
+	mesh_instance.set_meta("weighted_skin", true)
+	mesh_instance.set_meta("weighted_vertex_count", total_vertices)
+	mesh_instance.set_meta("blended_vertex_count", blended_vertices)
+	skeleton.set_meta("weighted_mesh", str(mesh_instance.name))
+
+
+static func _wolf_vertex_weights(vertex: Vector3) -> PackedFloat32Array:
+	var result := PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
+	if vertex.z > 0.30:
+		return result
+	if vertex.z > -0.62:
+		var chest_blend := smoothstep(0.30, -0.62, vertex.z)
+		return PackedFloat32Array([1.0 - chest_blend, chest_blend, 0.0, 0.0])
+	if vertex.z > -1.32:
+		var neck_blend := smoothstep(-0.62, -1.32, vertex.z)
+		return PackedFloat32Array([0.0, 1.0 - neck_blend, neck_blend, 0.0])
+	if vertex.z > -2.05:
+		var head_blend := smoothstep(-1.32, -2.05, vertex.z)
+		return PackedFloat32Array([0.0, 0.0, 1.0 - head_blend, head_blend])
+	return PackedFloat32Array([0.0, 0.0, 0.0, 1.0])
+
+
+static func _find_node_named(root: Node, node_name: String) -> Node:
+	if str(root.name) == node_name:
+		return root
+	for child in root.get_children():
+		var found := _find_node_named(child, node_name)
+		if found != null:
+			return found
+	return null
 
 
 static func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:

@@ -55,7 +55,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.24 发布校验通过：四种四足 Skeleton3D、物种化步态、毛发 PBR 贴图与移动端 LOD 正常")
+		print("[release] V1.25 发布校验通过：灰狼连续权重蒙皮、躯干骨骼链、技能挂点与跨端 LOD 正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -227,8 +227,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.24.0\"") and presets.contains("application/short_version=\"1.24.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=340") and presets.contains("application/version=\"340\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.25.0\"") and presets.contains("application/short_version=\"1.25.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=350") and presets.contains("application/version=\"350\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -343,6 +343,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
 	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf", "deer", "bear"], "第三阶段四足骨骼物种清单异常")
+	_expect(SkeletonRig.WEIGHTED_SKIN_SPECIES == ["wolf"], "连续权重蒙皮试点物种清单异常")
+	_expect(SkeletonRig.SKILL_SOCKET_NAMES == ["SkillSocket_Mouth", "SkillSocket_Chest"], "灰狼技能挂点契约异常")
 	_expect(SkeletonRig.RIG_PROFILES.size() == 4, "四足骨架缺少物种化步态参数")
 	_expect(SkeletonRig.ANIMATION_STATES == ["idle", "run", "attack", "hit"], "骨骼控制器没有提供完整四态动画接口")
 	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0) == "idle" and SkeletonRig.resolve_state(0.8, 0.0, 0.0) == "run", "骨骼待机/奔跑状态切换异常")
@@ -368,6 +370,15 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["bones"]) >= 9, "%s 的 %s 骨骼数量不足，躯干或四肢绑定可能丢失" % [species_id, profile])
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 4, "%s 的 %s 缺少毛皮、眼部、鼻部和足部 PBR 材质槽" % [species_id, profile])
 				_expect(int(stats["textured_coat_surfaces"]) > 0, "%s 的 %s 毛皮材质没有绑定 Albedo/Normal/Roughness 贴图" % [species_id, profile])
+				if species_id == "wolf":
+					_expect(int(stats["bones"]) >= 12, "灰狼的 %s 模型缺少 Chest/Neck/Head 连续躯干骨链" % profile)
+					_expect(int(stats["skinned_meshes"]) == 1, "灰狼的 %s 模型没有唯一连续蒙皮躯干" % profile)
+					_expect(int(stats["weighted_vertices"]) > 100, "灰狼的 %s 连续蒙皮顶点不足" % profile)
+					_expect(int(stats["blended_vertices"]) > 20, "灰狼的 %s 躯干没有跨骨骼平滑权重" % profile)
+					_expect(int(stats["invalid_weight_vertices"]) == 0, "灰狼的 %s 蒙皮权重没有归一化" % profile)
+					_expect(int(stats["skill_sockets"]) == 2, "灰狼的 %s 模型缺少嘴部或胸部技能挂点" % profile)
+				else:
+					_expect(int(stats["skinned_meshes"]) == 0, "%s 的 %s 刚性骨架被意外切换为未验收连续蒙皮" % [species_id, profile])
 			for node_prefix in expected_motion_nodes[species_id]:
 				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
 				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
@@ -377,6 +388,8 @@ func _validate_external_species_model_contract() -> void:
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("uses_external_model = _build_external_species_visual()"), "角色运行时没有优先加载外部物种模型")
 	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
+	_expect(actor_source.contains("_bind_external_skill_sockets(model)"), "外部物种模型没有绑定技能挂点")
+	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Mouth\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Chest\""), "灰狼扑咬与群体号召特效没有使用骨骼挂点")
 	_expect(actor_source.contains("if not uses_external_model:"), "外部模型失败时没有保留程序模型降级路径")
 	var game_stub := ExternalModelGame.new()
 	root.add_child(game_stub)
@@ -408,7 +421,10 @@ func _validate_external_species_model_contract() -> void:
 	game_stub.add_child(mobile_actor)
 	mobile_actor.setup(game_stub, 902, "wolf", false, Vector3.ZERO, 0)
 	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
-	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 9, "真实角色流程没有为灰狼 Mobile 模型绑定 Skeleton3D")
+	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有为灰狼 Mobile 模型绑定连续躯干骨链")
+	_expect(mobile_actor.external_skill_sockets.size() == 2, "真实灰狼角色流程没有绑定两个技能挂点")
+	_expect(mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55).distance_to(mobile_actor.global_position) > 0.5, "灰狼嘴部技能挂点退化到了角色原点")
+	_expect(Vector3(attack_pose.get("Neck", Vector3.ZERO)).length() > 0.05 and Vector3(attack_pose.get("Head", Vector3.ZERO)).length() > 0.02, "灰狼扑咬没有驱动连续蒙皮头颈骨链")
 	for species_id in ["deer", "bear"]:
 		var quadruped_actor: EcoActor = ActorScript.new()
 		quadruped_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -439,6 +455,11 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"pbr_slots": {},
 		"textured_coat_surfaces": 0,
 		"named_nodes": {},
+		"skinned_meshes": 0,
+		"weighted_vertices": 0,
+		"blended_vertices": 0,
+		"invalid_weight_vertices": 0,
+		"skill_sockets": 0,
 	}
 	_accumulate_external_model_stats(root_node, stats)
 	return stats
@@ -446,6 +467,8 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 
 func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 	var node_name := str(node.name)
+	if node_name in SkeletonRig.SKILL_SOCKET_NAMES:
+		stats["skill_sockets"] = int(stats["skill_sockets"]) + 1
 	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
 		if node_name.begins_with(prefix):
 			stats["named_nodes"][prefix] = int(stats["named_nodes"].get(prefix, 0)) + 1
@@ -456,11 +479,31 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 		var mesh_instance := node as MeshInstance3D
 		var mesh := mesh_instance.mesh
 		if mesh != null:
+			if mesh_instance.skin != null:
+				stats["skinned_meshes"] = int(stats["skinned_meshes"]) + 1
 			stats["meshes"] = int(stats["meshes"]) + 1
 			for surface_index in range(mesh.get_surface_count()):
 				var arrays := mesh.surface_get_arrays(surface_index)
 				if arrays.size() > Mesh.ARRAY_VERTEX and arrays[Mesh.ARRAY_VERTEX] != null:
 					stats["vertices"] = int(stats["vertices"]) + arrays[Mesh.ARRAY_VERTEX].size()
+					if mesh_instance.skin != null and arrays.size() > Mesh.ARRAY_WEIGHTS and arrays[Mesh.ARRAY_WEIGHTS] is PackedFloat32Array:
+						var vertex_count: int = arrays[Mesh.ARRAY_VERTEX].size()
+						var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+						stats["weighted_vertices"] = int(stats["weighted_vertices"]) + vertex_count
+						for vertex_index in range(vertex_count):
+							var weight_sum := 0.0
+							var positive_weights := 0
+							for influence_index in range(4):
+								var weight := weights[vertex_index * 4 + influence_index]
+								weight_sum += weight
+								if weight > 0.001:
+									positive_weights += 1
+							if positive_weights > 1:
+								stats["blended_vertices"] = int(stats["blended_vertices"]) + 1
+							# ArrayMesh may quantize skin weights on import/export, so accept the
+							# renderer-safe one-percent normalization envelope.
+							if absf(weight_sum - 1.0) > 0.01:
+								stats["invalid_weight_vertices"] = int(stats["invalid_weight_vertices"]) + 1
 				var material := mesh_instance.get_active_material(surface_index) as StandardMaterial3D
 				if material != null and not material.albedo_color.is_equal_approx(Color.WHITE):
 					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
