@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出项目
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 安装 Godot 4.7.1 与导出模板
         uses: solarlabyrinth/action-setup-godot@v3
@@ -49,7 +49,7 @@ jobs:
           test -s build/web/index.pck
 
       - name: 上传 Pages 文件
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: build/web
 
@@ -62,4 +62,4 @@ jobs:
     steps:
       - name: 发布到 GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

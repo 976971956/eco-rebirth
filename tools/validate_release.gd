@@ -169,6 +169,7 @@ func _validate_release_candidate_contract() -> void:
 	_expect(candidate_script.contains("shasum -a 256") and candidate_script.contains("release_candidate_manifest.json"), "发布候选没有生成可核对的构建哈希清单")
 	var workflow := FileAccess.get_file_as_string("res://.github/workflows/deploy-web.yml")
 	_expect(workflow.contains("validate_species.gd") and workflow.contains("validate_release.gd") and workflow.contains("--quit-after 300"), "GitHub Pages 在导出前没有执行数据、发布与运行门禁")
+	_expect(workflow.contains("actions/checkout@v6") and workflow.contains("actions/upload-pages-artifact@v5") and workflow.contains("actions/deploy-pages@v5"), "GitHub Pages Actions 没有使用 Node.js 24 对应主版本")
 	var release_checklist := FileAccess.get_file_as_string("res://docs/15_发布候选与真机验收.md")
 	_expect(release_checklist.contains("Android 真机") and release_checklist.contains("iPhone 真机") and release_checklist.contains("不能声称"), "发布清单没有区分自动化构建与真实设备验收")
 	var privacy := FileAccess.get_file_as_string("res://docs/16_隐私说明.md")
