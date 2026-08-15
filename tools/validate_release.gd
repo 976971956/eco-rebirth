@@ -44,6 +44,7 @@ func _run_validation() -> void:
 	_validate_export_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
+	_validate_world_navigation_contract()
 	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
 	_validate_opportunity_contract()
@@ -57,7 +58,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.31 发布校验通过：赤狐/青环蛇/獠牙野猪 Hero/Mobile GLB 与运行时回退正常")
+		print("[release] V1.32 发布校验通过：四生态区地标、迁徙通道与大地图连通性正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -229,8 +230,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.31.0\"") and presets.contains("application/short_version=\"1.31.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=410") and presets.contains("application/version=\"410\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.32.0\"") and presets.contains("application/short_version=\"1.32.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=420") and presets.contains("application/version=\"420\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -317,6 +318,35 @@ func _validate_visual_kit_contract() -> void:
 	_expect(actor_source.contains("tail_visuals") and actor_source.contains("body_pitch_scale"), "V3 动物步态缺少身体起伏或尾部摆动")
 	faceted.free()
 	loft.free()
+
+
+func _validate_world_navigation_contract() -> void:
+	_expect(WorldScript.REGION_LANDMARK_PROFILES.size() == 4, "四生态区地标配置不完整")
+	var motifs := {}
+	for region_id in WorldScript.REGION_ORDER:
+		var profile: Dictionary = WorldScript.REGION_LANDMARK_PROFILES.get(region_id, {})
+		_expect(not profile.is_empty(), "生态区缺少地标配置：%s" % region_id)
+		motifs[str(profile.get("motif", ""))] = true
+	_expect(motifs.size() == 4, "四生态区地标缺少可辨识的独立剪影")
+	for level_case in [
+		{"level": 1, "size": 140.0, "seed": 132001, "cell": 3.4},
+		{"level": 10, "size": 470.0, "seed": 132010, "cell": 4.2},
+	]:
+		var world := WorldScript.new()
+		root.add_child(world)
+		world.setup(int(level_case["seed"]), float(level_case["size"]), int(level_case["level"]), false, "clear", "day", "low")
+		_expect(world.region_landmark_positions.size() == 4, "第%d关没有生成四个生态区地标" % int(level_case["level"]))
+		_expect(world.migration_routes.size() == 2, "第%d关没有生成横纵迁徙主通道" % int(level_case["level"]))
+		for region_id in WorldScript.REGION_ORDER:
+			var marker_position: Vector3 = world.region_landmark_positions.get(region_id, Vector3.ZERO)
+			_expect(world.is_landing_clear(marker_position, 0.85), "第%d关 %s 地标周边被障碍物封锁" % [int(level_case["level"]), region_id])
+		for obstacle_index in range(world.obstacles.size()):
+			var required_clearance := WorldScript.MIGRATION_CORRIDOR_HALF_WIDTH + world.obstacle_radii[obstacle_index]
+			_expect(world.migration_route_clearance(world.obstacles[obstacle_index]) + 0.01 >= required_clearance, "第%d关迁徙通道出现阻路障碍物" % int(level_case["level"]))
+		var report: Dictionary = world.navigation_connectivity_report(0.85, float(level_case["cell"]))
+		print("[navigation] level=%d size=%.0f open=%d largest=%d ratio=%.2f%%" % [int(level_case["level"]), float(level_case["size"]), int(report.get("open_cells", 0)), int(report.get("largest_component", 0)), float(report.get("ratio", 0.0)) * 100.0])
+		_expect(float(report.get("ratio", 0.0)) >= 0.97, "第%d关可通行区最大连通块低于 97%%：%.2f%%" % [int(level_case["level"]), float(report.get("ratio", 0.0)) * 100.0])
+		world.free()
 
 
 func _validate_external_species_model_contract() -> void:

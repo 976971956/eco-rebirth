@@ -15,6 +15,8 @@ const HIGHLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/highland_
 const COLLAPSE_MIN_RADIUS_RATIO := 0.22
 const COLLAPSE_SHRINK_SECONDS := 90.0
 const MIN_PASSAGE_GAP := 3.4
+const MIGRATION_CORRIDOR_HALF_WIDTH := 4.8
+const LANDMARK_CLEAR_RADIUS := 5.2
 const TERRAIN_COUNTER_THRESHOLD := 0.72
 const ECOLOGY_EVENT_FIRST_BASE := 34.0
 const ECOLOGY_EVENT_REPEAT_BASE := 72.0
@@ -34,6 +36,14 @@ const REGION_NAMES := {
 	"grassland": "日照草原",
 	"wetland": "浅水湿地",
 	"highland": "岩丘高地",
+}
+
+const REGION_ORDER: Array[String] = ["forest", "grassland", "wetland", "highland"]
+const REGION_LANDMARK_PROFILES := {
+	"forest": {"title": "古木林地", "tint": "#9dd19b", "accent": "#d6e9a0", "motif": "ancient_tree"},
+	"grassland": {"title": "日照草原", "tint": "#e1d68a", "accent": "#f2bd58", "motif": "sun_wheel"},
+	"wetland": {"title": "浅水湿地", "tint": "#8fd5cf", "accent": "#69d8dd", "motif": "reed_fan"},
+	"highland": {"title": "岩丘高地", "tint": "#d4c493", "accent": "#e6d29a", "motif": "stone_peak"},
 }
 
 var world_size: float = 86.0
@@ -68,6 +78,8 @@ var ecology_trace_cleanup_timer: float = 0.0
 var ecology_trace_sequence: int = 0
 var movement_traces: Array[Dictionary] = []
 var danger_memories: Array[Dictionary] = []
+var migration_routes: Array[PackedVector2Array] = []
+var region_landmark_positions: Dictionary = {}
 var decoration_root: Node3D
 var obstacle_root: Node3D
 var environment_resource: Environment
@@ -288,10 +300,12 @@ func _build_biome_regions() -> void:
 	# Region identity is painted by one world-space shader on the base ground.
 	# Marker nodes remain independent gameplay landmarks, while removing the four
 	# overlapping square planes also removes visible seams and overdraw.
-	_build_region_marker("古木林地", Vector3(-world_size * 0.27, 0.0, -world_size * 0.27), Color("#9dd19b"))
-	_build_region_marker("日照草原", Vector3(world_size * 0.27, 0.0, -world_size * 0.27), Color("#e1d68a"))
-	_build_region_marker("浅水湿地", Vector3(-world_size * 0.27, 0.0, world_size * 0.27), Color("#8fd5cf"))
-	_build_region_marker("岩丘高地", Vector3(world_size * 0.27, 0.0, world_size * 0.27), Color("#d4c493"))
+	region_landmark_positions.clear()
+	for region_id in REGION_ORDER:
+		var profile: Dictionary = REGION_LANDMARK_PROFILES[region_id]
+		var marker_position := region_landmark_position(region_id, world_size)
+		region_landmark_positions[region_id] = marker_position
+		_build_region_marker(region_id, str(profile["title"]), marker_position, Color.from_string(str(profile["tint"]), Color.WHITE))
 
 
 func _build_biome_transitions() -> void:
@@ -315,14 +329,19 @@ func _add_transition_patch(node_name: String, pos: Vector3, tint: Color, radius:
 	decoration_root.add_child(patch)
 
 
-func _build_region_marker(title: String, marker_position: Vector3, tint: Color) -> void:
+func _build_region_marker(region_id: String, title: String, marker_position: Vector3, tint: Color) -> void:
 	var marker := Node3D.new()
-	marker.name = "RegionMarker_%s" % title
+	marker.name = "RegionLandmark_%s" % region_id
 	marker.position = marker_position
+	marker.add_to_group("navigation_landmark")
 	decoration_root.add_child(marker)
-	marker.add_child(Factory.tapered_cylinder("MarkerPost", Color("#57483b"), 0.11, 0.08, 1.45, Vector3(0.0, 0.72, 0.0), 7))
-	var sign := Factory.box("MarkerSign", tint.darkened(0.38), Vector3(2.55, 0.58, 0.12), Vector3(0.0, 1.52, 0.0))
+	var halo := Factory.disc("LandmarkHalo", tint.darkened(0.26), 2.65, 0.020, Vector3.ZERO, 18)
+	halo.material_override = Factory.terrain_material(tint.darkened(0.34), tint.darkened(0.12), 6.0)
+	marker.add_child(halo)
+	marker.add_child(Factory.tapered_cylinder("MarkerPost", Color("#57483b"), 0.13, 0.085, 1.72, Vector3(0.0, 0.86, 0.0), 8))
+	var sign := Factory.box("MarkerSign", tint.darkened(0.38), Vector3(2.72, 0.62, 0.14), Vector3(0.0, 1.78, 0.0))
 	marker.add_child(sign)
+	_build_landmark_motif(marker, region_id, tint)
 	var label := Label3D.new()
 	label.text = title
 	label.font = load("res://assets/fonts/NotoSansSC-VF.ttf") as Font
@@ -333,8 +352,44 @@ func _build_region_marker(title: String, marker_position: Vector3, tint: Color) 
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.pixel_size = 0.012
-	label.position = Vector3(0.0, 1.55, 0.10)
+	label.position = Vector3(0.0, 1.81, 0.11)
 	marker.add_child(label)
+
+
+func _build_landmark_motif(marker: Node3D, region_id: String, tint: Color) -> void:
+	var accent := Color.from_string(str(REGION_LANDMARK_PROFILES[region_id]["accent"]), tint.lightened(0.18))
+	match str(REGION_LANDMARK_PROFILES[region_id]["motif"]):
+		"ancient_tree":
+			for side in [-1.0, 1.0]:
+				marker.add_child(Factory.tapered_cylinder("AncientGateTrunk", Color("#63472f"), 0.23, 0.14, 2.65, Vector3(side * 1.48, 1.32, -0.18), 8))
+				marker.add_child(Factory.sphere("AncientGateCrown", accent.darkened(0.30), Vector3(0.82, 0.52, 0.68), Vector3(side * 1.48, 2.74, -0.18), 9, 5))
+			_add_branch_segment(marker, "AncientGateBranch", Color("#63472f"), Vector3(-1.48, 2.35, -0.18), Vector3(1.48, 2.35, -0.18), 0.14)
+		"sun_wheel":
+			marker.add_child(Factory.sphere("SunHeart", accent, Vector3(0.48, 0.48, 0.18), Vector3(0.0, 2.85, -0.08), 12, 7))
+			for ray_index in range(8):
+				var angle := TAU * float(ray_index) / 8.0
+				var ray_start := Vector3(cos(angle) * 0.62, 2.85 + sin(angle) * 0.62, -0.08)
+				var ray_end := Vector3(cos(angle) * 1.02, 2.85 + sin(angle) * 1.02, -0.08)
+				_add_branch_segment(marker, "SunRay", accent.darkened(0.12), ray_start, ray_end, 0.055)
+		"reed_fan":
+			for reed_index in range(7):
+				var spread := float(reed_index - 3) * 0.34
+				var height := 1.55 + absf(3.0 - float(reed_index)) * 0.13
+				var reed := Factory.tapered_cylinder("WetlandReed", tint.darkened(0.24), 0.055, 0.024, height, Vector3(spread, height * 0.5, -0.24), 6)
+				reed.rotation.z = -spread * 0.16
+				marker.add_child(reed)
+				if reed_index % 2 == 0:
+					marker.add_child(Factory.sphere("ReedLight", accent, Vector3(0.12, 0.25, 0.12), Vector3(spread, height + 0.05, -0.24), 7, 4))
+			var pool := Factory.disc("WetlandSignalPool", Color(accent, 0.76), 1.42, 0.026, Vector3(0.0, 0.012, -0.18), 16)
+			pool.scale.z = 0.56
+			pool.material_override = Factory.water_material(accent.lightened(0.10), accent.darkened(0.36), 0.72)
+			marker.add_child(pool)
+		"stone_peak":
+			for stone_index in range(4):
+				var stone_scale := 0.90 - float(stone_index) * 0.14
+				marker.add_child(Factory.sphere("CairnStone", tint.darkened(0.38 - float(stone_index) * 0.055), Vector3(stone_scale, 0.38, stone_scale * 0.72), Vector3(0.0, 0.28 + float(stone_index) * 0.48, -0.18), 8, 5))
+			var peak := Factory.cone("PeakSignal", accent, 0.52, 1.46, Vector3(0.0, 2.62, -0.18), 8)
+			marker.add_child(peak)
 
 
 func _build_ground_details() -> void:
@@ -358,15 +413,9 @@ func _build_ground_details() -> void:
 
 func _build_paths_and_pond() -> void:
 	var trail_color := Color("#655844")
-	var path_half := world_size * 0.46
-	var east_west_points: Array[Vector2] = [
-		Vector2(-path_half, -2.4), Vector2(-path_half * 0.64, -0.8), Vector2(-path_half * 0.32, 1.3),
-		Vector2(0.0, 0.0), Vector2(path_half * 0.33, -1.5), Vector2(path_half * 0.67, 1.0), Vector2(path_half, 0.5),
-	]
-	var north_south_points: Array[Vector2] = [
-		Vector2(2.0, -path_half), Vector2(0.8, -path_half * 0.66), Vector2(-1.2, -path_half * 0.34),
-		Vector2(0.0, 0.0), Vector2(1.7, path_half * 0.31), Vector2(-1.3, path_half * 0.68), Vector2(0.4, path_half),
-	]
+	migration_routes = migration_routes_for_size(world_size)
+	var east_west_points := _packed_route_to_array(migration_routes[0])
+	var north_south_points := _packed_route_to_array(migration_routes[1])
 	_add_winding_trail("EastWestMainTrail", east_west_points, 4.1, trail_color.lightened(0.035), 0.022)
 	_add_winding_trail("NorthSouthMainTrail", north_south_points, 4.1, trail_color, 0.023)
 	_add_winding_trail("EastWestFootwear", east_west_points, 1.55, trail_color.darkened(0.11), 0.026)
@@ -1585,15 +1634,120 @@ func nearest_climbable_tree(pos: Vector3, max_distance: float = 5.0) -> Vector3:
 	return nearest
 
 
-func _is_protected_route(pos: Vector3) -> bool:
-	var corridor_half_width := 4.4
-	if absf(pos.x) < corridor_half_width or absf(pos.z) < corridor_half_width:
+static func region_landmark_position(region_id: String, size_value: float) -> Vector3:
+	var marker_distance := size_value * 0.27
+	match region_id:
+		"forest": return Vector3(-marker_distance, 0.0, -marker_distance)
+		"grassland": return Vector3(marker_distance, 0.0, -marker_distance)
+		"wetland": return Vector3(-marker_distance, 0.0, marker_distance)
+		"highland": return Vector3(marker_distance, 0.0, marker_distance)
+	return Vector3.ZERO
+
+
+static func migration_routes_for_size(size_value: float) -> Array[PackedVector2Array]:
+	var path_half := size_value * 0.46
+	var routes: Array[PackedVector2Array] = []
+	routes.append(PackedVector2Array([
+		Vector2(-path_half, -2.4), Vector2(-path_half * 0.64, -0.8), Vector2(-path_half * 0.32, 1.3),
+		Vector2(0.0, 0.0), Vector2(path_half * 0.33, -1.5), Vector2(path_half * 0.67, 1.0), Vector2(path_half, 0.5),
+	]))
+	routes.append(PackedVector2Array([
+		Vector2(2.0, -path_half), Vector2(0.8, -path_half * 0.66), Vector2(-1.2, -path_half * 0.34),
+		Vector2(0.0, 0.0), Vector2(1.7, path_half * 0.31), Vector2(-1.3, path_half * 0.68), Vector2(0.4, path_half),
+	]))
+	return routes
+
+
+static func _packed_route_to_array(route: PackedVector2Array) -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for point in route:
+		points.append(point)
+	return points
+
+
+static func point_segment_distance_2d(point: Vector2, start: Vector2, finish: Vector2) -> float:
+	var segment := finish - start
+	if segment.length_squared() <= 0.0001:
+		return point.distance_to(start)
+	var along := clampf((point - start).dot(segment) / segment.length_squared(), 0.0, 1.0)
+	return point.distance_to(start + segment * along)
+
+
+func migration_route_clearance(pos: Vector3) -> float:
+	var point := Vector2(pos.x, pos.z)
+	var routes := migration_routes if not migration_routes.is_empty() else migration_routes_for_size(world_size)
+	var clearance := INF
+	for route in routes:
+		for point_index in range(route.size() - 1):
+			clearance = minf(clearance, point_segment_distance_2d(point, route[point_index], route[point_index + 1]))
+	return clearance
+
+
+func navigation_connectivity_report(actor_radius: float = 0.85, cell_size: float = 3.4) -> Dictionary:
+	var edge := world_size * 0.5 - actor_radius - 1.2
+	var safe_cell_size := maxf(cell_size, 1.0)
+	var grid_width := maxi(int(floor((edge * 2.0) / safe_cell_size)) + 1, 1)
+	var grid_depth := grid_width
+	var total_cells := grid_width * grid_depth
+	var open_cells := PackedByteArray()
+	open_cells.resize(total_cells)
+	var open_count := 0
+	for grid_z in range(grid_depth):
+		for grid_x in range(grid_width):
+			var sample := Vector3(-edge + float(grid_x) * safe_cell_size, 0.45, -edge + float(grid_z) * safe_cell_size)
+			var sample_index := grid_z * grid_width + grid_x
+			if is_landing_clear(sample, actor_radius):
+				open_cells[sample_index] = 1
+				open_count += 1
+	var visited := PackedByteArray()
+	visited.resize(total_cells)
+	var largest_component := 0
+	for start_index in range(total_cells):
+		if open_cells[start_index] == 0 or visited[start_index] != 0:
+			continue
+		var queue := PackedInt32Array()
+		queue.append(start_index)
+		visited[start_index] = 1
+		var cursor := 0
+		var component_size := 0
+		while cursor < queue.size():
+			var cell_index := queue[cursor]
+			cursor += 1
+			component_size += 1
+			var cell_x := cell_index % grid_width
+			var cell_z := cell_index / grid_width
+			if cell_x > 0:
+				_append_open_neighbor(cell_index - 1, open_cells, visited, queue)
+			if cell_x + 1 < grid_width:
+				_append_open_neighbor(cell_index + 1, open_cells, visited, queue)
+			if cell_z > 0:
+				_append_open_neighbor(cell_index - grid_width, open_cells, visited, queue)
+			if cell_z + 1 < grid_depth:
+				_append_open_neighbor(cell_index + grid_width, open_cells, visited, queue)
+		largest_component = maxi(largest_component, component_size)
+	return {
+		"ratio": float(largest_component) / float(maxi(open_count, 1)),
+		"largest_component": largest_component,
+		"open_cells": open_count,
+		"grid_width": grid_width,
+		"cell_size": safe_cell_size,
+	}
+
+
+func _append_open_neighbor(cell_index: int, open_cells: PackedByteArray, visited: PackedByteArray, queue: PackedInt32Array) -> void:
+	if open_cells[cell_index] == 0 or visited[cell_index] != 0:
+		return
+	visited[cell_index] = 1
+	queue.append(cell_index)
+
+
+func _is_protected_route(pos: Vector3, clearance_radius: float = 0.0) -> bool:
+	if migration_route_clearance(pos) < MIGRATION_CORRIDOR_HALF_WIDTH + clearance_radius:
 		return true
-	var marker_distance := world_size * 0.27
-	for marker_x in [-marker_distance, marker_distance]:
-		for marker_z in [-marker_distance, marker_distance]:
-			if Vector2(pos.x - marker_x, pos.z - marker_z).length() < 3.2:
-				return true
+	for region_id in REGION_ORDER:
+		var marker_position := region_landmark_position(region_id, world_size)
+		if Vector2(pos.x - marker_position.x, pos.z - marker_position.z).length() < LANDMARK_CLEAR_RADIUS + clearance_radius:
+			return true
 	return false
 
 
@@ -1657,7 +1811,7 @@ func _random_decor_position(center_clearance: float, new_radius: float = 0.0) ->
 		var pos := Vector3(rng.randf_range(-world_size * 0.46, world_size * 0.46), 0.0, rng.randf_range(-world_size * 0.46, world_size * 0.46))
 		if Vector2(pos.x, pos.z).length() < center_clearance:
 			continue
-		if _is_protected_route(pos):
+		if _is_protected_route(pos, new_radius):
 			continue
 		var clearance := INF
 		for index in range(obstacles.size()):
