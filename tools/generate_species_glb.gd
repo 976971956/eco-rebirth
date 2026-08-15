@@ -4,7 +4,10 @@ const Factory = preload("res://scripts/low_poly_factory.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 
 const OUTPUT_ROOT := "res://assets/models/animals"
-const REPRESENTATIVE_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar"]
+const REPRESENTATIVE_SPECIES := [
+	"rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar",
+	"lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla",
+]
 
 var failures: Array[String] = []
 
@@ -177,6 +180,10 @@ func _build_species(species_id: String, hero: bool) -> Node3D:
 		"fox": _build_fox(root, hero)
 		"snake": _build_snake(root, hero)
 		"boar": _build_boar(root, hero)
+		"lion", "tiger", "lynx": _build_feline(root, hero, species_id)
+		"elephant", "rhino", "hippo": _build_heavy_herbivore(root, hero, species_id)
+		"bison", "moose", "goat": _build_ungulate(root, hero, species_id)
+		"monkey", "gorilla": _build_primate(root, hero, species_id)
 	if species_id in ["rabbit", "wolf", "deer", "bear"]:
 		_group_skeletal_body(root)
 	return root
@@ -548,3 +555,238 @@ func _build_crocodile(root: Node3D, hero: bool) -> void:
 				var tooth := Factory.cone("Tooth_%s_%02d" % ["L" if side < 0.0 else "R", tooth_index], Color("#ded6b5"), 0.035, 0.17, Vector3(side * 0.34, 0.47, -1.92 - tooth_index * 0.20), 5)
 				tooth.rotation.x = PI
 				root.add_child(tooth)
+
+
+func _build_feline(root: Node3D, hero: bool, feline_id: String) -> void:
+	var coat := Color("#c99a4c")
+	var dark := Color("#4a321f")
+	var light := Color("#ead1a0")
+	var body_width := 0.72
+	var body_height := 1.38
+	var body_length := 1.48
+	match feline_id:
+		"tiger":
+			coat = Color("#d27c32")
+			dark = Color("#28231f")
+			light = Color("#ead8b9")
+			body_width = 0.80
+			body_height = 1.42
+			body_length = 1.58
+		"lynx":
+			coat = Color("#9b8066")
+			dark = Color("#443a32")
+			light = Color("#d8c4aa")
+			body_width = 0.55
+			body_height = 1.18
+			body_length = 1.12
+	_add_loft(root, "%sOrganicBody" % feline_id.capitalize(), coat, [
+		Vector3(0.0, body_height * 0.78, body_length), Vector3(0.0, body_height * 0.84, body_length * 0.52),
+		Vector3(0.0, body_height * 0.90, 0.0), Vector3(0.0, body_height, -body_length * 0.52),
+		Vector3(0.0, body_height * 1.17, -body_length * 0.92), Vector3(0.0, body_height * 1.15, -body_length * 1.28),
+		Vector3(0.0, body_height * 1.03, -body_length * 1.62),
+	], [
+		Vector2(body_width * 0.48, body_width * 0.46), Vector2(body_width * 0.88, body_width * 0.67),
+		Vector2(body_width, body_width * 0.72), Vector2(body_width * 0.92, body_width * 0.82),
+		Vector2(body_width * 0.64, body_width * 0.61), Vector2(body_width * 0.50, body_width * 0.45),
+		Vector2(body_width * 0.22, body_width * 0.18),
+	], hero)
+	_add_sphere(root, "HindQuarter", coat.darkened(0.025), Vector3(body_width * 0.84, body_width * 0.69, body_width * 0.72), Vector3(0.0, body_height * 0.83, body_length * 0.78), hero)
+	if feline_id == "lion":
+		_add_sphere(root, "ManeRuff", dark, Vector3(0.84, 0.84, 0.62), Vector3(0.0, 1.72, -1.60), hero)
+	elif feline_id == "tiger":
+		var stripe_count := 9 if hero else 5
+		for stripe_index in range(stripe_count):
+			var stripe_ratio := float(stripe_index) / float(maxi(stripe_count - 1, 1))
+			var stripe := Factory.box("CoatStripe_%02d" % stripe_index, dark, Vector3(body_width * 1.58, 0.055, 0.085), Vector3(0.0, body_height * (1.32 - absf(stripe_ratio - 0.48) * 0.38), lerpf(0.92, -1.15, stripe_ratio)))
+			stripe.rotation.z = (stripe_ratio - 0.5) * 0.20
+			root.add_child(stripe)
+	else:
+		_add_sphere(root, "CheekRuff", light, Vector3(0.52, 0.40, 0.26), Vector3(0.0, 1.48, -1.46), hero)
+	_add_sphere(root, "Muzzle", light, Vector3(body_width * 0.48, body_width * 0.30, body_width * 0.46), Vector3(0.0, body_height * 1.08, -body_length * 1.57), hero)
+	_add_sphere(root, "Nose", Color("#262120"), Vector3(body_width * 0.20, body_width * 0.13, body_width * 0.13), Vector3(0.0, body_height * 1.10, -body_length * 1.92), hero)
+	_add_eye_pair(root, body_height * 1.30, -body_length * 1.40, body_width * 0.39, 0.070, Color("#d6a245"), hero)
+	for side in [-1.0, 1.0]:
+		var ear_pivot := Node3D.new()
+		ear_pivot.name = "EarPivot_L" if side < 0.0 else "EarPivot_R"
+		ear_pivot.position = Vector3(side * body_width * 0.53, body_height * 1.50, -body_length * 1.16)
+		root.add_child(ear_pivot)
+		_add_sphere(ear_pivot, "RoundEar", coat.darkened(0.06), Vector3(0.22, 0.25, 0.14), Vector3.ZERO, hero)
+		if feline_id == "lynx":
+			var tuft := Factory.cone("EarTuft_%s" % ("L" if side < 0.0 else "R"), dark, 0.055, 0.38, Vector3(0.0, 0.31, 0.0), 6 if hero else 5)
+			ear_pivot.add_child(tuft)
+	_add_quadruped_legs(root, coat.darkened(0.14), dark, body_height * 0.72, body_height * 0.74, body_width * 0.67, body_length * 0.52, body_width * 0.60, hero)
+	if feline_id == "lynx":
+		_add_tail(root, Vector3(0.0, body_height * 0.90, body_length * 0.93), [Vector3.ZERO, Vector3(0.04, 0.05, 0.46), Vector3(0.03, -0.05, 0.73)], [Vector2(0.18, 0.17), Vector2(0.16, 0.15), Vector2(0.05, 0.05)], dark, hero)
+	else:
+		var tail := _add_tail(root, Vector3(0.0, body_height * 0.90, body_length * 0.94), [Vector3.ZERO, Vector3(0.10, 0.03, 0.76), Vector3(0.18, -0.20, 1.48), Vector3(0.08, -0.56, 2.10)], [Vector2(0.17, 0.16), Vector2(0.15, 0.14), Vector2(0.10, 0.09), Vector2(0.035, 0.035)], coat.darkened(0.12), hero)
+		if feline_id == "lion":
+			_add_sphere(tail, "TailTuft", dark, Vector3(0.20, 0.22, 0.30), Vector3(0.08, -0.57, 2.08), hero)
+
+
+func _build_heavy_herbivore(root: Node3D, hero: bool, heavy_id: String) -> void:
+	var hide := Color("#777a73")
+	var dark := Color("#474a45")
+	var light := Color("#c8c2ae")
+	var width := 1.02
+	var height := 1.72
+	var length := 1.58
+	if heavy_id == "rhino":
+		hide = Color("#7d817b")
+		width = 0.94
+		height = 1.52
+		length = 1.50
+	elif heavy_id == "hippo":
+		hide = Color("#746b70")
+		dark = Color("#423a3e")
+		light = Color("#b9878b")
+		width = 1.08
+		height = 1.34
+		length = 1.46
+	_add_loft(root, "%sOrganicBody" % heavy_id.capitalize(), hide, [
+		Vector3(0.0, height * 0.72, length), Vector3(0.0, height * 0.82, length * 0.50),
+		Vector3(0.0, height * 0.88, 0.0), Vector3(0.0, height, -length * 0.55),
+		Vector3(0.0, height * 1.05, -length), Vector3(0.0, height * 0.92, -length * 1.44),
+	], [
+		Vector2(width * 0.58, width * 0.54), Vector2(width, width * 0.78), Vector2(width * 1.04, width * 0.82),
+		Vector2(width, width * 0.88), Vector2(width * 0.76, width * 0.65), Vector2(width * 0.46, width * 0.33),
+	], hero)
+	_add_sphere(root, "HindQuarter", hide.darkened(0.025), Vector3(width * 0.94, width * 0.78, width * 0.76), Vector3(0.0, height * 0.79, length * 0.76), hero)
+	match heavy_id:
+		"elephant":
+			_add_sphere(root, "Head", hide, Vector3(0.77, 0.72, 0.70), Vector3(0.0, 1.86, -1.82), hero)
+			for side in [-1.0, 1.0]:
+				_add_sphere(root, "EarDetail_%s" % ("L" if side < 0.0 else "R"), hide.lightened(0.08), Vector3(0.18, 0.76, 0.68), Vector3(side * 0.73, 1.90, -1.55), hero)
+				var tusk := Factory.cone("Tusk_%s" % ("L" if side < 0.0 else "R"), light, 0.09, 0.88, Vector3(side * 0.28, 1.34, -2.25), int(_detail(hero)["radial"]))
+				tusk.rotation.x = -PI * 0.52
+				root.add_child(tusk)
+			_add_loft(root, "Trunk", dark.lightened(0.12), [Vector3(0.0, 1.70, -2.30), Vector3(0.0, 1.12, -2.55), Vector3(0.06, 0.52, -2.62), Vector3(0.12, 0.30, -2.42)], [Vector2(0.24, 0.23), Vector2(0.20, 0.19), Vector2(0.14, 0.13), Vector2(0.10, 0.09)], hero)
+			_add_eye_pair(root, 2.08, -2.05, 0.48, 0.075, Color("#765638"), hero)
+		"rhino":
+			_add_sphere(root, "Muzzle", hide.lightened(0.04), Vector3(0.56, 0.38, 0.62), Vector3(0.0, 1.28, -2.10), hero)
+			for horn_index in range(2):
+				var horn := Factory.cone("HornDetail_%d" % horn_index, light, 0.19 - horn_index * 0.05, 1.12 - horn_index * 0.48, Vector3(0.0, 1.58 + horn_index * 0.18, -2.48 + horn_index * 0.52), int(_detail(hero)["radial"]))
+				horn.rotation.x = -PI * 0.45
+				root.add_child(horn)
+			_add_eye_pair(root, 1.76, -1.75, 0.36, 0.067, Color("#6f5136"), hero)
+		"hippo":
+			_add_sphere(root, "WideMuzzle", light, Vector3(0.78, 0.40, 0.64), Vector3(0.0, 1.22, -2.05), hero)
+			_add_sphere(root, "Nose", dark, Vector3(0.38, 0.14, 0.12), Vector3(0.0, 1.40, -2.60), hero)
+			_add_eye_pair(root, 1.70, -1.75, 0.37, 0.070, Color("#76513b"), hero)
+	for side in [-1.0, 1.0]:
+		var ear_pivot := Node3D.new()
+		ear_pivot.name = "EarPivot_L" if side < 0.0 else "EarPivot_R"
+		ear_pivot.position = Vector3(side * width * 0.54, height * 1.26, -length * 0.90)
+		root.add_child(ear_pivot)
+		_add_sphere(ear_pivot, "EarDetail", hide.lightened(0.07), Vector3(0.20, 0.22, 0.13), Vector3.ZERO, hero)
+	_add_quadruped_legs(root, hide.darkened(0.10), dark, height * 0.64, height * 0.62, width * 0.72, length * 0.55, width * 0.72, hero)
+	_add_tail(root, Vector3(0.0, height * 0.82, length * 0.92), [Vector3.ZERO, Vector3(0.06, -0.15, 0.42), Vector3(0.03, -0.38, 0.67)], [Vector2(0.12, 0.11), Vector2(0.09, 0.08), Vector2(0.025, 0.025)], dark, hero)
+
+
+func _build_ungulate(root: Node3D, hero: bool, ungulate_id: String) -> void:
+	var coat := Color("#684b37")
+	var dark := Color("#322a24")
+	var light := Color("#b99b73")
+	var width := 0.78
+	var height := 1.50
+	var length := 1.34
+	if ungulate_id == "moose":
+		coat = Color("#60493a")
+		width = 0.70
+		height = 1.88
+		length = 1.42
+	elif ungulate_id == "goat":
+		coat = Color("#a59175")
+		dark = Color("#51483c")
+		light = Color("#d2c3a8")
+		width = 0.48
+		height = 1.28
+		length = 1.05
+	_add_loft(root, "%sOrganicBody" % ungulate_id.capitalize(), coat, [
+		Vector3(0.0, height * 0.76, length), Vector3(0.0, height * 0.84, length * 0.48), Vector3(0.0, height * 0.90, 0.0),
+		Vector3(0.0, height, -length * 0.55), Vector3(0.0, height * 1.20, -length * 0.92), Vector3(0.0, height * 1.40, -length * 1.22), Vector3(0.0, height * 1.31, -length * 1.60),
+	], [
+		Vector2(width * 0.46, width * 0.45), Vector2(width * 0.94, width * 0.72), Vector2(width, width * 0.76),
+		Vector2(width * 0.92, width * 0.84), Vector2(width * 0.55, width * 0.56), Vector2(width * 0.48, width * 0.43), Vector2(width * 0.22, width * 0.18),
+	], hero)
+	_add_sphere(root, "HindQuarter", coat.darkened(0.025), Vector3(width * 0.84, width * 0.69, width * 0.72), Vector3(0.0, height * 0.84, length * 0.78), hero)
+	if ungulate_id == "bison":
+		_add_sphere(root, "ShoulderHump", dark, Vector3(0.91, 0.80, 0.68), Vector3(0.0, 1.72, -0.62), hero)
+		_add_sphere(root, "BeardRuff", dark, Vector3(0.36, 0.54, 0.26), Vector3(0.0, 1.36, -1.82), hero)
+	elif ungulate_id == "moose":
+		_add_sphere(root, "Dewlap", dark, Vector3(0.20, 0.54, 0.18), Vector3(0.0, 2.05, -1.62), hero)
+	else:
+		_add_sphere(root, "BeardRuff", dark, Vector3(0.18, 0.34, 0.14), Vector3(0.0, 1.38, -1.42), hero)
+	_add_sphere(root, "Muzzle", light.darkened(0.08), Vector3(width * 0.43, width * 0.28, width * 0.54), Vector3(0.0, height * 1.27, -length * 1.60), hero)
+	_add_sphere(root, "Nose", dark, Vector3(width * 0.24, width * 0.13, width * 0.14), Vector3(0.0, height * 1.28, -length * 1.98), hero)
+	_add_eye_pair(root, height * 1.48, -length * 1.36, width * 0.36, 0.068, Color("#725032"), hero)
+	for side in [-1.0, 1.0]:
+		var ear := _add_ear(root, side, Vector3(side * width * 0.42, height * 1.61, -length * 1.15), 0.42 if ungulate_id != "goat" else 0.34, 0.17, coat, light, hero, false)
+		ear.rotation.z = side * 0.18
+		if ungulate_id == "moose":
+			var palm := Factory.box("AntlerPalmDetail_%s" % ("L" if side < 0.0 else "R"), light, Vector3(0.48, 0.10, 0.34), Vector3(side * 0.58, height * 1.88, -length * 1.02))
+			palm.rotation.z = side * 0.22
+			root.add_child(palm)
+			var tine_count := 4 if hero else 2
+			for tine_index in range(tine_count):
+				var tine := Factory.cone("AntlerTineDetail", light, 0.055, 0.48, Vector3(side * (0.46 + tine_index * 0.15), height * (1.98 + tine_index * 0.035), -length * (1.03 - tine_index * 0.05)), 6)
+				tine.rotation.z = -side * 0.24
+				root.add_child(tine)
+		else:
+			var horn := Factory.cone("HornDetail_%s" % ("L" if side < 0.0 else "R"), dark.lightened(0.10), 0.105 if ungulate_id == "bison" else 0.09, 0.62 if ungulate_id == "bison" else 0.78, Vector3(side * width * 0.42, height * 1.70, -length * 1.17), int(_detail(hero)["radial"]))
+			horn.rotation.z = side * (0.92 if ungulate_id == "bison" else 0.36)
+			root.add_child(horn)
+	_add_quadruped_legs(root, coat.darkened(0.14), dark, height * 0.70, height * 0.77, width * 0.62, length * 0.56, width * 0.50, hero, true)
+	_add_tail(root, Vector3(0.0, height * 0.88, length * 0.94), [Vector3.ZERO, Vector3(0.03, -0.12, 0.42), Vector3(0.02, -0.30, 0.64)], [Vector2(0.12, 0.11), Vector2(0.10, 0.09), Vector2(0.025, 0.025)], dark, hero)
+
+
+func _build_primate(root: Node3D, hero: bool, primate_id: String) -> void:
+	var heavy := primate_id == "gorilla"
+	var coat := Color("#343631") if heavy else Color("#7b5d43")
+	var skin := Color("#514840") if heavy else Color("#b68462")
+	var chest := Color("#6f7168") if heavy else Color("#b89370")
+	var body_y := 1.46 if heavy else 1.18
+	_add_loft(root, "%sOrganicBody" % primate_id.capitalize(), coat, [
+		Vector3(0.0, 0.74 if heavy else 0.62, 0.62), Vector3(0.0, body_y, 0.34), Vector3(0.0, body_y * 1.30, 0.0),
+		Vector3(0.0, body_y * 1.50, -0.36), Vector3(0.0, body_y * 1.56, -0.72),
+	], [
+		Vector2(0.48 if heavy else 0.30, 0.42), Vector2(0.82 if heavy else 0.48, 0.66 if heavy else 0.44),
+		Vector2(0.94 if heavy else 0.52, 0.74 if heavy else 0.48), Vector2(0.66 if heavy else 0.40, 0.54 if heavy else 0.38),
+		Vector2(0.30 if heavy else 0.22, 0.25 if heavy else 0.19),
+	], hero)
+	_add_sphere(root, "ChestRuff", chest, Vector3(0.70 if heavy else 0.38, 0.62 if heavy else 0.42, 0.17), Vector3(0.0, body_y * 1.21, -0.20), hero)
+	_add_sphere(root, "Head", coat, Vector3(0.48 if heavy else 0.34, 0.45 if heavy else 0.34, 0.38 if heavy else 0.30), Vector3(0.0, body_y * 1.70, -0.70), hero)
+	_add_sphere(root, "Muzzle", skin, Vector3(0.42 if heavy else 0.27, 0.28 if heavy else 0.20, 0.34 if heavy else 0.25), Vector3(0.0, body_y * 1.60, -1.02), hero)
+	_add_sphere(root, "Nose", Color("#241f1d"), Vector3(0.20 if heavy else 0.13, 0.11 if heavy else 0.08, 0.10 if heavy else 0.07), Vector3(0.0, body_y * 1.67, -1.29), hero)
+	_add_eye_pair(root, body_y * 1.82, -0.91, 0.24 if heavy else 0.18, 0.064, Color("#7b5c38"), hero)
+	for side in [-1.0, 1.0]:
+		var ear_pivot := Node3D.new()
+		ear_pivot.name = "EarPivot_L" if side < 0.0 else "EarPivot_R"
+		ear_pivot.position = Vector3(side * (0.48 if heavy else 0.34), body_y * 1.72, -0.68)
+		root.add_child(ear_pivot)
+		_add_sphere(ear_pivot, "EarDetail", skin, Vector3(0.14, 0.17, 0.09), Vector3.ZERO, hero)
+	_add_external_primate_limbs(root, coat, skin, heavy, hero)
+	if primate_id == "monkey":
+		_add_tail(root, Vector3(0.0, 0.92, 0.46), [Vector3.ZERO, Vector3(0.18, 0.16, 0.70), Vector3(0.36, 0.02, 1.34), Vector3(0.30, 0.40, 1.90), Vector3(0.06, 0.64, 2.25)], [Vector2(0.13, 0.12), Vector2(0.12, 0.11), Vector2(0.09, 0.08), Vector2(0.06, 0.055), Vector2(0.02, 0.02)], coat, hero)
+	else:
+		_add_sphere(root, "TailPivot", coat, Vector3(0.10, 0.10, 0.12), Vector3(0.0, 0.90, 0.62), hero)
+
+
+func _add_external_primate_limbs(root: Node3D, coat: Color, skin: Color, heavy: bool, hero: bool) -> void:
+	for side in [-1.0, 1.0]:
+		var side_name := "L" if side < 0.0 else "R"
+		var arm := Node3D.new()
+		arm.name = "LegPivot_%sF" % side_name
+		arm.position = Vector3(side * (0.68 if heavy else 0.43), 1.82 if heavy else 1.42, -0.14)
+		root.add_child(arm)
+		var elbow := Vector3(side * 0.12, -0.72 if heavy else -0.58, -0.10)
+		var hand := Vector3(side * 0.07, -1.44 if heavy else -1.14, -0.30)
+		_add_loft(arm, "Arm_%s" % side_name, coat, [Vector3.ZERO, elbow, hand], [Vector2(0.30 if heavy else 0.20, 0.28 if heavy else 0.18), Vector2(0.24 if heavy else 0.16, 0.22 if heavy else 0.14), Vector2(0.13, 0.12)], hero)
+		_add_sphere(arm, "PawHand_%s" % side_name, skin, Vector3(0.28 if heavy else 0.20, 0.15, 0.32), hand + Vector3(0.0, -0.04, -0.08), hero)
+		var leg := Node3D.new()
+		leg.name = "LegPivot_%sH" % side_name
+		leg.position = Vector3(side * (0.42 if heavy else 0.30), 0.82 if heavy else 0.70, 0.28)
+		root.add_child(leg)
+		var knee := Vector3(side * 0.08, -0.36, 0.12)
+		var foot := Vector3(side * 0.03, -0.70 if heavy else -0.60, -0.14)
+		_add_loft(leg, "Leg_%s" % side_name, coat, [Vector3.ZERO, knee, foot], [Vector2(0.28 if heavy else 0.18, 0.26 if heavy else 0.17), Vector2(0.22 if heavy else 0.15, 0.20 if heavy else 0.14), Vector2(0.12, 0.11)], hero)
+		_add_sphere(leg, "PawFoot_%s" % side_name, skin, Vector3(0.25 if heavy else 0.18, 0.13, 0.34), foot + Vector3(0.0, -0.03, -0.10), hero)

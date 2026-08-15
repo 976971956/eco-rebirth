@@ -9,7 +9,11 @@ const FUR_ALBEDO = preload("res://assets/textures/animals/shared/quadruped_fur_a
 const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png")
 const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
 const MODEL_ROOT := "res://assets/models/animals"
-const EXTERNAL_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar"]
+const EXTERNAL_SPECIES := [
+	"rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar",
+	"lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla",
+]
+const THIRD_BATCH_SPECIES := ["lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla"]
 const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const FLIGHT_RIG_SPECIES := ["eagle"]
 const LONG_BODY_RIG_SPECIES := ["crocodile"]
@@ -23,6 +27,17 @@ const VISUAL_SCALE_CONTRACT := {
 	"fox": 0.88,
 	"snake": 0.98,
 	"boar": 1.06,
+	"lion": 1.08,
+	"tiger": 1.12,
+	"lynx": 0.92,
+	"elephant": 1.32,
+	"rhino": 1.26,
+	"hippo": 1.28,
+	"bison": 1.18,
+	"moose": 1.16,
+	"goat": 0.90,
+	"monkey": 0.88,
+	"gorilla": 1.14,
 }
 const FUR_ATLAS_REGIONS := {
 	"rabbit": Vector2(0.0, 0.0),

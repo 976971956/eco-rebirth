@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 3
-const RELEASE_VERSION := "1.35.0"
+const RELEASE_VERSION := "1.36.0"
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
