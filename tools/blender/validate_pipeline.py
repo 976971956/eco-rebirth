@@ -107,6 +107,9 @@ def smoke_export(output_path: Path) -> tuple[int, int]:
     spine.tail = (0.0, 0.0, 2.0)
     bpy.ops.object.mode_set(mode="OBJECT")
 
+    world_transform = body.matrix_world.copy()
+    body.parent = armature
+    body.matrix_world = world_transform
     modifier = body.modifiers.new("Armature", "ARMATURE")
     modifier.object = armature
     group = body.vertex_groups.new(name="Spine")

@@ -10,7 +10,7 @@ if ! command -v "$BLENDER_COMMAND" >/dev/null 2>&1; then
 	exit 1
 fi
 
-"$BLENDER_COMMAND" --background --factory-startup \
+"$BLENDER_COMMAND" --background --factory-startup --python-exit-code 1 \
 	--python "$PROJECT_ROOT/tools/blender/validate_pipeline.py" -- \
 	--config "$PROJECT_ROOT/tools/blender/pipeline_config.json" \
 	--smoke-output /tmp/eco-rebirth-blender-pipeline-smoke.glb

@@ -98,9 +98,12 @@ def pbr_material(name: str, color: str, roughness: float, metallic: float = 0.0)
 
 def metaball_mesh(name: str, elements: list[tuple[tuple[float, float, float], tuple[float, float, float], float]], material: bpy.types.Material, hero: bool) -> bpy.types.Object:
     data = bpy.data.metaballs.new(f"{name}Surface")
-    data.resolution = 0.050 if hero else 0.095
-    data.render_resolution = 0.038 if hero else 0.070
-    data.threshold = 0.62
+    data.resolution = 0.050 if hero else 0.075
+    data.render_resolution = 0.038 if hero else 0.058
+    # Keep the animal as one continuous fleshed silhouette.  At 0.62 the torso,
+    # lower legs, paws, ears and tail exported as separate mesh islands, which
+    # made the skinned result look like an exposed skeleton in Godot.
+    data.threshold = 0.46
     obj = bpy.data.objects.new(name, data)
     bpy.context.collection.objects.link(obj)
     for position, scale, stiffness in elements:
@@ -157,6 +160,12 @@ def add_bone(edit_bones, name: str, head: tuple[float, float, float], tail: tupl
 
 
 def add_armature_weights(obj: bpy.types.Object, rig: bpy.types.Object, weights: dict[str, list[float]]) -> None:
+    # The glTF exporter can infer an armature for an unparented skinned object,
+    # but that path emits warnings and may produce fragile inverse bind matrices.
+    # Keep the authored world transform while making the relationship explicit.
+    world_transform = obj.matrix_world.copy()
+    obj.parent = rig
+    obj.matrix_world = world_transform
     modifier = obj.modifiers.new("SpeciesArmature", "ARMATURE")
     modifier.object = rig
     for bone_name, values in weights.items():
@@ -304,17 +313,22 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         hip_y = layout["shoulder_y"] if front else layout["body_y"]
         elements.extend([
             ((side * cfg["width"] * 0.74, hip_y - leg_length * 0.28, z), (cfg["paw"] * 1.20, leg_length * 0.42, cfg["paw"] * 1.12), 2.1),
-            ((side * cfg["width"] * 0.79, max(0.32, hip_y - leg_length * 0.70), z - (0.05 if front else -0.08)), (cfg["paw"] * 0.92, leg_length * 0.36, cfg["paw"] * 0.88), 2.0),
-            ((side * cfg["width"] * 0.80, 0.13, z - cfg["paw"]), (cfg["paw"] * 1.22, 0.13, cfg["paw"] * 1.62), 2.0),
+            ((side * cfg["width"] * 0.79, max(0.32, hip_y - leg_length * 0.70), z - (0.05 if front else -0.08)), (cfg["paw"] * 1.00, leg_length * 0.43, cfg["paw"] * 1.00), 2.0),
+            # An ankle bridge and a taller paw overlap the lower leg.  Without
+            # these elements every foot became a floating mesh island.
+            ((side * cfg["width"] * 0.80, 0.50, z - cfg["paw"] * 0.62), (cfg["paw"] * 1.35, 0.62, cfg["paw"] * 1.45), 2.0),
+            ((side * cfg["width"] * 0.80, 0.13, z - cfg["paw"]), (cfg["paw"] * 1.28, 0.20, cfg["paw"] * 1.72), 2.0),
         ])
     if cfg["ear"] > 0.02:
         for side in (-1.0, 1.0):
+            elements.append(((side * cfg["head"] * 0.42, layout["head_y"] + cfg["head"] * 0.40, layout["head_z"] + 0.03), (cfg["head"] * 0.34, max(cfg["ear"] * 0.42, 0.15), cfg["head"] * 0.30), 2.05))
             elements.append(((side * cfg["head"] * 0.55, layout["head_y"] + cfg["head"] * 0.60 + cfg["ear"] * 0.28, layout["head_z"] + 0.04), (cfg["head"] * 0.25, cfg["ear"] * 0.66, cfg["head"] * 0.20), 2.0))
     if cfg["tail"] > 0.12:
         tail_base_z = cfg["length"] * 0.68
+        elements.append(((0.0, layout["body_y"] - cfg["tail"] * 0.03, tail_base_z + cfg["tail"] * 0.08), (max(cfg["paw"] * 1.55, 0.16), max(cfg["paw"] * 1.65, 0.16), max(cfg["tail"] * 0.34, 0.24)), 2.1))
         for index in range(3):
             progress = (index + 1) / 3.0
-            elements.append(((0.04 * math.sin(progress * 1.7), layout["body_y"] - cfg["tail"] * 0.30 * progress, tail_base_z + cfg["tail"] * progress), (max(cfg["paw"] * (1.35 - progress * 0.42), 0.12), max(cfg["paw"] * (1.45 - progress * 0.35), 0.12), max(cfg["tail"] * 0.25, 0.18)), 2.0))
+            elements.append(((0.04 * math.sin(progress * 1.7), layout["body_y"] - cfg["tail"] * 0.30 * progress, tail_base_z + cfg["tail"] * progress), (max(cfg["paw"] * (1.55 - progress * 0.42), 0.14), max(cfg["paw"] * (1.65 - progress * 0.35), 0.14), max(cfg["tail"] * 0.38, 0.24)), 2.0))
     body = metaball_mesh(f"{species.title()}OrganicBodyV2", elements, coat, hero)
     skin_ground_body(body, rig, anchors, cfg)
     parts = [body]
@@ -636,7 +650,11 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
         for suffix in LIMBS:
             side = -1.0 if suffix.startswith("L") else 1.0
             z = -0.34 if suffix.endswith("F") else 0.58
-            elements.extend([((side * 0.55, 0.38, z), (0.34, 0.20, 0.25), 2.0), ((side * 0.82, 0.12, z - 0.10), (0.38, 0.10, 0.22), 2.0)])
+            elements.extend([
+                ((side * 0.42, 0.48, z), (0.42, 0.32, 0.36), 2.1),
+                ((side * 0.62, 0.31, z - 0.04), (0.40, 0.30, 0.32), 2.0),
+                ((side * 0.82, 0.12, z - 0.10), (0.40, 0.22, 0.28), 2.0),
+            ])
     else:
         for index in range(11):
             z = -1.65 + index * 0.40
@@ -740,6 +758,41 @@ def triangle_count(objects: list[bpy.types.Object]) -> int:
     return total
 
 
+def mesh_island_summaries(obj: bpy.types.Object) -> list[tuple[int, tuple[float, float, float]]]:
+    vertex_count = len(obj.data.vertices)
+    if vertex_count == 0:
+        return []
+    adjacency = [[] for _ in range(vertex_count)]
+    for edge in obj.data.edges:
+        first, second = edge.vertices
+        adjacency[first].append(second)
+        adjacency[second].append(first)
+    remaining = set(range(vertex_count))
+    islands = []
+    while remaining:
+        component = [remaining.pop()]
+        stack = component.copy()
+        while stack:
+            vertex_index = stack.pop()
+            for neighbour in adjacency[vertex_index]:
+                if neighbour in remaining:
+                    remaining.remove(neighbour)
+                    stack.append(neighbour)
+                    component.append(neighbour)
+        centroid = sum((obj.data.vertices[index].co for index in component), Vector()) / len(component)
+        islands.append((len(component), tuple(round(value, 3) for value in centroid)))
+    return sorted(islands, reverse=True)
+
+
+def validate_continuous_flesh(species: str, parts: list[bpy.types.Object]) -> None:
+    organic_body = next((obj for obj in parts if obj.name.endswith("OrganicBodyV2")), None)
+    if organic_body is None:
+        raise RuntimeError(f"{species}: missing OrganicBodyV2")
+    island_summaries = mesh_island_summaries(organic_body)
+    if len(island_summaries) != 1:
+        raise RuntimeError(f"{species}: OrganicBodyV2 has disconnected mesh islands {island_summaries}")
+
+
 def export_species(species: str, hero: bool, output_root: Path) -> tuple[int, int, int]:
     reset_scene()
     if species in BIRDS:
@@ -752,6 +805,7 @@ def export_species(species: str, hero: bool, output_root: Path) -> tuple[int, in
         rig, anchors = build_ground_rig(species, cfg, layout)
         parts = build_ground_parts(species, hero, rig, anchors, cfg, layout)
         create_ground_actions(rig, cfg)
+    validate_continuous_flesh(species, parts)
     profile = "hero" if hero else "mobile"
     output = output_root / species / f"{species}_{profile}.glb"
     output.parent.mkdir(parents=True, exist_ok=True)

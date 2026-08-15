@@ -66,6 +66,7 @@ const FUR_ATLAS_REGIONS := {
 	"bear": Vector2(0.5, 0.5),
 }
 const DETAIL_LOD_TOKENS := ["detail", "iris", "pupil", "catchlight", "innerear", "whisker", "stripe", "spot", "quill", "mane", "plate", "antlerbranch", "tooth", "claw"]
+const ESSENTIAL_SILHOUETTE_TOKENS := ["wingbody", "wingfeather", "tailfeather", "beakdetail", "trunkdetail", "shelldetail"]
 const HERO_DETAIL_RANGE := 28.0
 const MOBILE_DETAIL_RANGE := 20.0
 const HERO_BODY_RANGE := 82.0
@@ -155,9 +156,14 @@ static func _apply_automatic_detail_lod(node: Node, profile: String) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
 		var lowered := str(mesh_instance.name).to_lower()
-		var is_detail := DETAIL_LOD_TOKENS.any(func(token: String): return token in lowered)
+		# Some generated parts carry the generic `Detail` suffix even though they
+		# define the animal's silhouette. Hiding wings, the elephant trunk or the
+		# turtle shell at normal gameplay distance leaves only the small torso and
+		# makes the model look like a bare rig.
+		var is_essential_silhouette := ESSENTIAL_SILHOUETTE_TOKENS.any(func(token: String): return token in lowered)
+		var is_detail := not is_essential_silhouette and DETAIL_LOD_TOKENS.any(func(token: String): return token in lowered)
 		mesh_instance.visibility_range_end = (HERO_DETAIL_RANGE if profile == "hero" else MOBILE_DETAIL_RANGE) if is_detail else (HERO_BODY_RANGE if profile == "hero" else MOBILE_BODY_RANGE)
 		mesh_instance.visibility_range_end_margin = 3.0 if is_detail else 7.0
-		mesh_instance.set_meta("lod_class", "detail" if is_detail else "body")
+		mesh_instance.set_meta("lod_class", "detail" if is_detail else "silhouette" if is_essential_silhouette else "body")
 	for child in node.get_children():
 		_apply_automatic_detail_lod(child, profile)

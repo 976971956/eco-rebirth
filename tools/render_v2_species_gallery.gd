@@ -70,7 +70,7 @@ func _render_group(species_group: Array, group_index: int, output_path: String) 
 		actor.rotation.y = 0.38
 		_hide_actor_ui(actor)
 		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.05, 0.0), 26)
-	_add_label(scene, "Blender V2 · 三十物种 Hero 骨骼模型 · 第 %d/6 组" % (group_index + 1), Vector3(0.0, 4.62, 2.0), 36)
+	_add_label(scene, "Blender V2 · 三十物种 Hero 连续蒙皮模型 · 第 %d/6 组" % (group_index + 1), Vector3(0.0, 4.62, 2.0), 36)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL

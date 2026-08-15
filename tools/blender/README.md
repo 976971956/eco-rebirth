@@ -26,6 +26,11 @@ family, and finally the two forest trees. The generated GLBs live under
 `assets/models_v2/`. Godot prefers V2 and falls back to the matching V1.39
 asset if a V2 file is absent.
 
+Animal export is fail-fast: each `OrganicBodyV2` must be one connected mesh
+island, every skinned mesh is explicitly parented to its armature, and Blender
+Python exceptions return a non-zero shell status. This prevents detached feet,
+ears and tails from being shipped as a flesh model.
+
 Rules:
 
 - Run Blender with `--factory-startup`; do not depend on personal add-ons.

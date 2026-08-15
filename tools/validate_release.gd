@@ -540,6 +540,9 @@ func _validate_external_species_model_contract() -> void:
 				total_mobile_vertices += int(stats["vertices"])
 			_expect(int(stats["lod_meshes"]) == int(stats["meshes"]), "%s 的 %s 网格没有完整配置自动可见距离 LOD" % [species_id, profile])
 			_expect(int(stats["detail_lod_meshes"]) > 0, "%s 的 %s 没有可独立裁剪的远景细节层" % [species_id, profile])
+			_expect(int(stats["organic_body_islands"]) == 1, "%s 的 %s OrganicBodyV2 不是单一连通体，足、耳或尾可能脱离躯干" % [species_id, profile])
+			if species_id in ["owl", "eagle", "elephant", "turtle"]:
+				_expect(int(stats["silhouette_lod_meshes"]) > 0, "%s 的 %s 翼、长鼻或主甲壳被错分为短距离细节" % [species_id, profile])
 			if species_id in VisualCatalog.SKELETAL_SPECIES:
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 运行时模型没有唯一 Skeleton3D" % [species_id, profile])
 				_expect(int(stats["bones"]) >= 12, "%s 的 %s 骨骼数量不足，躯干、头颈或两段式四肢可能丢失" % [species_id, profile])
@@ -786,7 +789,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"invalid_weight_vertices": 0,
 		"skill_sockets": 0,
 		"continuous_coat_skinned_meshes": 0,
+		"organic_body_islands": 0,
 		"articulated_paw_bones": 0,
+		"silhouette_lod_meshes": 0,
 		"required_actions": 0,
 	}
 	_accumulate_external_model_stats(root_node, stats)
@@ -823,6 +828,8 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 			stats["lod_meshes"] = int(stats["lod_meshes"]) + 1
 			if str(mesh_instance.get_meta("lod_class", "")) == "detail":
 				stats["detail_lod_meshes"] = int(stats["detail_lod_meshes"]) + 1
+			elif str(mesh_instance.get_meta("lod_class", "")) == "silhouette":
+				stats["silhouette_lod_meshes"] = int(stats["silhouette_lod_meshes"]) + 1
 		var mesh := mesh_instance.mesh
 		if mesh != null:
 			if mesh_instance.skin != null:
@@ -832,6 +839,8 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 			stats["meshes"] = int(stats["meshes"]) + 1
 			for surface_index in range(mesh.get_surface_count()):
 				var arrays := mesh.surface_get_arrays(surface_index)
+				if "OrganicBodyV2" in node_name:
+					stats["organic_body_islands"] = int(stats["organic_body_islands"]) + _surface_mesh_island_count(arrays)
 				if arrays.size() > Mesh.ARRAY_VERTEX and arrays[Mesh.ARRAY_VERTEX] != null:
 					stats["vertices"] = int(stats["vertices"]) + arrays[Mesh.ARRAY_VERTEX].size()
 					if mesh_instance.skin != null and arrays.size() > Mesh.ARRAY_WEIGHTS and arrays[Mesh.ARRAY_WEIGHTS] is PackedFloat32Array:
@@ -870,6 +879,52 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 						stats["atlas_coat_surfaces"] = int(stats["atlas_coat_surfaces"]) + 1
 	for child in node.get_children():
 		_accumulate_external_model_stats(child, stats)
+
+
+func _surface_mesh_island_count(arrays: Array) -> int:
+	if arrays.size() <= Mesh.ARRAY_VERTEX or not arrays[Mesh.ARRAY_VERTEX] is PackedVector3Array:
+		return 0
+	var vertex_count := (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	if vertex_count == 0:
+		return 0
+	var parents := PackedInt32Array()
+	parents.resize(vertex_count)
+	for vertex_index in range(vertex_count):
+		parents[vertex_index] = vertex_index
+	var indices := PackedInt32Array()
+	if arrays.size() > Mesh.ARRAY_INDEX and arrays[Mesh.ARRAY_INDEX] is PackedInt32Array:
+		indices = arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
+	if indices.is_empty():
+		indices.resize(vertex_count)
+		for vertex_index in range(vertex_count):
+			indices[vertex_index] = vertex_index
+	for triangle_index in range(0, indices.size() - 2, 3):
+		_union_mesh_vertices(parents, indices[triangle_index], indices[triangle_index + 1])
+		_union_mesh_vertices(parents, indices[triangle_index + 1], indices[triangle_index + 2])
+	var roots := {}
+	for vertex_index in range(vertex_count):
+		roots[_mesh_vertex_root(parents, vertex_index)] = true
+	return roots.size()
+
+
+func _mesh_vertex_root(parents: PackedInt32Array, vertex_index: int) -> int:
+	var root := vertex_index
+	while parents[root] != root:
+		root = parents[root]
+	while parents[vertex_index] != vertex_index:
+		var next_index := parents[vertex_index]
+		parents[vertex_index] = root
+		vertex_index = next_index
+	return root
+
+
+func _union_mesh_vertices(parents: PackedInt32Array, first: int, second: int) -> void:
+	if first < 0 or second < 0 or first >= parents.size() or second >= parents.size():
+		return
+	var first_root := _mesh_vertex_root(parents, first)
+	var second_root := _mesh_vertex_root(parents, second)
+	if first_root != second_root:
+		parents[second_root] = first_root
 
 
 func _validate_adaptive_ui_contract() -> void:

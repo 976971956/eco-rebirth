@@ -54,7 +54,9 @@ def metaball_mesh(
     data = bpy.data.metaballs.new(f"{name}Surface")
     data.resolution = resolution
     data.render_resolution = max(resolution * 0.72, 0.025)
-    data.threshold = 0.62
+    # A lower fusion threshold keeps the procedural flesh connected around
+    # joints.  The former 0.62 value left visible gaps between body sections.
+    data.threshold = 0.46
     obj = bpy.data.objects.new(name, data)
     bpy.context.collection.objects.link(obj)
     for position, scale, stiffness in elements:
@@ -166,6 +168,9 @@ def build_rig(species: str) -> bpy.types.Object:
 
 
 def add_armature_weights(obj: bpy.types.Object, rig: bpy.types.Object, weights: dict[str, list[float]]) -> None:
+    world_transform = obj.matrix_world.copy()
+    obj.parent = rig
+    obj.matrix_world = world_transform
     modifier = obj.modifiers.new("SpeciesArmature", "ARMATURE")
     modifier.object = rig
     vertex_count = len(obj.data.vertices)
@@ -265,7 +270,7 @@ def attach_socket(name: str, position: tuple[float, float, float], rig: bpy.type
 
 def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.types.Object]:
     profile = "hero" if hero else "mobile"
-    resolution = 0.045 if hero else 0.085
+    resolution = 0.045 if hero else 0.075
     if species == "rabbit":
         coat = pbr_material("rabbit_coat_pbr", (0.68, 0.72, 0.71, 1.0), 0.84)
         coat_light = pbr_material("rabbit_light_coat_pbr", (0.89, 0.88, 0.82, 1.0), 0.88)
@@ -293,6 +298,13 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
         for suffix in LIMBS:
             body_elements.extend(leg_data[suffix])
             body_elements.extend(paw_data[suffix])
+            side = -1.0 if suffix.startswith("L") else 1.0
+            front = suffix.endswith("F")
+            leg_z = -0.68 if front else 0.42
+            body_elements.extend([
+                ((side * (0.30 if front else 0.39), 0.96, leg_z), (0.34 if front else 0.42, 0.35, 0.38), 2.1),
+                ((side * (0.34 if front else 0.49), 0.34, -0.82 if front else 0.12), (0.23 if front else 0.31, 0.28, 0.38 if front else 0.50), 2.0),
+            ])
         for side in (-1.0, 1.0):
             body_elements.extend([
                 ((side * 0.21, 1.88, -1.31), (0.20, 0.48, 0.18), 2.0),
@@ -342,6 +354,8 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
             ((side * 0.47, 0.96, z), (0.24, 0.43, 0.25), 2.1),
             ((side * 0.48, 0.46, z - (0.08 if front else 0.10)), (0.19, 0.38, 0.18), 2.0),
             ((side * 0.48, 0.14, z - 0.24), (0.24, 0.13, 0.34), 2.0),
+            ((side * 0.39, 1.18, z), (0.42, 0.40, 0.42), 2.1),
+            ((side * 0.48, 0.34, z - (0.16 if front else 0.12)), (0.25, 0.28, 0.38), 2.0),
         ])
     for side in (-1.0, 1.0):
         body_elements.extend([
@@ -350,7 +364,9 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
         ])
     body_elements.extend([
             ((0.0, 1.23, 1.25), (0.31, 0.30, 0.42), 2.0),
+            ((0.03, 1.12, 1.49), (0.30, 0.29, 0.42), 2.0),
             ((0.06, 1.02, 1.72), (0.27, 0.27, 0.48), 2.0),
+            ((0.09, 0.90, 1.95), (0.24, 0.24, 0.40), 2.0),
             ((0.11, 0.79, 2.17), (0.19, 0.20, 0.43), 2.0),
     ])
     body = metaball_mesh("WolfOrganicBodyV2", body_elements, coat, resolution)
@@ -430,11 +446,38 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
+def mesh_island_count(obj: bpy.types.Object) -> int:
+    vertex_count = len(obj.data.vertices)
+    if vertex_count == 0:
+        return 0
+    adjacency = [[] for _ in range(vertex_count)]
+    for edge in obj.data.edges:
+        first, second = edge.vertices
+        adjacency[first].append(second)
+        adjacency[second].append(first)
+    remaining = set(range(vertex_count))
+    islands = 0
+    while remaining:
+        islands += 1
+        stack = [remaining.pop()]
+        while stack:
+            vertex_index = stack.pop()
+            for neighbour in adjacency[vertex_index]:
+                if neighbour in remaining:
+                    remaining.remove(neighbour)
+                    stack.append(neighbour)
+    return islands
+
+
 def export_species(species: str, hero: bool, output_root: Path) -> tuple[int, int, int]:
     reset_scene()
     rig = build_rig(species)
     parts = build_parts(species, hero, rig)
     create_actions(rig, species)
+    organic_body = next(obj for obj in parts if obj.name.endswith("OrganicBodyV2"))
+    island_count = mesh_island_count(organic_body)
+    if island_count != 1:
+        raise RuntimeError(f"{species}: OrganicBodyV2 has {island_count} disconnected mesh islands")
     profile = "hero" if hero else "mobile"
     output = output_root / species / f"{species}_{profile}.glb"
     output.parent.mkdir(parents=True, exist_ok=True)

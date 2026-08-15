@@ -31,6 +31,16 @@ func _print_tree(node: Node, indent: String) -> void:
 	var position_text := ""
 	if node is Node3D and str(node.name).begins_with("SkillSocket_"):
 		position_text = " global=%s" % str((node as Node3D).global_position)
+	elif node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		position_text = " transform=%s aabb=%s skeleton=%s" % [
+			str(mesh_instance.transform),
+			str(mesh_instance.get_aabb()),
+			str(mesh_instance.skeleton),
+		]
+	elif node is Skeleton3D:
+		var skeleton := node as Skeleton3D
+		position_text = " bones=%d" % skeleton.get_bone_count()
 	print("%s%s <%s>%s" % [indent, node.name, node.get_class(), position_text])
 	for child in node.get_children():
 		_print_tree(child, indent + "  ")
