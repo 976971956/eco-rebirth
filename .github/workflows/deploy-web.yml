@@ -27,11 +27,26 @@ jobs:
           version: 4.7.1-stable
           export-templates: true
 
+      - name: 解析项目脚本
+        run: godot --headless --log-file /tmp/eco-ci-parse.log --path . --editor --quit
+
+      - name: 校验三十种动物与玩法数据
+        run: godot --headless --log-file /tmp/eco-ci-species.log --path . --script res://tools/validate_species.gd
+
+      - name: 校验存档、UI 与发布契约
+        run: godot --headless --log-file /tmp/eco-ci-release.log --path . --script res://tools/validate_release.gd
+
+      - name: 运行生态烟测
+        run: godot --headless --log-file /tmp/eco-ci-runtime.log --path . --quit-after 300 -- --autoplay
+
       - name: 导出 Web 版本
         run: |
           mkdir -p build/web
           godot --headless --path . --export-release Web build/web/index.html
-          test -f build/web/index.html
+          test -s build/web/index.html
+          test -s build/web/index.js
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
 
       - name: 上传 Pages 文件
         uses: actions/upload-pages-artifact@v3

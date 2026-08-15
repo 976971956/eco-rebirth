@@ -35,6 +35,7 @@ func _initialize() -> void:
 func _run_validation() -> void:
 	_validate_save_migration()
 	_validate_bestiary_and_recap_contract()
+	_validate_release_candidate_contract()
 	_validate_quality_presets()
 	_validate_spawn_distribution_contract()
 	_validate_tutorial_contract()
@@ -61,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.37 发布校验通过：生态图鉴、个人记录、局后复盘与版本化存档正常")
+		print("[release] V1.38 发布候选校验通过：自动门禁、三端构建清单、隐私与真机验收契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -158,6 +159,20 @@ func _validate_bestiary_and_recap_contract() -> void:
 	_expect(main_source.contains("图鉴只解锁知识与战绩，不会永久增加任何属性"), "图鉴没有明确保持无永久属性加成")
 	player_actor.free()
 	main.free()
+
+
+func _validate_release_candidate_contract() -> void:
+	var candidate_script := FileAccess.get_file_as_string("res://tools/build_release_candidate.sh")
+	_expect(candidate_script.contains("--quit-after 1200") and candidate_script.contains("run_performance_baseline.sh"), "发布候选脚本缺少长运行烟测或 1/5/10 关性能基线")
+	_expect(candidate_script.contains("validate_performance_baseline.gd") and candidate_script.contains("ECO_RC_SOAK"), "发布候选脚本没有对性能门槛或可选完整生态收束执行验证")
+	_expect(candidate_script.contains("index.wasm") and candidate_script.contains("CODE_SIGNING_ALLOWED=NO") and candidate_script.contains("android-export"), "发布候选脚本没有覆盖 Web、iOS 与 Android 构建路径")
+	_expect(candidate_script.contains("shasum -a 256") and candidate_script.contains("release_candidate_manifest.json"), "发布候选没有生成可核对的构建哈希清单")
+	var workflow := FileAccess.get_file_as_string("res://.github/workflows/deploy-web.yml")
+	_expect(workflow.contains("validate_species.gd") and workflow.contains("validate_release.gd") and workflow.contains("--quit-after 300"), "GitHub Pages 在导出前没有执行数据、发布与运行门禁")
+	var release_checklist := FileAccess.get_file_as_string("res://docs/15_发布候选与真机验收.md")
+	_expect(release_checklist.contains("Android 真机") and release_checklist.contains("iPhone 真机") and release_checklist.contains("不能声称"), "发布清单没有区分自动化构建与真实设备验收")
+	var privacy := FileAccess.get_file_as_string("res://docs/16_隐私说明.md")
+	_expect(privacy.contains("不包含广告") and privacy.contains("不会由游戏代码上传") and privacy.contains("GitHub Pages"), "隐私说明没有覆盖本地数据、第三方组件与 Web 托管边界")
 
 
 func _validate_quality_presets() -> void:
@@ -278,9 +293,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.37.0\"") and presets.contains("application/short_version=\"1.37.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=470") and presets.contains("application/version=\"470\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.37.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.38.0\"") and presets.contains("application/short_version=\"1.38.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=480") and presets.contains("application/version=\"480\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.38.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")

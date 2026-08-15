@@ -35,6 +35,16 @@ check_command() {
 	fi
 }
 
+resolve_xcodebuild() {
+	if [ -x /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild ]; then
+		printf '%s\n' /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild
+	elif command -v xcodebuild >/dev/null 2>&1; then
+		command -v xcodebuild
+	else
+		printf '%s\n' ""
+	fi
+}
+
 printf '《生态轮回》平台工具链检查 · %s\n' "$CHECK_MODE"
 if command -v "$GODOT_COMMAND" >/dev/null 2>&1; then
 	GODOT_VERSION="$($GODOT_COMMAND --version 2>/dev/null)"
@@ -66,11 +76,16 @@ esac
 case "$CHECK_MODE" in
 	all|ios)
 		check_file "$TEMPLATE_ROOT/ios.zip" "iOS 发布模板"
-		check_command xcodebuild "Xcode 命令行工具"
 		if [ -d /Applications/Xcode.app ]; then
 			pass "完整 Xcode 应用"
 		else
 			fail "缺少 /Applications/Xcode.app"
+		fi
+		XCODEBUILD_COMMAND="$(resolve_xcodebuild)"
+		if [ -n "$XCODEBUILD_COMMAND" ] && "$XCODEBUILD_COMMAND" -version >/dev/null 2>&1; then
+			pass "Xcode 原生构建器"
+		else
+			fail "Xcode 原生构建器不可用（不要只指向 CommandLineTools）"
 		fi
 		;;
 esac
