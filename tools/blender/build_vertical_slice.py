@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 
 ACTIONS = ("idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death")
@@ -256,11 +256,10 @@ def attach_socket(name: str, position: tuple[float, float, float], rig: bpy.type
     bpy.context.collection.objects.link(socket)
     socket.empty_display_type = "SPHERE"
     socket.empty_display_size = 0.08
-    socket.location = g2b(position)
     socket.parent = rig
     socket.parent_type = "BONE"
     socket.parent_bone = bone_name
-    socket.matrix_parent_inverse = rig.matrix_world.inverted()
+    socket.matrix_world = Matrix.Translation(g2b(position))
     return socket
 
 

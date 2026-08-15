@@ -10,18 +10,23 @@ const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_a
 const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
 const MODEL_ROOT := "res://assets/models/animals"
 const MODEL_V2_ROOT := "res://assets/models_v2/animals"
-const V2_SPECIES := ["rabbit", "wolf"]
 const EXTERNAL_SPECIES := [
 	"rabbit", "fox", "deer", "wolf", "snake", "bear",
 	"boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine",
 	"bison", "zebra", "elephant", "tiger", "monkey", "owl", "moose", "turtle", "cheetah",
 	"rhino", "gorilla", "eagle", "hippo", "hyena", "lion",
 ]
+const V2_SPECIES := EXTERNAL_SPECIES
 const THIRD_BATCH_SPECIES := ["lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla"]
 const FOURTH_BATCH_SPECIES := ["raccoon", "porcupine", "capybara", "otter", "wolverine", "zebra", "owl", "turtle", "cheetah", "hyena"]
-const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
-const FLIGHT_RIG_SPECIES := ["eagle"]
-const LONG_BODY_RIG_SPECIES := ["crocodile"]
+const SKELETAL_SPECIES := [
+	"rabbit", "fox", "deer", "wolf", "bear", "boar", "raccoon", "porcupine", "capybara", "otter",
+	"lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey", "moose", "turtle",
+	"cheetah", "rhino", "gorilla", "hippo", "hyena", "lion",
+]
+const LEGACY_SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
+const FLIGHT_RIG_SPECIES := ["owl", "eagle"]
+const LONG_BODY_RIG_SPECIES := ["snake", "crocodile"]
 const VISUAL_SCALE_CONTRACT := {
 	"rabbit": 1.02,
 	"wolf": 1.10,
@@ -101,13 +106,24 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 		instance.set_meta("visual_profile", profile)
 		instance.set_meta("visual_scale_contract", float(VISUAL_SCALE_CONTRACT.get(species_id, 1.0)))
 		instance.set_meta("automatic_detail_lod", true)
-		if species_id in SKELETAL_SPECIES:
+		var uses_v2 := path.begins_with(MODEL_V2_ROOT)
+		if uses_v2:
+			# Blender's exported meshes currently arrive facing +Z. EcoActor, camera
+			# steering and combat all use Godot's -Z forward convention.
+			instance.rotation.y = PI
+			if species_id in FLIGHT_RIG_SPECIES:
+				FlightRig.upgrade(instance, species_id)
+			elif species_id in LONG_BODY_RIG_SPECIES:
+				CrocodileRig.upgrade(instance, species_id)
+			else:
+				SkeletonRig.upgrade(instance, species_id)
+		elif species_id in LEGACY_SKELETAL_SPECIES:
 			instance.set_meta("fur_atlas_region", FUR_ATLAS_REGIONS[species_id])
 			_apply_shared_fur_materials(instance, species_id)
 			SkeletonRig.upgrade(instance, species_id)
-		elif species_id in FLIGHT_RIG_SPECIES:
+		elif species_id == "eagle":
 			FlightRig.upgrade(instance, species_id)
-		elif species_id in LONG_BODY_RIG_SPECIES:
+		elif species_id == "crocodile":
 			CrocodileRig.upgrade(instance, species_id)
 		_apply_automatic_detail_lod(instance, profile)
 	return instance

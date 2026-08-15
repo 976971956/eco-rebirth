@@ -12,5 +12,8 @@ fi
 "$BLENDER_BIN" --background --factory-startup --python "$PROJECT_ROOT/tools/blender/build_vertical_slice.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --python "$PROJECT_ROOT/tools/blender/build_forest_vertical_slice.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/biomes/forest"

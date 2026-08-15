@@ -2,7 +2,7 @@ class_name SpeciesCrocodileRig
 extends RefCounted
 
 const RIG_NAME := "SpeciesCrocodileSkeleton3D"
-const RIGGED_SPECIES := ["crocodile"]
+const RIGGED_SPECIES := ["snake", "crocodile"]
 const ANIMATION_STATES := ["idle", "crawl", "swim", "attack", "roll", "hit"]
 const SKILL_SOCKET_NAMES := ["SkillSocket_Jaw", "SkillSocket_TailTip"]
 const SKIN_BONES := ["Body", "Neck", "Head", "Tail_Base", "Tail_Mid", "Tail_Tip"]
@@ -24,6 +24,12 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 		return null
 	var existing := _find_skeleton(model)
 	if existing != null:
+		existing.set_meta("species_id", species_id)
+		existing.set_meta("rig_version", 2)
+		existing.set_meta("skin_mode", "blender_weighted_long_body")
+		existing.set_meta("locomotion_profile", "serpentine" if species_id == "snake" else "amphibious_sprawl")
+		existing.set_meta("animation_states", ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "swim"])
+		model.set_meta("uses_crocodile_skeleton_rig", true)
 		return existing
 	var original_children := model.get_children()
 	var organic_body: MeshInstance3D
@@ -385,8 +391,11 @@ static func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:
 
 
 static func _find_skeleton(root: Node) -> Skeleton3D:
-	if root is Skeleton3D and str(root.name) == RIG_NAME:
-		return root as Skeleton3D
+	if root is Skeleton3D:
+		var skeleton := root as Skeleton3D
+		var imported_wrapper := skeleton.get_parent()
+		if str(skeleton.name) == RIG_NAME or (imported_wrapper != null and str(imported_wrapper.name) == RIG_NAME):
+			return skeleton
 	for child in root.get_children():
 		var found := _find_skeleton(child)
 		if found != null:

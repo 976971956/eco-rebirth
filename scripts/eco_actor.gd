@@ -3684,6 +3684,11 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.ring(effect_parent, global_position, effect_color, 0.82, 6.8, 0.58)
 				used = true
 	if used:
+		if is_instance_valid(external_skeleton):
+			if SkeletonRig.supports(species_id):
+				external_skill_animation_timer = maxf(external_skill_animation_timer, SkeletonRig.skill_duration(species_id))
+			elif CrocodileRig.supports(species_id):
+				external_skill_animation_timer = maxf(external_skill_animation_timer, CrocodileRig.ROLL_DURATION)
 		spawn_protection = 0.0
 		stamina = maxf(stamina - float(data["skill_cost"]), 0.0)
 		stamina_regen_delay = STAMINA_REGEN_COMBAT_DELAY
@@ -4254,7 +4259,7 @@ func die(killer: EcoActor) -> void:
 	if is_instance_valid(killer):
 		killer.kills += 1
 	died.emit(self, killer)
-	if species_id == "rabbit" and is_instance_valid(external_skeleton):
+	if SkeletonRig.supports(species_id) and is_instance_valid(external_skeleton):
 		external_animation_state = "dead"
 		SkeletonRig.apply_pose(external_skeleton, "dead", move_time, 0.0, 0.0, 1.0, 1.0, float(actor_id) * 0.47, 1.0, species_id)
 		external_skeleton.force_update_all_bone_transforms()
@@ -4423,7 +4428,7 @@ func _update_visual_motion(delta: float) -> void:
 				species_id
 			)
 			var action_timer := external_skill_animation_timer if external_animation_state == "skill" else external_attack_animation_timer
-			var action_duration := SkeletonRig.RABBIT_SKILL_DURATION if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
+			var action_duration := SkeletonRig.skill_duration(species_id) if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
 			var attack_progress := 1.0 - action_timer / action_duration
 			var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
 			SkeletonRig.apply_pose(

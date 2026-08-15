@@ -2,10 +2,10 @@ class_name SpeciesFlightRig
 extends RefCounted
 
 const RIG_NAME := "SpeciesFlightSkeleton3D"
-const RIGGED_SPECIES := ["eagle"]
+const RIGGED_SPECIES := ["owl", "eagle"]
 const ANIMATION_STATES := ["glide", "flap", "dive", "hit"]
 const SKILL_SOCKET_NAMES := ["SkillSocket_Beak", "SkillSocket_Wing_L", "SkillSocket_Wing_R"]
-const DRIVEN_BONES := ["Body", "Head", "Wing_L", "Wing_R", "Tail", "Talon_L", "Talon_R"]
+const DRIVEN_BONES := ["Body", "Head", "Wing_L", "Wing_R", "WingTip_L", "WingTip_R", "Tail", "Talon_L", "Talon_R"]
 const DIVE_DURATION := 0.52
 const HIT_DURATION := 0.32
 
@@ -19,6 +19,11 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 		return null
 	var existing := _find_skeleton(model)
 	if existing != null:
+		existing.set_meta("species_id", species_id)
+		existing.set_meta("rig_version", 2)
+		existing.set_meta("flight_profile", "nocturnal_flapper" if species_id == "owl" else "diurnal_soarer")
+		existing.set_meta("animation_states", ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "glide", "flap", "dive", "land"])
+		model.set_meta("uses_flight_skeleton_rig", true)
 		return existing
 	var original_children := model.get_children()
 	var wing_pivots: Array[Node3D] = []
@@ -144,6 +149,8 @@ static func pose_targets(
 		"Head": Vector3.ZERO,
 		"Wing_L": Vector3(-0.04, 0.0, 0.08),
 		"Wing_R": Vector3(-0.04, 0.0, -0.08),
+		"WingTip_L": Vector3(-0.02, 0.0, 0.04),
+		"WingTip_R": Vector3(-0.02, 0.0, -0.04),
 		"Tail": Vector3(0.02, sin(motion_time * 0.42 + actor_phase) * 0.045, 0.0),
 		"Talon_L": Vector3(0.18, 0.0, -0.05),
 		"Talon_R": Vector3(0.18, 0.0, 0.05),
@@ -154,6 +161,8 @@ static func pose_targets(
 			var flap := sin(motion_time * 1.65) * flap_strength
 			targets["Wing_L"] = Vector3(-0.09, 0.0, flap)
 			targets["Wing_R"] = Vector3(-0.09, 0.0, -flap)
+			targets["WingTip_L"] = Vector3(-0.06, 0.0, flap * 0.48)
+			targets["WingTip_R"] = Vector3(-0.06, 0.0, -flap * 0.48)
 			targets["Body"] = Vector3(sin(motion_time * 3.3 + 0.6) * 0.035, 0.0, 0.0)
 			targets["Head"] = Vector3(-targets["Body"].x * 0.72, 0.0, 0.0)
 		"dive":
@@ -162,6 +171,8 @@ static func pose_targets(
 			targets["Head"] = Vector3(0.08 * dive_curve, 0.0, 0.0)
 			targets["Wing_L"] = Vector3(-0.18 * dive_curve, 0.38 * dive_curve, 0.22 * dive_curve)
 			targets["Wing_R"] = Vector3(-0.18 * dive_curve, -0.38 * dive_curve, -0.22 * dive_curve)
+			targets["WingTip_L"] = Vector3(-0.10 * dive_curve, 0.26 * dive_curve, 0.20 * dive_curve)
+			targets["WingTip_R"] = Vector3(-0.10 * dive_curve, -0.26 * dive_curve, -0.20 * dive_curve)
 			targets["Tail"] = Vector3(0.16 * dive_curve, 0.0, 0.0)
 			targets["Talon_L"] = Vector3(-0.42 * dive_curve, 0.0, -0.12)
 			targets["Talon_R"] = Vector3(-0.42 * dive_curve, 0.0, 0.12)
@@ -172,6 +183,8 @@ static func pose_targets(
 			targets["Head"] = Vector3(0.12 * hit_curve, 0.0, -side * 0.09 * hit_curve)
 			targets["Wing_L"] = Vector3(0.12 * hit_curve, 0.0, 0.28 * hit_curve * side)
 			targets["Wing_R"] = Vector3(-0.08 * hit_curve, 0.0, 0.16 * hit_curve * side)
+			targets["WingTip_L"] = Vector3(0.08 * hit_curve, 0.0, 0.22 * hit_curve * side)
+			targets["WingTip_R"] = Vector3(-0.05 * hit_curve, 0.0, 0.12 * hit_curve * side)
 			targets["Tail"] = Vector3(-0.10 * hit_curve, side * 0.16 * hit_curve, 0.0)
 	return targets
 
@@ -264,8 +277,11 @@ static func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:
 
 
 static func _find_skeleton(root: Node) -> Skeleton3D:
-	if root is Skeleton3D and str(root.name) == RIG_NAME:
-		return root as Skeleton3D
+	if root is Skeleton3D:
+		var skeleton := root as Skeleton3D
+		var imported_wrapper := skeleton.get_parent()
+		if str(skeleton.name) == RIG_NAME or (imported_wrapper != null and str(imported_wrapper.name) == RIG_NAME):
+			return skeleton
 	for child in root.get_children():
 		var found := _find_skeleton(child)
 		if found != null:

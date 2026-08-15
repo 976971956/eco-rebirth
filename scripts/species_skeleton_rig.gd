@@ -2,11 +2,16 @@ class_name SpeciesSkeletonRig
 extends RefCounted
 
 const RIG_NAME := "SpeciesSkeleton3D"
-const RIGGED_SPECIES := ["rabbit", "wolf", "deer", "bear"]
-const WEIGHTED_SKIN_SPECIES := ["rabbit", "wolf", "deer", "bear"]
+const RIGGED_SPECIES := [
+	"rabbit", "fox", "deer", "wolf", "bear", "boar", "raccoon", "porcupine", "capybara", "otter",
+	"lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey", "moose", "turtle",
+	"cheetah", "rhino", "gorilla", "hippo", "hyena", "lion",
+]
+const WEIGHTED_SKIN_SPECIES := RIGGED_SPECIES
 const SKILL_SOCKET_NAMES := ["SkillSocket_Mouth", "SkillSocket_Chest"]
 const ANIMATION_STATES := ["idle", "run", "attack", "hit"]
 const RABBIT_ANIMATION_STATES := ["idle", "run", "forage", "attack", "skill", "hit", "dead"]
+const V2_ANIMATION_STATES := ["idle", "run", "sprint", "forage", "attack", "skill", "hit", "dead"]
 const DRIVEN_BONES := [
 	"Spine", "Chest", "Neck", "Head",
 	"Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH",
@@ -16,6 +21,7 @@ const DRIVEN_BONES := [
 const ATTACK_DURATION := 0.26
 const HIT_DURATION := 0.28
 const RABBIT_SKILL_DURATION := 0.38
+const DEFAULT_SKILL_DURATION := 0.44
 const RIG_PROFILES := {
 	"rabbit": {
 		"gait": "bound", "gait_rate": 1.24, "front_stride": 0.68, "hind_stride": 1.38,
@@ -42,6 +48,61 @@ const RIG_PROFILES := {
 		"hit_spine": 0.07, "hit_side": 0.13,
 	},
 }
+const FAMILY_BY_SPECIES := {
+	"fox": "canid", "raccoon": "canid", "otter": "canid", "wolverine": "canid", "hyena": "canid",
+	"lynx": "felid", "tiger": "felid", "cheetah": "felid", "lion": "felid",
+	"deer": "ungulate", "goat": "ungulate", "bison": "ungulate", "zebra": "ungulate", "moose": "ungulate",
+	"bear": "heavy", "boar": "heavy", "porcupine": "heavy", "capybara": "heavy", "elephant": "heavy", "rhino": "heavy", "hippo": "heavy",
+	"monkey": "primate", "gorilla": "primate", "turtle": "chelonian",
+}
+const FAMILY_PROFILES := {
+	"canid": {
+		"gait": "trot", "gait_rate": 1.08, "front_stride": 0.90, "hind_stride": 1.08,
+		"spine_run": 1.02, "ear_run": 1.12, "tail_run": 1.14,
+		"attack_spine": -0.13, "attack_front": -0.44, "attack_hind": 0.29,
+		"hit_spine": 0.13, "hit_side": 0.25,
+	},
+	"felid": {
+		"gait": "bound", "gait_rate": 1.20, "front_stride": 1.02, "hind_stride": 1.28,
+		"spine_run": 1.32, "ear_run": 0.78, "tail_run": 1.20,
+		"attack_spine": -0.19, "attack_front": -0.54, "attack_hind": 0.48,
+		"hit_spine": 0.14, "hit_side": 0.27,
+	},
+	"ungulate": {
+		"gait": "trot", "gait_rate": 1.05, "front_stride": 1.10, "hind_stride": 1.02,
+		"spine_run": 0.66, "ear_run": 0.68, "tail_run": 0.55,
+		"attack_spine": -0.28, "attack_front": -0.20, "attack_hind": 0.24,
+		"hit_spine": 0.09, "hit_side": 0.18,
+	},
+	"heavy": {
+		"gait": "pace", "gait_rate": 0.72, "front_stride": 0.74, "hind_stride": 0.78,
+		"spine_run": 0.45, "ear_run": 0.34, "tail_run": 0.32,
+		"attack_spine": -0.25, "attack_front": -0.60, "attack_hind": 0.16,
+		"hit_spine": 0.07, "hit_side": 0.14,
+	},
+	"primate": {
+		"gait": "pace", "gait_rate": 0.88, "front_stride": 1.24, "hind_stride": 0.74,
+		"spine_run": 0.70, "ear_run": 0.28, "tail_run": 0.82,
+		"attack_spine": -0.21, "attack_front": -0.76, "attack_hind": 0.16,
+		"hit_spine": 0.11, "hit_side": 0.22,
+	},
+	"chelonian": {
+		"gait": "pace", "gait_rate": 0.50, "front_stride": 0.42, "hind_stride": 0.42,
+		"spine_run": 0.18, "ear_run": 0.0, "tail_run": 0.16,
+		"attack_spine": -0.10, "attack_front": -0.20, "attack_hind": 0.08,
+		"hit_spine": 0.04, "hit_side": 0.08,
+	},
+}
+
+
+static func _profile_for(species_id: String) -> Dictionary:
+	if RIG_PROFILES.has(species_id):
+		return RIG_PROFILES[species_id]
+	return FAMILY_PROFILES.get(str(FAMILY_BY_SPECIES.get(species_id, "canid")), FAMILY_PROFILES["canid"])
+
+
+static func skill_duration(species_id: String) -> float:
+	return RABBIT_SKILL_DURATION if species_id == "rabbit" else DEFAULT_SKILL_DURATION
 
 
 static func supports(species_id: String) -> bool:
@@ -98,7 +159,7 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 	skeleton.set_meta("species_id", species_id)
 	skeleton.set_meta("rig_version", 3 if species_id in WEIGHTED_SKIN_SPECIES else 2)
 	skeleton.set_meta("skin_mode", "weighted_prototype" if species_id in WEIGHTED_SKIN_SPECIES else "rigid_parts")
-	skeleton.set_meta("locomotion_profile", str(RIG_PROFILES[species_id]["gait"]))
+	skeleton.set_meta("locomotion_profile", str(_profile_for(species_id)["gait"]))
 	skeleton.set_meta("animation_states", RABBIT_ANIMATION_STATES.duplicate() if species_id == "rabbit" else ANIMATION_STATES.duplicate())
 	model.set_meta("uses_skeleton_rig", true)
 	return skeleton
@@ -109,8 +170,8 @@ static func _register_existing_rig(model: Node3D, skeleton: Skeleton3D, species_
 	skeleton.set_meta("species_id", species_id)
 	skeleton.set_meta("rig_version", 4 if has_articulated_paws else 3)
 	skeleton.set_meta("skin_mode", "blender_weighted_articulated" if has_articulated_paws else "imported_weighted")
-	skeleton.set_meta("locomotion_profile", str(RIG_PROFILES[species_id]["gait"]))
-	skeleton.set_meta("animation_states", RABBIT_ANIMATION_STATES.duplicate() if species_id == "rabbit" else ANIMATION_STATES.duplicate())
+	skeleton.set_meta("locomotion_profile", str(_profile_for(species_id)["gait"]))
+	skeleton.set_meta("animation_states", V2_ANIMATION_STATES.duplicate())
 	model.set_meta("uses_skeleton_rig", true)
 	model.set_meta("articulated_lower_limbs", has_articulated_paws)
 
@@ -124,15 +185,15 @@ static func resolve_state(
 	is_dead: bool = false,
 	species_id: String = "wolf"
 ) -> String:
-	if species_id == "rabbit" and is_dead:
+	if is_dead:
 		return "dead"
 	if hit_remaining > 0.0:
 		return "hit"
-	if species_id == "rabbit" and skill_remaining > 0.0:
+	if skill_remaining > 0.0:
 		return "skill"
 	if attack_remaining > 0.0:
 		return "attack"
-	if species_id == "rabbit" and forage_remaining > 0.0:
+	if forage_remaining > 0.0:
 		return "forage"
 	return "run" if gait_blend > 0.10 else "idle"
 
@@ -183,7 +244,7 @@ static func pose_targets(
 	actor_phase: float,
 	species_id: String = "wolf"
 ) -> Dictionary:
-	var profile: Dictionary = RIG_PROFILES.get(species_id, RIG_PROFILES["wolf"])
+	var profile: Dictionary = _profile_for(species_id)
 	var targets := {}
 	var ear_listen := sin(motion_time * 0.31 + actor_phase) * 0.055
 	targets["Ear_L"] = Vector3(ear_listen, 0.0, -0.018)
@@ -234,16 +295,15 @@ static func pose_targets(
 					targets["Ear_L"].x += maxf(bound_curve, 0.0) * 0.12
 					targets["Ear_R"].x += maxf(bound_curve, 0.0) * 0.12
 		"forage":
-			if species_id == "rabbit":
-				var chew := sin(motion_time * 3.4 + actor_phase) * 0.035
-				targets["Spine"] = Vector3(-0.08, 0.0, 0.0)
-				targets["Chest"] = Vector3(0.18, 0.0, 0.0)
-				targets["Neck"] = Vector3(0.58 + chew, 0.0, 0.0)
-				targets["Head"] = Vector3(0.42 - chew * 0.7, 0.0, 0.0)
-				targets["Ear_L"] = Vector3(0.28, 0.0, -0.08)
-				targets["Ear_R"] = Vector3(0.23, 0.0, 0.08)
-				targets["Leg_LF"] = Vector3(-0.12, 0.0, 0.0)
-				targets["Leg_RF"] = Vector3(-0.12, 0.0, 0.0)
+			var chew := sin(motion_time * 3.4 + actor_phase) * 0.035
+			targets["Spine"] = Vector3(-0.08, 0.0, 0.0)
+			targets["Chest"] = Vector3(0.18, 0.0, 0.0)
+			targets["Neck"] = Vector3((0.58 if species_id == "rabbit" else 0.42) + chew, 0.0, 0.0)
+			targets["Head"] = Vector3((0.42 if species_id == "rabbit" else 0.26) - chew * 0.7, 0.0, 0.0)
+			targets["Ear_L"] = Vector3(0.28, 0.0, -0.08)
+			targets["Ear_R"] = Vector3(0.23, 0.0, 0.08)
+			targets["Leg_LF"] = Vector3(-0.12, 0.0, 0.0)
+			targets["Leg_RF"] = Vector3(-0.12, 0.0, 0.0)
 		"attack":
 			var attack_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
 			targets["Spine"] = Vector3(float(profile["attack_spine"]) * attack_curve, 0.0, 0.0)
@@ -259,8 +319,8 @@ static func pose_targets(
 				targets["Neck"] = Vector3((-0.04 if species_id == "rabbit" else -0.09) * attack_curve, 0.0, 0.0)
 				targets["Head"] = Vector3((0.12 if species_id == "rabbit" else 0.04) * attack_curve, 0.0, 0.0)
 		"skill":
+			var leap_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
 			if species_id == "rabbit":
-				var leap_curve := sin(clampf(attack_progress, 0.0, 1.0) * PI)
 				targets["Spine"] = Vector3(-0.20 * leap_curve, 0.0, 0.0)
 				targets["Chest"] = Vector3(0.12 * leap_curve, 0.0, 0.0)
 				targets["Neck"] = Vector3(-0.08 * leap_curve, 0.0, 0.0)
@@ -274,6 +334,18 @@ static func pose_targets(
 				targets["Ear_L"] = Vector3(0.42 * leap_curve, 0.0, -0.06)
 				targets["Ear_R"] = Vector3(0.42 * leap_curve, 0.0, 0.06)
 				targets["Tail"] = Vector3(-0.12 * leap_curve, 0.18 * leap_curve, 0.0)
+			else:
+				var family := str(FAMILY_BY_SPECIES.get(species_id, "canid"))
+				var heavy_scale := 0.68 if family in ["heavy", "chelonian"] else 1.0
+				targets["Spine"] = Vector3(-0.24 * leap_curve * heavy_scale, 0.0, 0.0)
+				targets["Chest"] = Vector3(-0.10 * leap_curve, 0.0, 0.0)
+				targets["Neck"] = Vector3(-0.13 * leap_curve, 0.0, 0.0)
+				targets["Head"] = Vector3(0.16 * leap_curve, 0.0, 0.0)
+				targets["Leg_LF"] = Vector3(float(profile["attack_front"]) * 1.18 * leap_curve, 0.0, -0.08 * leap_curve)
+				targets["Leg_RF"] = Vector3(float(profile["attack_front"]) * 1.18 * leap_curve, 0.0, 0.08 * leap_curve)
+				targets["Leg_LH"] = Vector3(float(profile["attack_hind"]) * 1.24 * leap_curve, 0.0, 0.0)
+				targets["Leg_RH"] = Vector3(float(profile["attack_hind"]) * 1.24 * leap_curve, 0.0, 0.0)
+				targets["Tail"] = Vector3(-0.08 * leap_curve, 0.24 * leap_curve * float(profile["tail_run"]), 0.0)
 		"hit":
 			var hit_curve := sin(clampf(hit_progress, 0.0, 1.0) * PI)
 			var recoil_side := -1.0 if sin(actor_phase * 1.73) < 0.0 else 1.0
@@ -302,6 +374,18 @@ static func pose_targets(
 				targets["Ear_L"] = Vector3(0.48, 0.0, -0.12)
 				targets["Ear_R"] = Vector3(0.52, 0.0, 0.12)
 				targets["Tail"] = Vector3(0.0, -0.18, 0.0)
+			else:
+				targets["Spine"] = Vector3(0.06, 0.0, 1.16)
+				targets["Chest"] = Vector3(0.10, 0.0, 0.20)
+				targets["Neck"] = Vector3(0.16, 0.0, 0.10)
+				targets["Head"] = Vector3(0.12, 0.0, 0.08)
+				targets["Leg_LF"] = Vector3(0.34, 0.0, -0.14)
+				targets["Leg_RF"] = Vector3(-0.22, 0.0, 0.12)
+				targets["Leg_LH"] = Vector3(0.28, 0.0, -0.12)
+				targets["Leg_RH"] = Vector3(-0.16, 0.0, 0.10)
+				targets["Ear_L"] = Vector3(0.38, 0.0, -0.10)
+				targets["Ear_R"] = Vector3(0.42, 0.0, 0.10)
+				targets["Tail"] = Vector3(0.0, -0.16, 0.0)
 	return targets
 
 
