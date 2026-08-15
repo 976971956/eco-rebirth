@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 3
-const RELEASE_VERSION := "1.34.0"
+const RELEASE_VERSION := "1.35.0"
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
@@ -162,10 +162,10 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = _open_report_file(batch_results_filename(batch_level))
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
+			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,stuck_recoveries,route_replans,food_bites,habit_activations,distance_m,starvation_deaths,outcome")
 		batch_death_log_file = _open_report_file(batch_deaths_filename(batch_level))
 		if batch_death_log_file != null:
-			batch_death_log_file.store_line("run,time_s,victim,killer")
+			batch_death_log_file.store_line("run,time_s,victim,killer,food_bites,habit_activations,stuck_recoveries,route_replans,distance_m")
 		_start_batch_run.call_deferred()
 	elif "--autoplay" in OS.get_cmdline_user_args():
 		_start_new_world.call_deferred()
@@ -519,6 +519,11 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 			"time": level_elapsed,
 			"victim": actor.species_id,
 			"killer": (killer.species_id if is_instance_valid(killer) else ""),
+			"food_bites": actor.food_bites,
+			"habit_activations": actor.habit_activation_count,
+			"stuck_recoveries": actor.stuck_recoveries,
+			"route_replans": actor.route_replans,
+			"distance": actor.distance_travelled,
 		})
 	else:
 		var victim_name := Catalog.display_name(actor.species_id)
@@ -903,6 +908,23 @@ func _quit_after_benchmark_cleanup() -> void:
 	get_tree().quit()
 
 
+func _collect_batch_actor_metrics(living: Array[EcoActor]) -> Dictionary:
+	var totals := {"stuck_recoveries": 0, "route_replans": 0, "food_bites": 0, "habit_activations": 0, "distance": 0.0}
+	for death in batch_deaths:
+		for key in ["stuck_recoveries", "route_replans", "food_bites", "habit_activations"]:
+			totals[key] = int(totals[key]) + int(death.get(key, 0))
+		totals["distance"] = float(totals["distance"]) + float(death.get("distance", 0.0))
+	for actor in living:
+		if not is_instance_valid(actor):
+			continue
+		totals["stuck_recoveries"] = int(totals["stuck_recoveries"]) + actor.stuck_recoveries
+		totals["route_replans"] = int(totals["route_replans"]) + actor.route_replans
+		totals["food_bites"] = int(totals["food_bites"]) + actor.food_bites
+		totals["habit_activations"] = int(totals["habit_activations"]) + actor.habit_activation_count
+		totals["distance"] = float(totals["distance"]) + actor.distance_travelled
+	return totals
+
+
 func _finish_batch_run(living: Array[EcoActor]) -> void:
 	state = "ending"
 	var winner := "none"
@@ -913,6 +935,11 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 	var deaths_30s := _count_batch_deaths_by(30.0)
 	var deaths_60s := _count_batch_deaths_by(60.0)
 	var first_death_s := float(batch_deaths[0].get("time", -1.0)) if not batch_deaths.is_empty() else -1.0
+	var actor_metrics := _collect_batch_actor_metrics(living)
+	var starvation_deaths := 0
+	for death in batch_deaths:
+		if str(death.get("killer", "")) == "":
+			starvation_deaths += 1
 	batch_results.append({
 		"world_seed": world_seed,
 		"winner": winner,
@@ -925,15 +952,21 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"deaths_30s": deaths_30s,
 		"deaths_60s": deaths_60s,
 		"first_death_s": first_death_s,
+		"stuck_recoveries": int(actor_metrics["stuck_recoveries"]),
+		"route_replans": int(actor_metrics["route_replans"]),
+		"food_bites": int(actor_metrics["food_bites"]),
+		"habit_activations": int(actor_metrics["habit_activations"]),
+		"distance": float(actor_metrics["distance"]),
+		"starvation_deaths": starvation_deaths,
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%s" % [run_index, batch_level, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%s" % [run_index, batch_level, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["habit_activations"]), float(actor_metrics["distance"]), starvation_deaths, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
-			batch_death_log_file.store_line("%d,%.1f,%s,%s" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"]])
-	print("[batch] run %d/%d done — seed=%d winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d%s" % [
-		run_index, batch_total_runs, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, " (超时)" if timed_out else ""
+			batch_death_log_file.store_line("%d,%.1f,%s,%s,%d,%d,%d,%d,%.1f" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"], int(death.get("food_bites", 0)), int(death.get("habit_activations", 0)), int(death.get("stuck_recoveries", 0)), int(death.get("route_replans", 0)), float(death.get("distance", 0.0))])
+	print("[batch] run %d/%d done — seed=%d winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d stuck=%d/replans=%d food=%d/habits=%d%s" % [
+		run_index, batch_total_runs, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["habit_activations"]), " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -973,6 +1006,11 @@ func _print_batch_report() -> void:
 	var total_hunter_peak := 0
 	var total_trace_hunts := 0
 	var total_danger_avoids := 0
+	var total_stuck_recoveries := 0
+	var total_route_replans := 0
+	var total_food_bites := 0
+	var total_habit_activations := 0
+	var total_distance := 0.0
 	var total_deaths_30s := 0
 	var total_deaths_60s := 0
 	var total_first_death_s := 0.0
@@ -986,6 +1024,11 @@ func _print_batch_report() -> void:
 		total_hunter_peak += int(result.get("hunter_peak", 0))
 		total_trace_hunts += int(result.get("trace_hunts", 0))
 		total_danger_avoids += int(result.get("danger_avoids", 0))
+		total_stuck_recoveries += int(result.get("stuck_recoveries", 0))
+		total_route_replans += int(result.get("route_replans", 0))
+		total_food_bites += int(result.get("food_bites", 0))
+		total_habit_activations += int(result.get("habit_activations", 0))
+		total_distance += float(result.get("distance", 0.0))
 		total_deaths_30s += int(result.get("deaths_30s", 0))
 		total_deaths_60s += int(result.get("deaths_60s", 0))
 		var first_death_s := float(result.get("first_death_s", -1.0))
@@ -1010,6 +1053,8 @@ func _print_batch_report() -> void:
 	print("平均生态热点：%.1f 次/局" % [float(total_events) / maxf(float(batch_results.size()), 1.0)])
 	print("平均热点猎手峰值：%.1f" % [float(total_hunter_peak) / maxf(float(batch_results.size()), 1.0)])
 	print("平均踪迹追踪：%.1f　平均危险绕行：%.1f" % [float(total_trace_hunts) / maxf(float(batch_results.size()), 1.0), float(total_danger_avoids) / maxf(float(batch_results.size()), 1.0)])
+	print("AI路径：平均脱困 %.1f　改道 %.1f　总移动 %.0fm/局" % [float(total_stuck_recoveries) / maxf(float(batch_results.size()), 1.0), float(total_route_replans) / maxf(float(batch_results.size()), 1.0), total_distance / maxf(float(batch_results.size()), 1.0)])
+	print("生存行为：平均进食 %.1f 次/局　习性触发 %.1f 次/局" % [float(total_food_bites) / maxf(float(batch_results.size()), 1.0), float(total_habit_activations) / maxf(float(batch_results.size()), 1.0)])
 	print("死因：战斗击杀 %d　饥饿 %d" % [combat_deaths, starvation_deaths])
 	print("胜率（按物种）：")
 	for species_id in win_counts.keys():
@@ -1115,11 +1160,13 @@ static func rank_level_entries(entries: Array[Dictionary]) -> Array[Dictionary]:
 	return ranked
 
 
-func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
+func nearest_corpse(origin: Vector3, max_distance: float, excluded_instance_id: int = 0) -> Node3D:
 	var nearest: Node3D
 	var nearest_distance := max_distance
 	for corpse in corpses:
 		if not is_instance_valid(corpse) or corpse.is_queued_for_deletion() or corpse.food_amount <= 0.0:
+			continue
+		if excluded_instance_id != 0 and corpse.get_instance_id() == excluded_instance_id:
 			continue
 		var distance := origin.distance_to(corpse.global_position)
 		if distance < nearest_distance:
@@ -1136,13 +1183,15 @@ func get_available_corpses() -> Array[Node3D]:
 	return available
 
 
-func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true) -> Node3D:
+func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true, excluded_instance_id: int = 0) -> Node3D:
 	if not is_instance_valid(world):
 		return null
 	var nearest: Node3D
 	var nearest_distance := INF
 	for patch in world.food_patches:
 		if not is_instance_valid(patch) or patch.is_queued_for_deletion() or not patch.active:
+			continue
+		if excluded_instance_id != 0 and patch.get_instance_id() == excluded_instance_id:
 			continue
 		if not include_hotspots and patch.ecology_hotspot:
 			continue

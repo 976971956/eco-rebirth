@@ -45,6 +45,10 @@ const AI_PACK_SHARE_RADIUS := 20.0
 const AI_HERD_SHARE_RADIUS := 18.0
 const AI_GROUP_ALERT_RANGE := 42.0
 const AI_MIN_PREY_UTILITY := 0.105
+const AI_HUNT_MOTIVATION_THRESHOLD := 0.44
+const AI_BLOCKED_ROUTE_MEMORY := 5.5
+const AI_STUCK_CHAIN_WINDOW := 6.0
+const AI_STUCK_REPLAN_COUNT := 3
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -143,6 +147,10 @@ var stuck_duration: float = 0.0
 var last_sample_position := Vector3.ZERO
 var recovery_timer: float = 0.0
 var recovery_direction := Vector3.ZERO
+var blocked_route_timer: float = 0.0
+var blocked_route_instance_id: int = 0
+var stuck_recovery_chain: int = 0
+var stuck_chain_timer: float = 0.0
 var smoothed_move_direction := Vector3.ZERO
 var search_timer: float = 0.0
 var search_position := Vector3.ZERO
@@ -169,6 +177,12 @@ var wander_direction := Vector3.FORWARD
 var desired_direction := Vector3.ZERO
 var wants_sprint: bool = false
 var attack_intent: bool = false
+var think_cycles: int = 0
+var state_switches: int = 0
+var stuck_recoveries: int = 0
+var route_replans: int = 0
+var food_bites: int = 0
+var distance_travelled: float = 0.0
 var visual_root: Node3D
 var body_root: Node3D
 var selection_ring: MeshInstance3D
@@ -266,9 +280,35 @@ static func should_rest_for_stamina(stamina_ratio: float, nearest_threat_distanc
 
 
 static func starvation_health_after(current_health: float, maximum_health: float, delta: float) -> float:
-	if current_health <= 1.0:
-		return current_health
-	return maxf(current_health - maximum_health * STARVATION_DAMAGE_PER_SECOND * delta, 1.0)
+	if current_health <= 0.0:
+		return 0.0
+	return maxf(current_health - maximum_health * STARVATION_DAMAGE_PER_SECOND * delta, 0.0)
+
+
+static func hunting_motivation(hunger_value: float, aggression: float, diet: String, size_level: int, pack_support: int = 0) -> float:
+	var result := clampf(hunger_value / 100.0, 0.0, 1.0) * 0.62 + clampf(aggression, 0.0, 1.0) * 0.42
+	# Large omnivores should first exploit their broad diet instead of clearing a
+	# teaching ecosystem while nearly full. Coordinated hunters may still begin
+	# a readable pack hunt before severe hunger sets in.
+	if diet == "omnivore":
+		result -= 0.06
+	if size_level >= 4:
+		result -= 0.04
+	result += minf(float(pack_support), 2.0) * 0.08
+	return clampf(result, 0.0, 1.0)
+
+
+static func should_replan_blocked_route(recovery_chain: int, final_competition: bool) -> bool:
+	return recovery_chain >= AI_STUCK_REPLAN_COUNT and not final_competition
+
+
+static func should_escalate_territory_intrusion(is_prey: bool, recently_attacked: bool, actor_distance: float, attack_range: float, territory_radius: float) -> bool:
+	if recently_attacked:
+		return true
+	var warning_distance := minf(territory_radius * 0.55, attack_range * 3.0 + 1.5)
+	if actor_distance > warning_distance:
+		return false
+	return is_prey or actor_distance <= attack_range + 1.0
 
 
 static func can_regenerate_stamina(sprinting: bool, recovery_delay: float) -> bool:
@@ -1671,6 +1711,12 @@ func _update_timers(delta: float) -> void:
 	state_commit_timer = maxf(state_commit_timer - delta, 0.0)
 	starvation_warning_timer = maxf(starvation_warning_timer - delta, 0.0)
 	recovery_timer = maxf(recovery_timer - delta, 0.0)
+	blocked_route_timer = maxf(blocked_route_timer - delta, 0.0)
+	if blocked_route_timer <= 0.0:
+		blocked_route_instance_id = 0
+	stuck_chain_timer = maxf(stuck_chain_timer - delta, 0.0)
+	if stuck_chain_timer <= 0.0:
+		stuck_recovery_chain = 0
 	scent_mark_timer = maxf(scent_mark_timer - delta, 0.0)
 	hidden_timer = maxf(hidden_timer - delta, 0.0)
 	panic_timer = maxf(panic_timer - delta, 0.0)
@@ -1870,6 +1916,9 @@ func _update_needs(delta: float) -> void:
 		health = starvation_health_after(health, max_health, delta)
 		health_changed.emit(health, max_health)
 		_update_health_bar()
+		if health <= 0.0:
+			die(null)
+			return
 		if is_player and starvation_warning_timer <= 0.0:
 			starvation_warning_timer = 5.0
 			game.show_hint("饱腹值耗尽，正在持续失去生命！快寻找食物")
@@ -2087,13 +2136,15 @@ func _update_ai(delta: float) -> void:
 				var distance := global_position.distance_to(ai_target.global_position)
 				var planar_distance := Vector2(global_position.x - ai_target.global_position.x, global_position.z - ai_target.global_position.z).length()
 				var target_threat_gap := Catalog.opportunity_threat_gap(species_id, ai_target.species_id)
-				# Weak animals normally kite a stronger target until it exposes itself.
-				# The fully collapsed habitat is the final duel, so continued kiting
-				# there would prevent the level from ever selecting one survivor.
-				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not has_cover_ambush() and not can_terrain_counter(ai_target) and not _collapse_competition_active():
+				# A final duel must still preserve the game's core weak-versus-strong
+				# answer. The shrinking boundary guarantees contact, while the weaker
+				# animal orbits until the stronger target spends enough stamina to
+				# expose a counterattack window.
+				if target_threat_gap > 0 and not ai_target.is_opportunity_exposed() and not has_cover_ambush() and not can_terrain_counter(ai_target):
 					var away_from_stronger := Vector3(global_position.x - ai_target.global_position.x, 0.0, global_position.z - ai_target.global_position.z).normalized()
 					var orbit_side := Vector3(-away_from_stronger.z, 0.0, away_from_stronger.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
-					desired_direction = (away_from_stronger * 0.78 + orbit_side * 0.62).normalized()
+					var spacing_weight := 0.46 if _collapse_competition_active() else 0.78
+					desired_direction = (away_from_stronger * spacing_weight + orbit_side * 0.72).normalized()
 					wants_sprint = distance < float(ai_target.data["attack_range"]) + 2.4 and stamina > max_stamina * 0.35 and not exhausted
 					attack_intent = false
 					var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
@@ -2168,6 +2219,7 @@ func _update_ai(delta: float) -> void:
 
 
 func _think() -> void:
+	think_cycles += 1
 	var living_actors: Array[EcoActor] = game.get_living_actors()
 	var nearest_threat: EcoActor
 	var threat_distance := INF
@@ -2351,14 +2403,14 @@ func _think() -> void:
 			resource_target = resource
 			return
 
-	var hunting_motivation := hunger / 100.0 + float(data["aggression"]) * 0.56
-	if is_instance_valid(shared_pack_target) and hunting_motivation > 0.38:
+	var hunt_motivation := hunting_motivation(hunger, float(data["aggression"]), str(data["diet"]), int(data["size"]), pack_support)
+	if is_instance_valid(shared_pack_target) and hunt_motivation > AI_HUNT_MOTIVATION_THRESHOLD - 0.06:
 		var shared_utility := _prey_utility(shared_pack_target, pack_support, int(target_pressure_counts.get(shared_pack_target.actor_id, 0)))
 		if shared_utility >= AI_MIN_PREY_UTILITY:
 			_switch_state("hunt", shared_pack_target)
 			return
 	var prey := _best_prey(living_actors, target_pressure_counts, pack_support)
-	if is_instance_valid(prey) and hunting_motivation > 0.44:
+	if is_instance_valid(prey) and hunt_motivation > AI_HUNT_MOTIVATION_THRESHOLD:
 		_switch_state("hunt", prey)
 		return
 	if _begin_ecology_trace_investigation():
@@ -2407,25 +2459,32 @@ func _collapse_competition_active() -> bool:
 
 func _best_territory_intruder() -> EcoActor:
 	var closest: EcoActor
-	var closest_distance: float = territory_radius * 0.76
+	var closest_distance := INF
 	for other in game.get_living_actors():
 		if other == self or other.dead or other.spawn_protection > 0.0 or other.species_id == species_id:
 			continue
 		if not _can_detect_actor(other):
 			continue
 		var distance_from_home: float = other.global_position.distance_to(territory_center)
-		if distance_from_home >= closest_distance:
+		if distance_from_home >= territory_radius * 0.76:
+			continue
+		var actor_distance := global_position.distance_to(other.global_position)
+		var recently_attacked: bool = is_instance_valid(last_attacker) and last_attacker == other and ecology_influence_timer > 0.0
+		if not should_escalate_territory_intrusion(Catalog.considers_prey(species_id, other.species_id), recently_attacked, actor_distance, float(data["attack_range"]), territory_radius):
 			continue
 		if int(other.data["size"]) > int(data["size"]) + 1 and health < max_health * 0.78:
 			continue
+		if actor_distance >= closest_distance:
+			continue
 		closest = other
-		closest_distance = distance_from_home
+		closest_distance = actor_distance
 	return closest
 
 
 func _switch_state(new_state: String, target: EcoActor) -> void:
 	var changed_target := ai_target != target
 	if ai_state != new_state:
+		state_switches += 1
 		state_commit_timer = 1.4
 	if new_state == "flee" and is_instance_valid(target) and (ai_state != "flee" or changed_target):
 		_prepare_escape_intervention(target)
@@ -2450,6 +2509,28 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 	if new_state == "hunt" and is_instance_valid(target):
 		last_known_target_position = target.global_position
 		has_last_known_target_position = true
+
+
+func _replan_blocked_route() -> void:
+	route_replans += 1
+	if ai_state == "flee":
+		# Keep the threat memory, but discard a cover, habitat or third-party route
+		# that has already failed repeatedly. The next samples use direct evasion.
+		escape_intervention_actor = null
+		escape_intervention_position = Vector3(INF, 0.0, INF)
+		escape_cover_position = Vector3(INF, 0.0, INF)
+		escape_habitat_position = Vector3(INF, 0.0, INF)
+	else:
+		var blocked_goal: Node = ai_target if is_instance_valid(ai_target) else resource_target
+		if is_instance_valid(blocked_goal):
+			blocked_route_instance_id = blocked_goal.get_instance_id()
+			blocked_route_timer = AI_BLOCKED_ROUTE_MEMORY
+		_switch_state("wander", null)
+		resource_target = null
+		trace_investigation_position = Vector3(INF, 0.0, INF)
+		hotspot_stalk_position = Vector3(INF, 0.0, INF)
+	decision_timer = minf(decision_timer, 0.16)
+	state_commit_timer = 0.0
 
 
 func _has_escape_cover() -> bool:
@@ -2563,7 +2644,7 @@ func _best_food_resource(living_actors: Array[EcoActor] = []) -> Node3D:
 		var corpse_range := 34.0
 		if Catalog.has_trait(species_id, "scavenger"):
 			corpse_range *= 1.55 if species_id == "raccoon" else 1.36
-		corpse = game.nearest_corpse(global_position, corpse_range)
+		corpse = game.nearest_corpse(global_position, corpse_range, blocked_route_instance_id if blocked_route_timer > 0.0 else 0)
 	if is_instance_valid(corpse) and _corpse_is_safe(corpse, candidates):
 		return corpse
 	if Catalog.can_eat_food(species_id):
@@ -2601,6 +2682,8 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 		if not is_instance_valid(candidate_node) or candidate_node.is_queued_for_deletion() or not candidate_node is FoodPatch:
 			continue
 		var patch := candidate_node as FoodPatch
+		if blocked_route_timer > 0.0 and patch.get_instance_id() == blocked_route_instance_id:
+			continue
 		if not patch.active or patch.food_kind not in favored_foods or not patch.can_be_eaten_by(species_id):
 			continue
 		if not _habit_resource_inside_active_area(patch):
@@ -2632,6 +2715,8 @@ func _best_habit_corpse(search_range: float, living_actors: Array[EcoActor]) -> 
 	var profile := Catalog.habit_profile(species_id)
 	for corpse in corpse_pool:
 		if not is_instance_valid(corpse) or corpse.is_queued_for_deletion() or float(corpse.food_amount) <= 0.0:
+			continue
+		if blocked_route_timer > 0.0 and corpse.get_instance_id() == blocked_route_instance_id:
 			continue
 		if not _habit_resource_inside_active_area(corpse) or habit_rewarded_sources.has(_habit_source_key(corpse)) or not _corpse_is_safe(corpse, living_actors):
 			continue
@@ -2685,14 +2770,15 @@ func _corpse_is_safe(corpse: Node3D, living_actors: Array[EcoActor]) -> bool:
 
 func _best_wild_food(search_range: float) -> Node3D:
 	var origin := global_position if is_inside_tree() else position
-	var candidate: Node3D = game.nearest_food(origin, search_range, species_id)
+	var excluded_id := blocked_route_instance_id if blocked_route_timer > 0.0 else 0
+	var candidate: Node3D = game.nearest_food(origin, search_range, species_id, true, excluded_id)
 	if not is_instance_valid(candidate) or not candidate is FoodPatch or not candidate.ecology_hotspot:
 		return candidate
 	var risk := str(game.ecology_hotspot_risk_level()) if game.has_method("ecology_hotspot_risk_level") else "平稳"
 	var risk_averse := int(data["size"]) <= 3 and float(data["courage"]) < 0.50 and hunger < 78.0
 	if risk != "高危" or not risk_averse:
 		return candidate
-	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false)
+	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false, excluded_id)
 	return safer_food if is_instance_valid(safer_food) else null
 
 
@@ -2837,6 +2923,8 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 	for other in candidates:
 		if other == self or other.dead or other.spawn_protection > 0.0:
 			continue
+		if blocked_route_timer > 0.0 and other.get_instance_id() == blocked_route_instance_id:
+			continue
 		var considers_target: bool = Catalog.considers_prey(species_id, other.species_id)
 		var brave_opportunity: bool = Catalog.has_trait(species_id, "brave_vs_large") and other.is_opportunity_exposed() and Catalog.opportunity_threat_gap(species_id, other.species_id) > 0
 		if not considers_target and not brave_opportunity:
@@ -2921,13 +3009,27 @@ func _apply_movement(delta: float) -> void:
 				stuck_duration += movement_sample_timer
 			else:
 				stuck_duration = maxf(stuck_duration - movement_sample_timer * 1.5, 0.0)
+				if moved > 0.65 and recovery_timer <= 0.0:
+					stuck_recovery_chain = 0
+					stuck_chain_timer = 0.0
 			last_sample_position = global_position
 			movement_sample_timer = 0.0
 			if stuck_duration > 0.85:
-				var side_sign := -1.0 if behavior_rng.randi_range(0, 1) == 0 else 1.0
-				recovery_direction = flat_direction.rotated(Vector3.UP, side_sign * PI * 0.62).normalized()
-				recovery_timer = 0.9
+				stuck_recoveries += 1
+				stuck_recovery_chain += 1
+				stuck_chain_timer = AI_STUCK_CHAIN_WINDOW
+				var recovery_base := flat_direction
+				if recovery_base.length() < 0.1:
+					recovery_base = wander_direction
+				if recovery_base.length() < 0.1:
+					recovery_base = Vector3.FORWARD
+				var side_sign := -1.0 if posmod(actor_id + stuck_recovery_chain, 2) == 0 else 1.0
+				var recovery_angle := minf(0.56 + float(stuck_recovery_chain - 1) * 0.08, 0.82) * PI
+				recovery_direction = recovery_base.rotated(Vector3.UP, side_sign * recovery_angle).normalized()
+				recovery_timer = 0.72 + minf(float(stuck_recovery_chain), 3.0) * 0.22
 				stuck_duration = 0.0
+				if should_replan_blocked_route(stuck_recovery_chain, _collapse_competition_active()):
+					_replan_blocked_route()
 		if recovery_timer > 0.0:
 			flat_direction = recovery_direction
 		if flat_direction.length() > 0.05:
@@ -3002,6 +3104,7 @@ func _apply_movement(delta: float) -> void:
 		velocity.y -= 18.0 * delta
 	else:
 		velocity.y = -0.8
+	var movement_origin := global_position
 	move_and_slide()
 	var wall_normal := Vector3.ZERO
 	if not is_player or Catalog.has_trait(species_id, "obstacle_breaker"):
@@ -3028,6 +3131,9 @@ func _apply_movement(delta: float) -> void:
 			avoid_timer = 0.5
 	if game.world != null:
 		global_position = game.world.clamp_position(global_position)
+	var travelled_delta := Vector2(global_position.x - movement_origin.x, global_position.z - movement_origin.z).length()
+	if not is_player and travelled_delta < 4.0:
+		distance_travelled += travelled_delta
 	if uses_height_domain:
 		var maximum_height := float(data.get("flight_height", 4.2)) + 0.65 if is_flying else 3.75
 		global_position.y = clampf(global_position.y, 0.42, maximum_height)
@@ -3984,6 +4090,7 @@ func try_consume_resource(resource: Node3D) -> bool:
 	var eaten: float = resource.consume(bite_size)
 	if eaten <= 0.0:
 		return false
+	food_bites += 1
 	eat_timer = 1.0
 	var nutrition_multiplier: float = resource.get_nutrition_multiplier() if resource is FoodPatch else 1.0
 	var satiety_efficiency := 0.55 if Catalog.has_trait(species_id, "giant") else 0.85

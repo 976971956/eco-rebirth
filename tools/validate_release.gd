@@ -60,7 +60,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.34 发布校验通过：十关世界档案、地图密度规则与开局身份提示正常")
+		print("[release] V1.35 发布校验通过：AI 改道记忆、捕食动机、终局逆袭与饥饿死亡正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -232,9 +232,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.34.0\"") and presets.contains("application/short_version=\"1.34.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=440") and presets.contains("application/version=\"440\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.34.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.35.0\"") and presets.contains("application/short_version=\"1.35.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=450") and presets.contains("application/version=\"450\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.35.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -248,6 +248,7 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
+	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,habit_activations") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道与进食行为")
 	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
 	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
 	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
@@ -1033,11 +1034,18 @@ func _validate_ai_tactical_contract() -> void:
 	_expect(ActorScript.should_abandon_pursuit(0.0, 0.8, 0.8, 0.2, 6.0, 2.0, false), "低效用追击不会中止")
 	_expect(not ActorScript.should_abandon_pursuit(0.0, 0.1, 0.1, 1.0, 30.0, 2.0, true), "最终竞争仍可被普通脱战打断")
 	_expect(not ActorScript.should_approach_contested_food(1, 0.2, 0.3, 60.0, false, 0), "受伤独行者仍会无视守尸风险")
+	_expect(ActorScript.hunting_motivation(18.0, 0.55, "omnivore", 4) < ActorScript.AI_HUNT_MOTIVATION_THRESHOLD, "饱腹的大型杂食者仍会主动清场")
+	_expect(ActorScript.hunting_motivation(68.0, 0.55, "omnivore", 4) > ActorScript.AI_HUNT_MOTIVATION_THRESHOLD, "饥饿的大型杂食者不会恢复捕食动机")
+	_expect(ActorScript.should_replan_blocked_route(3, false) and not ActorScript.should_replan_blocked_route(3, true), "AI 路线连续失败后不会改道，或终局会错误脱战")
+	_expect(not ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0), "领地 AI 仍会对远处入侵者跨区追杀")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("func evaluate_prey_utility") and actor_source.contains("target_pressure_counts"), "AI 猎物选择没有战况效用与第三方压力")
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"pack_hunter\")") and actor_source.contains("shared_pack_target"), "群猎物种没有共享追猎意图")
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"herd_mover\")") and actor_source.contains("group_escape_direction"), "群居物种没有共享危险或逃生方向")
 	_expect(actor_source.contains("func _corpse_is_safe") and actor_source.contains("stronger_competitor"), "尸体目标没有竞争风险评估")
+	_expect(actor_source.contains("blocked_route_instance_id") and actor_source.contains("func _replan_blocked_route"), "AI 脱困后没有失败目标短期记忆")
+	_expect(actor_source.contains("var spacing_weight := 0.46 if _collapse_competition_active()") and actor_source.contains("attack_intent = false"), "终局弱物种没有保留诱导强敌露出破绽的周旋逻辑")
+	_expect(actor_source.contains("die(null)") and actor_source.contains("starvation_health_after"), "饥饿伤害无法归零或没有进入统一死亡结算")
 
 
 func _validate_ecological_habit_contract() -> void:

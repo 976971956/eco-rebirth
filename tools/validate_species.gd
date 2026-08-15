@@ -48,11 +48,13 @@ class ValidationGame:
 	func on_player_experience_gained(amount: int, source_name: String, reason: String = "击杀") -> void:
 		player_xp_events.append({"amount": amount, "source": source_name, "reason": reason})
 
-	func nearest_corpse(origin: Vector3, max_distance: float) -> Node3D:
+	func nearest_corpse(origin: Vector3, max_distance: float, excluded_instance_id: int = 0) -> Node3D:
 		var nearest: Node3D
 		var nearest_distance := max_distance
 		for corpse in corpses:
 			if not is_instance_valid(corpse) or float(corpse.food_amount) <= 0.0:
+				continue
+			if excluded_instance_id != 0 and corpse.get_instance_id() == excluded_instance_id:
 				continue
 			var distance := origin.distance_to(corpse.global_position)
 			if distance < nearest_distance:
@@ -63,7 +65,7 @@ class ValidationGame:
 	func get_available_corpses() -> Array[Node3D]:
 		return corpses.filter(func(corpse: Node3D) -> bool: return is_instance_valid(corpse) and float(corpse.food_amount) > 0.0)
 
-	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "", _include_hotspots: bool = true) -> Node3D:
+	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "", _include_hotspots: bool = true, _excluded_instance_id: int = 0) -> Node3D:
 		return null
 
 
@@ -91,8 +93,19 @@ func _run_validation() -> void:
 		failures.append("攻击后的 0.8 秒耐力恢复延迟失效")
 	if not is_equal_approx(ActorScript.starvation_health_after(100.0, 100.0, 3.0), 99.0):
 		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
-	if not is_equal_approx(ActorScript.starvation_health_after(1.2, 100.0, 3.0), 1.0):
-		failures.append("饥饿伤害仍能直接杀死生物")
+	if not is_zero_approx(ActorScript.starvation_health_after(1.2, 100.0, 6.0)):
+		failures.append("饱腹耗尽后生命仍被锁在 1 点，无法触发饥饿死亡")
+	var satiated_bear_motivation := ActorScript.hunting_motivation(18.0, 0.55, "omnivore", 4, 0)
+	var hungry_bear_motivation := ActorScript.hunting_motivation(68.0, 0.55, "omnivore", 4, 0)
+	var coordinated_wolf_motivation := ActorScript.hunting_motivation(18.0, 0.68, "carnivore", 3, 1)
+	if satiated_bear_motivation >= ActorScript.AI_HUNT_MOTIVATION_THRESHOLD or hungry_bear_motivation <= ActorScript.AI_HUNT_MOTIVATION_THRESHOLD:
+		failures.append("大型杂食者的饥饿猎杀动机没有区分饱腹与饥饿状态")
+	if coordinated_wolf_motivation <= ActorScript.AI_HUNT_MOTIVATION_THRESHOLD:
+		failures.append("同伴支援没有让狼群在建立期后形成可读围猎")
+	if ActorScript.should_replan_blocked_route(2, false) or not ActorScript.should_replan_blocked_route(3, false) or ActorScript.should_replan_blocked_route(4, true):
+		failures.append("AI 连续脱困后的改道阈值或终局例外无效")
+	if ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0) or not ActorScript.should_escalate_territory_intrusion(true, false, 5.0, 2.0, 16.0) or not ActorScript.should_escalate_territory_intrusion(false, true, 18.0, 2.0, 16.0):
+		failures.append("领地 AI 仍会跨区清场，或无法立即回应真实攻击者")
 	if not ActorScript.should_show_habit_guidance(0.60, 0.80, 24.0, 0.90, false):
 		failures.append("受伤雪兔不会显示生态本能资源引导")
 	if ActorScript.should_show_habit_guidance(0.95, 0.90, 18.0, 0.90, false) or ActorScript.should_show_habit_guidance(0.40, 0.20, 80.0, 0.90, true):
@@ -827,7 +840,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, ecological habits, full XP/level chain, tactical prey utility/pursuit stop, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:
