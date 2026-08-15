@@ -4257,7 +4257,8 @@ func _update_visual_motion(delta: float) -> void:
 			attack_progress,
 			hit_progress,
 			float(actor_id) * 0.47,
-			delta
+			delta,
+			species_id
 		)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend

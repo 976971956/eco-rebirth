@@ -47,7 +47,7 @@ func _bake_export_materials(root: Node, species_id: String) -> void:
 	if root is MeshInstance3D:
 		var mesh_instance := root as MeshInstance3D
 		if mesh_instance.mesh != null and mesh_instance.material_override != null:
-			var baked_mesh := mesh_instance.mesh.duplicate()
+			var baked_mesh := _mesh_with_generated_uvs(mesh_instance.mesh)
 			var baked_material := _portable_export_material(mesh_instance.mesh, mesh_instance.material_override, str(mesh_instance.name), species_id)
 			if baked_mesh is PrimitiveMesh:
 				(baked_mesh as PrimitiveMesh).material = baked_material
@@ -111,6 +111,35 @@ func _portable_export_material(mesh: Mesh, source_material: Material, mesh_name:
 	return material
 
 
+func _mesh_with_generated_uvs(source_mesh: Mesh) -> Mesh:
+	if not source_mesh is ArrayMesh:
+		return source_mesh.duplicate()
+	var source := source_mesh as ArrayMesh
+	var baked := ArrayMesh.new()
+	for surface_index in range(source.get_surface_count()):
+		var arrays := source.surface_get_arrays(surface_index)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+		if uvs.size() != vertices.size():
+			uvs = PackedVector2Array()
+			for vertex in vertices:
+				uvs.append(Vector2(vertex.x * 0.38 + vertex.z * 0.07, vertex.z * 0.34 + vertex.y * 0.16))
+			arrays[Mesh.ARRAY_TEX_UV] = uvs
+		var tangents: PackedFloat32Array = arrays[Mesh.ARRAY_TANGENT] if arrays[Mesh.ARRAY_TANGENT] != null else PackedFloat32Array()
+		if tangents.size() != vertices.size() * 4 and normals.size() == vertices.size():
+			tangents = PackedFloat32Array()
+			for normal in normals:
+				var tangent := Vector3.RIGHT - normal * normal.dot(Vector3.RIGHT)
+				if tangent.length_squared() < 0.0001:
+					tangent = Vector3.FORWARD - normal * normal.dot(Vector3.FORWARD)
+				tangent = tangent.normalized()
+				tangents.append_array(PackedFloat32Array([tangent.x, tangent.y, tangent.z, 1.0]))
+			arrays[Mesh.ARRAY_TANGENT] = tangents
+		baked.add_surface_from_arrays(source.surface_get_primitive_type(surface_index), arrays)
+	return baked
+
+
 func _pbr_material_slot(mesh_name: String) -> String:
 	var lowered := mesh_name.to_lower()
 	if "eye" in lowered or "iris" in lowered or "pupil" in lowered or "catchlight" in lowered:
@@ -134,7 +163,7 @@ func _build_species(species_id: String, hero: bool) -> Node3D:
 		"bear": _build_bear(root, hero)
 		"eagle": _build_eagle(root, hero)
 		"crocodile": _build_crocodile(root, hero)
-	if species_id in ["rabbit", "wolf"]:
+	if species_id in ["rabbit", "wolf", "deer", "bear"]:
 		_group_skeletal_body(root)
 	return root
 

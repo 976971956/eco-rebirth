@@ -28,23 +28,25 @@ func _build_showcase() -> void:
 	scene.add_child(game_stub)
 	_build_environment(scene)
 
-	var states: Array[String] = ["idle", "run", "attack", "hit"]
-	var state_names: Array[String] = ["待机", "奔跑", "攻击", "受击"]
+	var states: Array[String] = ["run", "attack"]
 	# The camera faces +Z, so positive world X appears on the left of the image.
-	var x_positions := [6.0, 2.0, -2.0, -6.0]
-	var species_rows := [
-		{"id": "rabbit", "z": 3.0, "scale": 1.08},
-		{"id": "wolf", "z": -2.2, "scale": 0.86},
+	var x_positions := [6.5, 2.25, -2.25, -6.5]
+	var species_columns := [
+		{"id": "rabbit", "scale": 0.98, "label_height": 3.25, "moves": "束步 / 后踢"},
+		{"id": "wolf", "scale": 0.76, "label_height": 3.15, "moves": "小跑 / 扑击"},
+		{"id": "deer", "scale": 0.59, "label_height": 3.55, "moves": "轻步 / 角击"},
+		{"id": "bear", "scale": 0.53, "label_height": 3.25, "moves": "重步 / 拍击"},
 	]
 	var actor_index := 0
-	for row in species_rows:
-		for state_index in range(states.size()):
-			var species_id := str(row["id"])
+	for state_index in range(states.size()):
+		for species_index in range(species_columns.size()):
+			var species_data: Dictionary = species_columns[species_index]
+			var species_id := str(species_data["id"])
 			var actor: EcoActor = ActorScript.new()
 			actor.process_mode = Node.PROCESS_MODE_DISABLED
 			scene.add_child(actor)
-			actor.setup(game_stub, actor_index + 1, species_id, true, Vector3(x_positions[state_index], 0.0, float(row["z"])), 0)
-			actor.scale = Vector3.ONE * float(row["scale"])
+			actor.setup(game_stub, actor_index + 1, species_id, true, Vector3(x_positions[species_index], 0.0, 3.1 if state_index == 0 else -2.35), 0)
+			actor.scale = Vector3.ONE * float(species_data["scale"])
 			actor.rotation.y = 0.23
 			_hide_actor_ui(actor)
 			var state: String = states[state_index]
@@ -57,27 +59,28 @@ func _build_showcase() -> void:
 				0.5 if state == "attack" else 0.0,
 				0.5 if state == "hit" else 0.0,
 				float(actor_index) * 0.47,
-				1.0
+				1.0,
+				species_id
 			)
-			var label_offset := Vector3(0.0, 3.25, 0.0) if species_id == "rabbit" else Vector3(0.0, 0.18, -0.82)
-			_add_label(
-				scene,
-				"%s · %s" % [Catalog.display_name(species_id), state_names[state_index]],
-				actor.position + label_offset
-			)
+			if state_index == 0:
+				_add_label(
+					scene,
+					"%s · %s" % [Catalog.display_name(species_id), str(species_data["moves"])],
+					actor.position + Vector3(0.0, float(species_data["label_height"]), 0.0)
+				)
 			actor_index += 1
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 11.3
-	camera.position = Vector3(0.0, 11.8, -20.5)
+	camera.size = 11.9
+	camera.position = Vector3(0.0, 12.5, -21.5)
 	scene.add_child(camera)
 	camera.look_at(Vector3(0.0, 1.35, 0.8), Vector3.UP)
 	camera.current = true
 
 	for _frame in range(10):
 		await process_frame
-	var output_path := "res://docs/images/v31-skeleton-animation-phase2.png"
+	var output_path := "res://docs/images/v32-four-species-skeletal-pbr.png"
 	var image := root.get_texture().get_image()
 	var result := image.save_png(output_path)
 	if result == OK:
