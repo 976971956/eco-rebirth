@@ -429,19 +429,25 @@ func _build_crocodile(root: Node3D, hero: bool) -> void:
 	], hero)
 	_add_loft(root, "LowerJaw", belly, [Vector3(0.0, 0.49, -1.72), Vector3(0.0, 0.45, -2.42), Vector3(0.0, 0.43, -3.22)], [Vector2(0.48, 0.14), Vector2(0.43, 0.12), Vector2(0.23, 0.08)], hero)
 	_add_quadruped_legs(root, dark, dark.darkened(0.12), 0.58, 0.48, 0.68, 0.84, 0.36, hero)
-	_add_eye_pair(root, 0.88, -2.34, 0.29, 0.072, Color("#c8c04c"), hero)
 	for side in [-1.0, 1.0]:
-		_add_sphere(root, "Nostril", Color("#26352a"), Vector3(0.07, 0.045, 0.06), Vector3(side * 0.17, 0.60, -3.22), hero)
+		var side_suffix := "L" if side < 0.0 else "R"
+		var eye_size := 0.072
+		_add_sphere(root, "EyeSocket_%s" % side_suffix, Color("#111514"), Vector3(eye_size * 1.06, eye_size, eye_size * 0.62), Vector3(side * 0.29, 0.88, -2.34), hero)
+		_add_sphere(root, "Iris_%s" % side_suffix, Color("#c8c04c"), Vector3(eye_size * 0.47, eye_size * 0.52, eye_size * 0.18), Vector3(side * 0.302, 0.88, -2.34 - eye_size * 0.47), hero)
+		_add_sphere(root, "Pupil_%s" % side_suffix, Color("#050606"), Vector3(eye_size * 0.18, eye_size * 0.32, eye_size * 0.08), Vector3(side * 0.305, 0.88, -2.34 - eye_size * 0.57), hero)
+		if hero:
+			_add_sphere(root, "EyeCatchlight_%s" % side_suffix, Color("#f7f1dc"), Vector3.ONE * eye_size * 0.10, Vector3(side * 0.315, 0.88 + eye_size * 0.19, -2.34 - eye_size * 0.62), true)
+		_add_sphere(root, "Nostril_%s" % side_suffix, Color("#26352a"), Vector3(0.07, 0.045, 0.06), Vector3(side * 0.17, 0.60, -3.22), hero)
 	var plate_count := 12 if hero else 7
 	for plate_index in range(plate_count):
 		var ratio := float(plate_index) / float(maxi(plate_count - 1, 1))
 		var plate_z := lerpf(1.42, -1.92, ratio)
 		var plate_height := lerpf(0.16, 0.24, sin(ratio * PI))
-		var plate := Factory.cone("BackScute", dark.lightened(0.04), 0.14, plate_height, Vector3(0.0, 1.06 - absf(ratio - 0.48) * 0.22, plate_z), 6)
+		var plate := Factory.cone("BackScute_%02d" % plate_index, dark.lightened(0.04), 0.14, plate_height, Vector3(0.0, 1.06 - absf(ratio - 0.48) * 0.22, plate_z), 6)
 		root.add_child(plate)
 	if hero:
 		for side in [-1.0, 1.0]:
 			for tooth_index in range(6):
-				var tooth := Factory.cone("Tooth", Color("#ded6b5"), 0.035, 0.17, Vector3(side * 0.34, 0.47, -1.92 - tooth_index * 0.20), 5)
+				var tooth := Factory.cone("Tooth_%s_%02d" % ["L" if side < 0.0 else "R", tooth_index], Color("#ded6b5"), 0.035, 0.17, Vector3(side * 0.34, 0.47, -1.92 - tooth_index * 0.20), 5)
 				tooth.rotation.x = PI
 				root.add_child(tooth)

@@ -15,6 +15,7 @@
 | `scripts/species_visual_catalog.gd` | External Hero/Mobile GLB registry and skeletal-species routing |
 | `scripts/species_skeleton_rig.gd` | Reusable rabbit/wolf/deer/bear `Skeleton3D`; wolf weighted-skin/body-chain/socket prototype; species-tuned idle/run/attack/hit pose controller |
 | `scripts/species_flight_rig.gd` | Eagle-only eight-bone `Skeleton3D`; glide/flap/dive/hit pose controller and beak/left-wing/right-wing skill sockets |
+| `scripts/species_crocodile_rig.gd` | Crocodile-only weighted long-body `Skeleton3D`; land/swim/combat controller, jaw bone, three-bone tail chain, and jaw/tail-tip sockets |
 | `scripts/skill_vfx.gd` and `scripts/skill_projectile.gd` | Skill presentation and projectiles |
 | `tools/*.gd` | Deterministic validation, balance simulation, reports, and UI preview rendering |
 
@@ -34,7 +35,7 @@
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
-- Keep the V1.26 hybrid art path mobile/Web safe: six representative species use versioned Hero/Mobile GLBs; rabbit/wolf/deer/bear share one four-state quadruped `Skeleton3D` rig and one 256×256 fur PBR texture set; wolf alone uses the validated weighted-body/socket prototype while the other three retain rigid attachments. Eagle uses its separate eight-bone glide/flap/dive/hit flight rig and three moving skill sockets. AI always uses Mobile; crocodile retains the named-pivot external path, while the other 24 species and missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
+- Keep the V1.27 hybrid art path mobile/Web safe: six representative species use versioned Hero/Mobile GLBs; rabbit/wolf/deer/bear share one quadruped rig and one 256×256 fur PBR set, with wolf alone using the weighted body prototype. Eagle uses a separate eight-bone flight rig. Crocodile uses a separate weighted long-body rig with a jaw and three-bone tail chain. AI always uses Mobile; the other 24 species and missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
 
 ## Document routing
 

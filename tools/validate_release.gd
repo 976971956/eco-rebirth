@@ -10,6 +10,7 @@ const Catalog = preload("res://scripts/species_catalog.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
+const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
 
 var failures: Array[String] = []
 
@@ -56,7 +57,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.26 发布校验通过：高原金雕飞行骨架、四态姿势、技能挂点与跨端 LOD 正常")
+		print("[release] V1.27 发布校验通过：沼泽鳄长躯干蒙皮、尾链骨架、两栖动作与技能挂点正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -228,8 +229,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.26.0\"") and presets.contains("application/short_version=\"1.26.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=360") and presets.contains("application/version=\"360\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.27.0\"") and presets.contains("application/short_version=\"1.27.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=370") and presets.contains("application/version=\"370\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -345,6 +346,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
 	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf", "deer", "bear"], "第三阶段四足骨骼物种清单异常")
 	_expect(VisualCatalog.FLIGHT_RIG_SPECIES == ["eagle"], "飞行骨架物种清单异常")
+	_expect(VisualCatalog.LONG_BODY_RIG_SPECIES == ["crocodile"], "长躯干骨架物种清单异常")
 	_expect(SkeletonRig.WEIGHTED_SKIN_SPECIES == ["wolf"], "连续权重蒙皮试点物种清单异常")
 	_expect(SkeletonRig.SKILL_SOCKET_NAMES == ["SkillSocket_Mouth", "SkillSocket_Chest"], "灰狼技能挂点契约异常")
 	_expect(FlightRig.RIGGED_SPECIES == ["eagle"], "金雕飞行骨架控制器物种清单异常")
@@ -353,6 +355,12 @@ func _validate_external_species_model_contract() -> void:
 	_expect(FlightRig.resolve_state(0.0, 0.0, 0.0, 0.0, true) == "glide", "金雕空中低速时没有进入滑翔")
 	_expect(FlightRig.resolve_state(0.8, 0.0, 0.0, 0.0, true) == "flap", "金雕空中移动时没有进入振翅")
 	_expect(FlightRig.resolve_state(0.8, 0.2, 0.0, 0.0, true) == "dive" and FlightRig.resolve_state(0.8, 0.2, 0.0, 0.2, true) == "hit", "金雕俯冲/受击状态优先级异常")
+	_expect(CrocodileRig.RIGGED_SPECIES == ["crocodile"], "沼泽鳄长躯干骨架控制器物种清单异常")
+	_expect(CrocodileRig.ANIMATION_STATES == ["idle", "crawl", "swim", "attack", "roll", "hit"], "沼泽鳄骨架缺少待机、爬行、游动、咬击、翻滚或受击状态")
+	_expect(CrocodileRig.SKILL_SOCKET_NAMES == ["SkillSocket_Jaw", "SkillSocket_TailTip"], "沼泽鳄吻部/尾端技能挂点契约异常")
+	_expect(CrocodileRig.resolve_state(0.0, 0.0, 0.0, 0.0, false) == "idle", "沼泽鳄静止时没有进入待机")
+	_expect(CrocodileRig.resolve_state(0.8, 0.0, 0.0, 0.0, false) == "crawl" and CrocodileRig.resolve_state(0.8, 0.0, 0.0, 0.0, true) == "swim", "沼泽鳄没有按水深切换爬行/游动")
+	_expect(CrocodileRig.resolve_state(0.8, 0.2, 0.3, 0.0, true) == "roll" and CrocodileRig.resolve_state(0.8, 0.2, 0.3, 0.2, true) == "hit", "沼泽鳄翻滚/受击状态优先级异常")
 	_expect(SkeletonRig.RIG_PROFILES.size() == 4, "四足骨架缺少物种化步态参数")
 	_expect(SkeletonRig.ANIMATION_STATES == ["idle", "run", "attack", "hit"], "骨骼控制器没有提供完整四态动画接口")
 	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0) == "idle" and SkeletonRig.resolve_state(0.8, 0.0, 0.0) == "run", "骨骼待机/奔跑状态切换异常")
@@ -392,6 +400,14 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["bones"]) >= 8, "高原金雕的 %s 模型缺少身体、头、双翼、尾羽或双爪骨骼" % profile)
 				_expect(int(stats["skinned_meshes"]) == 0, "高原金雕的 %s 刚性羽翼骨架被意外切换为连续蒙皮" % profile)
 				_expect(int(stats["skill_sockets"]) == 3, "高原金雕的 %s 模型缺少喙部或双翼技能挂点" % profile)
+			elif species_id in VisualCatalog.LONG_BODY_RIG_SPECIES:
+				_expect(int(stats["skeletons"]) == 1, "沼泽鳄的 %s 模型没有唯一长躯干 Skeleton3D" % profile)
+				_expect(int(stats["bones"]) >= 12, "沼泽鳄的 %s 模型缺少头颈、颌部、三段尾链或四足骨骼" % profile)
+				_expect(int(stats["skinned_meshes"]) == 1, "沼泽鳄的 %s 模型没有唯一连续蒙皮主躯干" % profile)
+				_expect(int(stats["weighted_vertices"]) > 100, "沼泽鳄的 %s 连续蒙皮顶点不足" % profile)
+				_expect(int(stats["blended_vertices"]) > 20, "沼泽鳄的 %s 躯干与尾部没有跨骨平滑权重" % profile)
+				_expect(int(stats["invalid_weight_vertices"]) == 0, "沼泽鳄的 %s 蒙皮权重没有归一化" % profile)
+				_expect(int(stats["skill_sockets"]) == 2, "沼泽鳄的 %s 模型缺少吻部或尾端技能挂点" % profile)
 			for node_prefix in expected_motion_nodes[species_id]:
 				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
 				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
@@ -405,6 +421,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Mouth\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Chest\""), "灰狼扑咬与群体号召特效没有使用骨骼挂点")
 	_expect(actor_source.contains("FlightRig.resolve_state") and actor_source.contains("FlightRig.apply_pose"), "真实角色流程没有按飞行状态驱动金雕骨架")
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Beak\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_L\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_R\""), "金雕俯冲和翼流特效没有使用骨骼挂点")
+	_expect(actor_source.contains("CrocodileRig.resolve_state") and actor_source.contains("CrocodileRig.apply_pose"), "真实角色流程没有按两栖状态驱动沼泽鳄长躯干骨架")
+	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Jaw\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_TailTip\""), "沼泽鳄死亡翻滚没有使用吻部和尾端骨骼挂点")
 	_expect(actor_source.contains("if not uses_external_model:"), "外部模型失败时没有保留程序模型降级路径")
 	var game_stub := ExternalModelGame.new()
 	root.add_child(game_stub)
@@ -470,6 +488,34 @@ func _validate_external_species_model_contract() -> void:
 	eagle_actor._play_hit_pulse()
 	eagle_actor._update_visual_motion(0.016)
 	_expect(eagle_actor.external_animation_state == "hit", "真实金雕受击没有以最高优先级切换飞行骨架状态")
+	var crocodile_actor: EcoActor = ActorScript.new()
+	crocodile_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game_stub.add_child(crocodile_actor)
+	crocodile_actor.setup(game_stub, 930, "crocodile", true, Vector3.ZERO, 0)
+	_expect(crocodile_actor.uses_external_model and crocodile_actor.external_model_profile == "hero", "真实沼泽鳄角色流程没有加载 Hero GLB")
+	_expect(is_instance_valid(crocodile_actor.external_skeleton) and crocodile_actor.external_skeleton.get_bone_count() >= 12, "真实沼泽鳄角色流程没有绑定长躯干/尾链 Skeleton3D")
+	_expect(crocodile_actor.leg_pivots.is_empty() and crocodile_actor.tail_visuals.is_empty(), "沼泽鳄仍被长躯干骨架与旧节点步态重复驱动")
+	_expect(crocodile_actor.external_skill_sockets.size() == 2, "真实沼泽鳄角色流程没有绑定吻部和尾端技能挂点")
+	_expect(crocodile_actor.skill_socket_world_position("SkillSocket_Jaw", 0.66).distance_to(crocodile_actor.global_position) > 1.0, "沼泽鳄吻部技能挂点退化到了角色原点")
+	_expect(crocodile_actor.skill_socket_world_position("SkillSocket_TailTip", 0.58).distance_to(crocodile_actor.global_position) > 0.30, "沼泽鳄尾端技能挂点退化到了角色原点")
+	var crawl_pose := CrocodileRig.pose_targets("crawl", 1.4, 1.0, 0.0, 0.0, 0.0, 0.7)
+	var swim_pose := CrocodileRig.pose_targets("swim", 1.4, 1.0, 0.0, 0.0, 0.0, 0.7)
+	var bite_pose := CrocodileRig.pose_targets("attack", 1.4, 1.0, 0.5, 0.0, 0.0, 0.7)
+	var roll_pose := CrocodileRig.pose_targets("roll", 1.4, 1.0, 0.0, 0.5, 0.0, 0.7)
+	var crocodile_hit_pose := CrocodileRig.pose_targets("hit", 1.4, 1.0, 0.0, 0.0, 0.5, 0.7)
+	_expect(absf(Vector3(swim_pose["Tail_Tip"]).y) > absf(Vector3(crawl_pose["Tail_Tip"]).y), "沼泽鳄游动尾摆没有强于陆地爬行")
+	_expect(absf(Vector3(bite_pose["Jaw"]).x) > 0.30, "沼泽鳄普通咬击没有驱动颌骨")
+	_expect(absf(Vector3(roll_pose["Body"]).z) > 0.60 and absf(Vector3(roll_pose["Tail_Mid"]).y) > 0.30, "沼泽鳄死亡翻滚没有驱动身体侧翻与尾链")
+	_expect(Vector3(crocodile_hit_pose["Body"]).length() > 0.12, "沼泽鳄受击没有产生长躯干失衡")
+	crocodile_actor._play_attack_pulse()
+	crocodile_actor._update_visual_motion(0.016)
+	_expect(crocodile_actor.external_animation_state == "attack", "真实沼泽鳄普通攻击没有切换咬击状态")
+	crocodile_actor.external_skill_animation_timer = CrocodileRig.ROLL_DURATION
+	crocodile_actor._update_visual_motion(0.016)
+	_expect(crocodile_actor.external_animation_state == "roll", "真实沼泽鳄死亡翻滚没有切换长躯干骨架状态")
+	crocodile_actor._play_hit_pulse()
+	crocodile_actor._update_visual_motion(0.016)
+	_expect(crocodile_actor.external_animation_state == "hit", "真实沼泽鳄受击没有以最高优先级切换骨架状态")
 	game_stub.batch_mode = true
 	var fallback_actor: EcoActor = ActorScript.new()
 	fallback_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -480,6 +526,7 @@ func _validate_external_species_model_contract() -> void:
 	mobile_actor.free()
 	fallback_actor.free()
 	eagle_actor.free()
+	crocodile_actor.free()
 	game_stub.free()
 
 
@@ -505,7 +552,7 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 
 func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 	var node_name := str(node.name)
-	if node_name in SkeletonRig.SKILL_SOCKET_NAMES or node_name in FlightRig.SKILL_SOCKET_NAMES:
+	if node_name in SkeletonRig.SKILL_SOCKET_NAMES or node_name in FlightRig.SKILL_SOCKET_NAMES or node_name in CrocodileRig.SKILL_SOCKET_NAMES:
 		stats["skill_sockets"] = int(stats["skill_sockets"]) + 1
 	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
 		if node_name.begins_with(prefix):

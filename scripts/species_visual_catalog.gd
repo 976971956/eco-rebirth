@@ -3,6 +3,7 @@ extends RefCounted
 
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
+const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
 const FUR_ALBEDO = preload("res://assets/textures/animals/shared/fur_micro_albedo_ai.png")
 const FUR_NORMAL = preload("res://assets/textures/animals/shared/fur_micro_normal_ai.png")
 const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/fur_micro_roughness_ai.png")
@@ -10,6 +11,7 @@ const MODEL_ROOT := "res://assets/models/animals"
 const EXTERNAL_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile"]
 const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const FLIGHT_RIG_SPECIES := ["eagle"]
+const LONG_BODY_RIG_SPECIES := ["crocodile"]
 
 
 static func supports(species_id: String) -> bool:
@@ -44,6 +46,8 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 			SkeletonRig.upgrade(instance, species_id)
 		elif species_id in FLIGHT_RIG_SPECIES:
 			FlightRig.upgrade(instance, species_id)
+		elif species_id in LONG_BODY_RIG_SPECIES:
+			CrocodileRig.upgrade(instance, species_id)
 	return instance
 
 

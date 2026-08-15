@@ -9,6 +9,7 @@ const WorldRules = preload("res://scripts/eco_world.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
+const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -67,6 +68,7 @@ var experience: int = 0
 const MAX_LEVEL := 8
 var attack_timer: float = 0.0
 var skill_timer: float = 0.0
+var external_skill_animation_timer: float = 0.0
 var eat_timer: float = 0.0
 var stamina_regen_delay: float = 0.0
 var decision_timer: float = 0.0
@@ -453,7 +455,7 @@ func _bind_external_motion_nodes(root: Node) -> void:
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if visual_node is Skeleton3D and node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME]:
+		if visual_node is Skeleton3D and node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME, CrocodileRig.RIG_NAME]:
 			external_skeleton = visual_node as Skeleton3D
 		elif visual_node is BoneAttachment3D:
 			continue
@@ -474,11 +476,13 @@ func _bind_external_motion_nodes(root: Node) -> void:
 
 func _bind_external_skill_sockets(model: Node3D) -> void:
 	external_skill_sockets.clear()
-	var socket_names: Array = SkeletonRig.SKILL_SOCKET_NAMES + FlightRig.SKILL_SOCKET_NAMES
+	var socket_names: Array = SkeletonRig.SKILL_SOCKET_NAMES + FlightRig.SKILL_SOCKET_NAMES + CrocodileRig.SKILL_SOCKET_NAMES
 	for socket_name in socket_names:
 		var socket := SkeletonRig.find_socket(model, socket_name)
 		if socket == null:
 			socket = FlightRig.find_socket(model, socket_name)
+		if socket == null:
+			socket = CrocodileRig.find_socket(model, socket_name)
 		if socket != null:
 			external_skill_sockets[socket_name] = socket
 
@@ -1615,6 +1619,7 @@ func _update_timers(delta: float) -> void:
 	attack_timer = maxf(attack_timer - delta, 0.0)
 	external_attack_animation_timer = maxf(external_attack_animation_timer - delta, 0.0)
 	external_hit_animation_timer = maxf(external_hit_animation_timer - delta, 0.0)
+	external_skill_animation_timer = maxf(external_skill_animation_timer - delta, 0.0)
 	skill_timer = maxf(skill_timer - delta, 0.0)
 	eat_timer = maxf(eat_timer - delta, 0.0)
 	stamina_regen_delay = maxf(stamina_regen_delay - delta, 0.0)
@@ -3392,6 +3397,9 @@ func use_skill(target: EcoActor = null) -> bool:
 				target.take_damage(_skill_damage(1.72), self)
 				target.apply_slow(0.56, 5.0)
 				target.apply_knockback(roll_direction, 2.4)
+				external_skill_animation_timer = CrocodileRig.ROLL_DURATION
+				SkillVFX.fang_strike(effect_parent, skill_socket_world_position("SkillSocket_Jaw", 0.66), roll_direction, effect_color.lightened(0.14), 1.18)
+				SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_TailTip", 0.58), effect_color.lightened(0.22), 1.72, 9, 0.12, 0.36)
 				SkillVFX.ring(effect_parent, target.global_position, effect_color, 0.45, 2.3, 0.42)
 				SkillVFX.fang_strike(effect_parent, target.global_position, roll_direction, effect_color, 1.42)
 				used = true
@@ -4277,6 +4285,13 @@ func _update_visual_motion(delta: float) -> void:
 			var dive_progress := 1.0 - clampf(dive_remaining / FlightRig.DIVE_DURATION, 0.0, 1.0)
 			var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
 			FlightRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, dive_progress, hit_progress, float(actor_id) * 0.47, delta)
+		elif CrocodileRig.supports(species_id):
+			var swimming: bool = game.world != null and game.world.has_method("water_depth_at") and float(game.world.water_depth_at(global_position)) > 0.01
+			external_animation_state = CrocodileRig.resolve_state(gait_blend, external_attack_animation_timer, external_skill_animation_timer, external_hit_animation_timer, swimming)
+			var attack_progress := 1.0 - clampf(external_attack_animation_timer / CrocodileRig.ATTACK_DURATION, 0.0, 1.0)
+			var roll_progress := 1.0 - clampf(external_skill_animation_timer / CrocodileRig.ROLL_DURATION, 0.0, 1.0)
+			var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
+			CrocodileRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, attack_progress, roll_progress, hit_progress, float(actor_id) * 0.47, delta)
 		else:
 			external_animation_state = SkeletonRig.resolve_state(gait_blend, external_attack_animation_timer, external_hit_animation_timer)
 			var attack_progress := 1.0 - external_attack_animation_timer / SkeletonRig.ATTACK_DURATION
@@ -4336,7 +4351,12 @@ func _play_attack_pulse() -> void:
 	if body_root == null:
 		return
 	if is_instance_valid(external_skeleton):
-		external_attack_animation_timer = FlightRig.DIVE_DURATION if FlightRig.supports(species_id) else SkeletonRig.ATTACK_DURATION
+		if FlightRig.supports(species_id):
+			external_attack_animation_timer = FlightRig.DIVE_DURATION
+		elif CrocodileRig.supports(species_id):
+			external_attack_animation_timer = CrocodileRig.ATTACK_DURATION
+		else:
+			external_attack_animation_timer = SkeletonRig.ATTACK_DURATION
 	var tween := create_tween()
 	tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.03, 0.94, 1.12), 0.07)
 	tween.tween_property(body_root, "scale", base_visual_scale, 0.12)
@@ -4367,6 +4387,9 @@ func _play_species_skill_animation() -> void:
 			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.18, 0.76, 1.18), 0.12)
 			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(0.94, 1.17, 0.94), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			tween.tween_property(body_root, "scale", base_visual_scale, 0.22)
+		"crocodile":
+			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.05, 0.90, 1.08), 0.10)
+			tween.tween_property(body_root, "scale", base_visual_scale, 0.36).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		"eagle":
 			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(0.92, 0.95, 1.16), 0.10)
 			tween.tween_property(body_root, "scale", base_visual_scale, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -4379,7 +4402,12 @@ func _play_hit_pulse() -> void:
 	if visual_root == null:
 		return
 	if is_instance_valid(external_skeleton):
-		external_hit_animation_timer = FlightRig.HIT_DURATION if FlightRig.supports(species_id) else SkeletonRig.HIT_DURATION
+		if FlightRig.supports(species_id):
+			external_hit_animation_timer = FlightRig.HIT_DURATION
+		elif CrocodileRig.supports(species_id):
+			external_hit_animation_timer = CrocodileRig.HIT_DURATION
+		else:
+			external_hit_animation_timer = SkeletonRig.HIT_DURATION
 	var tween := create_tween()
 	tween.tween_property(visual_root, "scale", Vector3(1.08, 0.88, 1.08), 0.06)
 	tween.tween_property(visual_root, "scale", Vector3.ONE, 0.13)
