@@ -15,7 +15,8 @@ func _initialize() -> void:
 
 func _generate() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT_ROOT))
-	for species_id in REPRESENTATIVE_SPECIES:
+	var requested_species := _requested_species()
+	for species_id in requested_species:
 		for profile in ["hero", "mobile"]:
 			var model := _build_species(species_id, profile == "hero")
 			_bake_export_materials(model, species_id)
@@ -35,12 +36,22 @@ func _generate() -> void:
 					print("[species-glb] %s" % output_path)
 			model.free()
 	if failures.is_empty():
-		print("SPECIES_GLB_GENERATION_OK: 6 species × hero/mobile")
+		print("SPECIES_GLB_GENERATION_OK: %d species × hero/mobile" % requested_species.size())
 		quit(0)
 	else:
 		for failure in failures:
 			push_error(failure)
 		quit(1)
+
+
+func _requested_species() -> Array[String]:
+	var requested: Array[String] = []
+	for argument in OS.get_cmdline_user_args():
+		if argument in REPRESENTATIVE_SPECIES and not argument in requested:
+			requested.append(argument)
+	if requested.is_empty():
+		requested.assign(REPRESENTATIVE_SPECIES)
+	return requested
 
 
 func _bake_export_materials(root: Node, species_id: String) -> void:
@@ -376,7 +387,14 @@ func _build_eagle(root: Node3D, hero: bool) -> void:
 	var beak := Factory.cone("HookedBeak", Color("#d5ad52"), 0.17, 0.66, Vector3(0.0, 1.54, -1.90), int(_detail(hero)["radial"]))
 	beak.rotation.x = -PI * 0.5
 	root.add_child(beak)
-	_add_eye_pair(root, 1.76, -1.67, 0.22, 0.063, Color("#e1b13f"), hero)
+	for side in [-1.0, 1.0]:
+		var side_suffix := "L" if side < 0.0 else "R"
+		var eye_size := 0.063
+		_add_sphere(root, "EyeSocket_%s" % side_suffix, Color("#111514"), Vector3(eye_size * 1.06, eye_size, eye_size * 0.62), Vector3(side * 0.22, 1.76, -1.67), hero)
+		_add_sphere(root, "Iris_%s" % side_suffix, Color("#e1b13f"), Vector3(eye_size * 0.47, eye_size * 0.52, eye_size * 0.18), Vector3(side * 0.232, 1.76, -1.67 - eye_size * 0.47), hero)
+		_add_sphere(root, "Pupil_%s" % side_suffix, Color("#050606"), Vector3(eye_size * 0.18, eye_size * 0.32, eye_size * 0.08), Vector3(side * 0.235, 1.76, -1.67 - eye_size * 0.57), hero)
+		if hero:
+			_add_sphere(root, "EyeCatchlight_%s" % side_suffix, Color("#f7f1dc"), Vector3.ONE * eye_size * 0.10, Vector3(side * 0.245, 1.76 + eye_size * 0.19, -1.67 - eye_size * 0.62), true)
 	for side in [-1.0, 1.0]:
 		var wing := Node3D.new()
 		wing.name = "WingPivot_L" if side < 0.0 else "WingPivot_R"
@@ -393,7 +411,7 @@ func _build_eagle(root: Node3D, hero: bool) -> void:
 	for side_index in range(-2, 3):
 		_add_loft(tail, "TailFeather", dark, [Vector3(side_index * 0.10, 0.0, 0.0), Vector3(side_index * 0.18, -0.08, 0.92)], [Vector2(0.12, 0.06), Vector2(0.018, 0.012)], hero)
 	for side in [-1.0, 1.0]:
-		_add_sphere(root, "Talon", Color("#c9a346"), Vector3(0.15, 0.10, 0.23), Vector3(side * 0.23, 0.55, -0.18), hero)
+		_add_sphere(root, "Talon_L" if side < 0.0 else "Talon_R", Color("#c9a346"), Vector3(0.15, 0.10, 0.23), Vector3(side * 0.23, 0.55, -0.18), hero)
 
 
 func _build_crocodile(root: Node3D, hero: bool) -> void:

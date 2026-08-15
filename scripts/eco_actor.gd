@@ -8,6 +8,7 @@ const ProjectileScript = preload("res://scripts/skill_projectile.gd")
 const WorldRules = preload("res://scripts/eco_world.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
+const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -452,7 +453,7 @@ func _bind_external_motion_nodes(root: Node) -> void:
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if visual_node is Skeleton3D and node_name == SkeletonRig.RIG_NAME:
+		if visual_node is Skeleton3D and node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME]:
 			external_skeleton = visual_node as Skeleton3D
 		elif visual_node is BoneAttachment3D:
 			continue
@@ -473,8 +474,11 @@ func _bind_external_motion_nodes(root: Node) -> void:
 
 func _bind_external_skill_sockets(model: Node3D) -> void:
 	external_skill_sockets.clear()
-	for socket_name in SkeletonRig.SKILL_SOCKET_NAMES:
+	var socket_names: Array = SkeletonRig.SKILL_SOCKET_NAMES + FlightRig.SKILL_SOCKET_NAMES
+	for socket_name in socket_names:
 		var socket := SkeletonRig.find_socket(model, socket_name)
+		if socket == null:
+			socket = FlightRig.find_socket(model, socket_name)
 		if socket != null:
 			external_skill_sockets[socket_name] = socket
 
@@ -3507,6 +3511,9 @@ func use_skill(target: EcoActor = null) -> bool:
 					if game.world != null and game.world.time_phase == "night":
 						distance_bonus *= 0.88
 					_resolve_flight_strike(target, _skill_damage(distance_bonus), 1.0, 0.0, 6.8, dash_direction, 0.20)
+					SkillVFX.fang_strike(effect_parent, skill_socket_world_position("SkillSocket_Beak", 1.65), dash_direction, effect_color.lightened(0.16), 0.86, 0.0)
+					SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Wing_L", 1.55), effect_color.lightened(0.24), 1.15, 6, 0.09, 0.24)
+					SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Wing_R", 1.55), effect_color.lightened(0.24), 1.15, 6, 0.09, 0.24, PI / 6.0)
 					SkillVFX.ring(effect_parent, target.global_position, effect_color.lightened(0.18), 0.42, 2.2, 0.26)
 					SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 8.2)
 					SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.58)
@@ -4264,21 +4271,28 @@ func _update_visual_motion(delta: float) -> void:
 		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * 0.065 * gait_blend
 		tail_visual.rotation.y = lerp_angle(tail_visual.rotation.y, tail_swing, 1.0 - exp(-delta * 8.0))
 	if is_instance_valid(external_skeleton):
-		external_animation_state = SkeletonRig.resolve_state(gait_blend, external_attack_animation_timer, external_hit_animation_timer)
-		var attack_progress := 1.0 - external_attack_animation_timer / SkeletonRig.ATTACK_DURATION
-		var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
-		SkeletonRig.apply_pose(
-			external_skeleton,
-			external_animation_state,
-			move_time,
-			stride_amplitude,
-			speed_ratio,
-			attack_progress,
-			hit_progress,
-			float(actor_id) * 0.47,
-			delta,
-			species_id
-		)
+		if FlightRig.supports(species_id):
+			external_animation_state = FlightRig.resolve_state(gait_blend, flight_dive_timer, external_attack_animation_timer, external_hit_animation_timer, is_airborne())
+			var dive_remaining := maxf(flight_dive_timer, external_attack_animation_timer)
+			var dive_progress := 1.0 - clampf(dive_remaining / FlightRig.DIVE_DURATION, 0.0, 1.0)
+			var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
+			FlightRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, dive_progress, hit_progress, float(actor_id) * 0.47, delta)
+		else:
+			external_animation_state = SkeletonRig.resolve_state(gait_blend, external_attack_animation_timer, external_hit_animation_timer)
+			var attack_progress := 1.0 - external_attack_animation_timer / SkeletonRig.ATTACK_DURATION
+			var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
+			SkeletonRig.apply_pose(
+				external_skeleton,
+				external_animation_state,
+				move_time,
+				stride_amplitude,
+				speed_ratio,
+				attack_progress,
+				hit_progress,
+				float(actor_id) * 0.47,
+				delta,
+				species_id
+			)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
@@ -4322,7 +4336,7 @@ func _play_attack_pulse() -> void:
 	if body_root == null:
 		return
 	if is_instance_valid(external_skeleton):
-		external_attack_animation_timer = SkeletonRig.ATTACK_DURATION
+		external_attack_animation_timer = FlightRig.DIVE_DURATION if FlightRig.supports(species_id) else SkeletonRig.ATTACK_DURATION
 	var tween := create_tween()
 	tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.03, 0.94, 1.12), 0.07)
 	tween.tween_property(body_root, "scale", base_visual_scale, 0.12)
@@ -4353,6 +4367,9 @@ func _play_species_skill_animation() -> void:
 			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(1.18, 0.76, 1.18), 0.12)
 			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(0.94, 1.17, 0.94), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			tween.tween_property(body_root, "scale", base_visual_scale, 0.22)
+		"eagle":
+			tween.tween_property(body_root, "scale", base_visual_scale * Vector3(0.92, 0.95, 1.16), 0.10)
+			tween.tween_property(body_root, "scale", base_visual_scale, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		_:
 			tween.tween_property(body_root, "scale", base_visual_scale * 1.12, 0.10)
 			tween.tween_property(body_root, "scale", base_visual_scale, 0.18)
@@ -4362,7 +4379,7 @@ func _play_hit_pulse() -> void:
 	if visual_root == null:
 		return
 	if is_instance_valid(external_skeleton):
-		external_hit_animation_timer = SkeletonRig.HIT_DURATION
+		external_hit_animation_timer = FlightRig.HIT_DURATION if FlightRig.supports(species_id) else SkeletonRig.HIT_DURATION
 	var tween := create_tween()
 	tween.tween_property(visual_root, "scale", Vector3(1.08, 0.88, 1.08), 0.06)
 	tween.tween_property(visual_root, "scale", Vector3.ONE, 0.13)

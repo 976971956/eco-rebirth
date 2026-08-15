@@ -1,4 +1,4 @@
-# 《生态轮回》V1.25 运行与导出
+# 《生态轮回》V1.26 运行与导出
 
 ## 直接运行
 
@@ -28,7 +28,7 @@ godot --path .
 
 普通攻击只在攻击范围内触发。食草物种吃绿色植物，肉食物种吃尸体，狐狸和熊两者都能吃。
 
-V1.25 在 V1.24 四足骨架上增加灰狼连续权重蒙皮原型。灰狼主躯干由 Spine/Chest/Neck/Head 四骨平滑驱动，四肢和面部继续使用低成本刚性附件；嘴部与胸部技能挂点分别驱动扑咬起手和群体号召特效。Hero/Mobile 共用绑定规则，雪兔、林鹿、棕熊仍走已验证的刚性骨架。骨骼姿势继续按距离降频，资源缺失或无画面批量测试会自动回退到程序模型。碰撞、数值、AI 和存档没有改变。
+V1.26 在既有四足骨架之外增加高原金雕专用飞行骨架。金雕 Hero/Mobile 共用八骨刚性羽片结构，并由真实移动、俯冲和受击事件切换滑翔、振翅、俯冲、受击四态；喙部与左右翼三处挂点分别驱动俯冲起手和双翼尾流。灰狼继续使用 V1.25 连续主躯干原型，雪兔、林鹿、棕熊继续使用低成本刚性四足骨架，鳄鱼和其余物种保留稳定回退。骨骼姿势仍按距离降频，碰撞、数值、AI 和存档没有改变。
 
 V1.21 会在生命、耐力或饥饿进入风险区时，用右上“生态本能”显示最近安全习性资源的方向、距离和强化条件。手动进食优先选择可触发习性的近距离资源；首次触发习性提供生态适应经验。强物种捕杀明显弱于自己的猎物时，成长经验会递减，但食物收益和击杀记录保持不变。进食后有 1 秒咀嚼承诺，只能慢走且不能冲刺、攻击或释放技能。
 
@@ -146,7 +146,7 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 godot --headless --path . --script res://tools/validate_species.gd
 ```
 
-检查旧存档迁移、画质档位、教学步骤，以及外部 GLB 的 PBR 槽、共享毛发贴图、LOD、四种四足动物唯一骨架、物种化四态姿势与移动端几何预算：
+检查旧存档迁移、画质档位、教学步骤，以及外部 GLB 的 PBR 槽、共享毛发贴图、LOD、四种四足动物与高原金雕的唯一骨架、物种化四态姿势、技能挂点与移动端几何预算：
 
 ```bash
 godot --headless --path . --script res://tools/validate_release.gd
@@ -158,6 +158,13 @@ godot --headless --path . --script res://tools/validate_release.gd
 godot --headless --path . --script res://tools/build_fur_texture_maps.gd
 godot --headless --path . --editor --quit
 godot --headless --path . --script res://tools/generate_species_glb.gd
+godot --headless --path . --editor --quit
+```
+
+只修改单一代表物种时可在脚本参数后传入物种 ID，例如仅重建金雕 Hero/Mobile：
+
+```bash
+godot --headless --path . --script res://tools/generate_species_glb.gd -- eagle
 godot --headless --path . --editor --quit
 ```
 

@@ -9,6 +9,7 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
+const FlightRig = preload("res://scripts/species_flight_rig.gd")
 
 var failures: Array[String] = []
 
@@ -55,7 +56,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.25 发布校验通过：灰狼连续权重蒙皮、躯干骨骼链、技能挂点与跨端 LOD 正常")
+		print("[release] V1.26 发布校验通过：高原金雕飞行骨架、四态姿势、技能挂点与跨端 LOD 正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -227,8 +228,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.25.0\"") and presets.contains("application/short_version=\"1.25.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=350") and presets.contains("application/version=\"350\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.26.0\"") and presets.contains("application/short_version=\"1.26.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=360") and presets.contains("application/version=\"360\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -343,8 +344,15 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
 	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf", "deer", "bear"], "第三阶段四足骨骼物种清单异常")
+	_expect(VisualCatalog.FLIGHT_RIG_SPECIES == ["eagle"], "飞行骨架物种清单异常")
 	_expect(SkeletonRig.WEIGHTED_SKIN_SPECIES == ["wolf"], "连续权重蒙皮试点物种清单异常")
 	_expect(SkeletonRig.SKILL_SOCKET_NAMES == ["SkillSocket_Mouth", "SkillSocket_Chest"], "灰狼技能挂点契约异常")
+	_expect(FlightRig.RIGGED_SPECIES == ["eagle"], "金雕飞行骨架控制器物种清单异常")
+	_expect(FlightRig.ANIMATION_STATES == ["glide", "flap", "dive", "hit"], "金雕飞行骨架缺少滑翔、振翅、俯冲或受击状态")
+	_expect(FlightRig.SKILL_SOCKET_NAMES == ["SkillSocket_Beak", "SkillSocket_Wing_L", "SkillSocket_Wing_R"], "金雕飞行技能挂点契约异常")
+	_expect(FlightRig.resolve_state(0.0, 0.0, 0.0, 0.0, true) == "glide", "金雕空中低速时没有进入滑翔")
+	_expect(FlightRig.resolve_state(0.8, 0.0, 0.0, 0.0, true) == "flap", "金雕空中移动时没有进入振翅")
+	_expect(FlightRig.resolve_state(0.8, 0.2, 0.0, 0.0, true) == "dive" and FlightRig.resolve_state(0.8, 0.2, 0.0, 0.2, true) == "hit", "金雕俯冲/受击状态优先级异常")
 	_expect(SkeletonRig.RIG_PROFILES.size() == 4, "四足骨架缺少物种化步态参数")
 	_expect(SkeletonRig.ANIMATION_STATES == ["idle", "run", "attack", "hit"], "骨骼控制器没有提供完整四态动画接口")
 	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0) == "idle" and SkeletonRig.resolve_state(0.8, 0.0, 0.0) == "run", "骨骼待机/奔跑状态切换异常")
@@ -379,6 +387,11 @@ func _validate_external_species_model_contract() -> void:
 					_expect(int(stats["skill_sockets"]) == 2, "灰狼的 %s 模型缺少嘴部或胸部技能挂点" % profile)
 				else:
 					_expect(int(stats["skinned_meshes"]) == 0, "%s 的 %s 刚性骨架被意外切换为未验收连续蒙皮" % [species_id, profile])
+			elif species_id in VisualCatalog.FLIGHT_RIG_SPECIES:
+				_expect(int(stats["skeletons"]) == 1, "高原金雕的 %s 模型没有唯一飞行 Skeleton3D" % profile)
+				_expect(int(stats["bones"]) >= 8, "高原金雕的 %s 模型缺少身体、头、双翼、尾羽或双爪骨骼" % profile)
+				_expect(int(stats["skinned_meshes"]) == 0, "高原金雕的 %s 刚性羽翼骨架被意外切换为连续蒙皮" % profile)
+				_expect(int(stats["skill_sockets"]) == 3, "高原金雕的 %s 模型缺少喙部或双翼技能挂点" % profile)
 			for node_prefix in expected_motion_nodes[species_id]:
 				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
 				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
@@ -390,6 +403,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
 	_expect(actor_source.contains("_bind_external_skill_sockets(model)"), "外部物种模型没有绑定技能挂点")
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Mouth\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Chest\""), "灰狼扑咬与群体号召特效没有使用骨骼挂点")
+	_expect(actor_source.contains("FlightRig.resolve_state") and actor_source.contains("FlightRig.apply_pose"), "真实角色流程没有按飞行状态驱动金雕骨架")
+	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Beak\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_L\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_R\""), "金雕俯冲和翼流特效没有使用骨骼挂点")
 	_expect(actor_source.contains("if not uses_external_model:"), "外部模型失败时没有保留程序模型降级路径")
 	var game_stub := ExternalModelGame.new()
 	root.add_child(game_stub)
@@ -433,6 +448,28 @@ func _validate_external_species_model_contract() -> void:
 		_expect(is_instance_valid(quadruped_actor.external_skeleton) and quadruped_actor.external_skeleton.get_bone_count() >= 9, "%s 没有接入四足 Skeleton3D" % species_id)
 		_expect(quadruped_actor.leg_pivots.is_empty() and quadruped_actor.ear_pivots.is_empty(), "%s 仍被骨骼与旧节点步态重复驱动" % species_id)
 		quadruped_actor.free()
+	game_stub.quality_preset = "high"
+	var eagle_actor: EcoActor = ActorScript.new()
+	eagle_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game_stub.add_child(eagle_actor)
+	eagle_actor.setup(game_stub, 920, "eagle", true, Vector3.ZERO, 0)
+	_expect(eagle_actor.uses_external_model and eagle_actor.external_model_profile == "hero", "真实金雕角色流程没有加载 Hero GLB")
+	_expect(is_instance_valid(eagle_actor.external_skeleton) and eagle_actor.external_skeleton.get_bone_count() >= 8, "真实金雕角色流程没有绑定飞行 Skeleton3D")
+	_expect(eagle_actor.wing_pivots.is_empty() and eagle_actor.tail_visuals.is_empty(), "金雕仍被飞行骨架与旧节点振翅重复驱动")
+	_expect(eagle_actor.external_skill_sockets.size() == 3, "真实金雕角色流程没有绑定喙部和双翼技能挂点")
+	_expect(eagle_actor.skill_socket_world_position("SkillSocket_Beak", 1.65).distance_to(eagle_actor.global_position) > 0.5, "金雕喙部技能挂点退化到了角色原点")
+	var flap_pose := FlightRig.pose_targets("flap", 1.2, 1.0, 0.0, 0.0, 0.4)
+	var dive_pose := FlightRig.pose_targets("dive", 1.2, 1.0, 0.5, 0.0, 0.4)
+	var flight_hit_pose := FlightRig.pose_targets("hit", 1.2, 1.0, 0.0, 0.5, 0.4)
+	_expect(Vector3(flap_pose["Wing_L"]).distance_to(Vector3(flap_pose["Wing_R"])) > 0.25, "金雕振翅没有镜像驱动左右翼")
+	_expect(absf(Vector3(dive_pose["Wing_L"]).y) > 0.20 and absf(Vector3(dive_pose["Talon_L"]).x) > 0.25, "金雕俯冲没有收翼伸爪")
+	_expect(Vector3(flight_hit_pose["Body"]).length() > 0.10, "金雕受击没有产生身体失衡")
+	eagle_actor.flight_dive_timer = FlightRig.DIVE_DURATION
+	eagle_actor._update_visual_motion(0.016)
+	_expect(eagle_actor.external_animation_state == "dive", "真实天穹贯击没有切换飞行骨架俯冲状态")
+	eagle_actor._play_hit_pulse()
+	eagle_actor._update_visual_motion(0.016)
+	_expect(eagle_actor.external_animation_state == "hit", "真实金雕受击没有以最高优先级切换飞行骨架状态")
 	game_stub.batch_mode = true
 	var fallback_actor: EcoActor = ActorScript.new()
 	fallback_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -442,6 +479,7 @@ func _validate_external_species_model_contract() -> void:
 	hero_actor.free()
 	mobile_actor.free()
 	fallback_actor.free()
+	eagle_actor.free()
 	game_stub.free()
 
 
@@ -467,7 +505,7 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 
 func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 	var node_name := str(node.name)
-	if node_name in SkeletonRig.SKILL_SOCKET_NAMES:
+	if node_name in SkeletonRig.SKILL_SOCKET_NAMES or node_name in FlightRig.SKILL_SOCKET_NAMES:
 		stats["skill_sockets"] = int(stats["skill_sockets"]) + 1
 	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
 		if node_name.begins_with(prefix):
