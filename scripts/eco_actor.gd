@@ -435,7 +435,7 @@ func _build_visual() -> void:
 
 
 func _build_external_species_visual() -> bool:
-	if not VisualCatalog.supports(species_id) or not is_instance_valid(game) or bool(game.get("batch_mode")):
+	if not VisualCatalog.supports(species_id) or not is_instance_valid(game) or game.get("batch_mode") == true:
 		return false
 	var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
 	external_model_profile = VisualCatalog.profile_for(is_player, quality)

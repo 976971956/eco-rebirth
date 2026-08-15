@@ -46,9 +46,23 @@ const REGION_LANDMARK_PROFILES := {
 	"highland": {"title": "岩丘高地", "tint": "#d4c493", "accent": "#e6d29a", "motif": "stone_peak"},
 }
 
+const LEVEL_WORLD_PROFILES := [
+	{"id": "newborn_grove", "title": "新生林地", "rule": "落果丰足 · 林间掩体 · 晴朗白昼", "focus": ["forest"], "tree": 1.14, "rock": 0.72, "cover": 1.14, "props": 1.04, "food": 1.18, "water": 0.72, "side_trails": 2, "event": 1.00, "collapse": 0.24, "phases": ["day"], "weather": ["clear"], "accent": "#9fd99a", "signature": 3},
+	{"id": "split_canopy", "title": "裂冠森林", "rule": "密林争食 · 多重绕路 · 防御反制", "focus": ["forest", "grassland"], "tree": 1.24, "rock": 0.92, "cover": 1.32, "props": 1.10, "food": 1.06, "water": 0.80, "side_trails": 4, "event": 0.94, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#d2be73", "signature": 4},
+	{"id": "river_food_chain", "title": "河谷食链", "rule": "浅滩交汇 · 两栖路线 · 补给竞争", "focus": ["wetland", "forest"], "tree": 0.94, "rock": 0.76, "cover": 1.08, "props": 1.12, "food": 1.20, "water": 1.34, "side_trails": 3, "event": 0.92, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#65d3cf", "signature": 5},
+	{"id": "mountain_passes", "title": "群山暗穴", "rule": "岩径捷道 · 窄口伏击 · 高地反制", "focus": ["highland", "forest"], "tree": 0.84, "rock": 1.28, "cover": 0.96, "props": 1.08, "food": 1.00, "water": 0.62, "side_trails": 5, "event": 0.90, "collapse": 0.22, "phases": ["day"], "weather": ["clear", "fog"], "accent": "#d6bd86", "signature": 6},
+	{"id": "giant_prairie", "title": "巨兽草原", "rule": "开阔迁徙 · 巨兽冲突 · 水源汇聚", "focus": ["grassland"], "tree": 0.58, "rock": 0.74, "cover": 0.82, "props": 1.08, "food": 1.14, "water": 0.82, "side_trails": 4, "event": 0.84, "collapse": 0.21, "phases": ["day"], "weather": ["clear"], "accent": "#e2c269", "signature": 7},
+	{"id": "twilight_wetland", "title": "暮夜湿地", "rule": "暗夜感知 · 深浅水路 · 芦苇潜行", "focus": ["wetland"], "tree": 1.02, "rock": 0.68, "cover": 1.28, "props": 1.16, "food": 1.10, "water": 1.46, "side_trails": 4, "event": 0.82, "collapse": 0.21, "phases": ["night"], "weather": ["clear", "fog"], "accent": "#91aee2", "signature": 8},
+	{"id": "storm_frontier", "title": "风暴边境", "rule": "恶劣天气 · 避风路线 · 适应竞争", "focus": ["highland", "grassland"], "tree": 0.82, "rock": 1.20, "cover": 1.00, "props": 1.02, "food": 0.96, "water": 1.06, "side_trails": 5, "event": 0.78, "collapse": 0.20, "phases": ["day", "night"], "weather": ["rain", "fog", "storm"], "accent": "#83b9dd", "signature": 9},
+	{"id": "many_realms", "title": "万境群岛", "rule": "四境并存 · 长途迁徙 · 跨区抉择", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 1.00, "rock": 1.00, "cover": 1.04, "props": 1.20, "food": 1.04, "water": 1.14, "side_trails": 6, "event": 0.74, "collapse": 0.20, "phases": ["day", "night"], "weather": ["clear", "rain", "fog"], "accent": "#b8d88c", "signature": 10},
+	{"id": "predator_basin", "title": "猎王盆地", "rule": "资源稀缺 · 顶级猎手 · 环线周旋", "focus": ["grassland", "highland"], "tree": 0.72, "rock": 1.08, "cover": 1.12, "props": 0.94, "food": 0.80, "water": 0.92, "side_trails": 5, "event": 0.72, "collapse": 0.19, "phases": ["day", "night"], "weather": ["clear", "fog"], "accent": "#dc8e68", "signature": 11},
+	{"id": "ultimate_biosphere", "title": "终极生物圈", "rule": "全域开放 · 高频生态潮 · 最终收束", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 0.90, "rock": 1.02, "cover": 0.94, "props": 1.12, "food": 0.90, "water": 1.18, "side_trails": 6, "event": 0.66, "collapse": 0.18, "phases": ["day", "night"], "weather": ["clear", "rain", "fog", "storm"], "accent": "#e4c76d", "signature": 12},
+]
+
 var world_size: float = 86.0
 var density_scale: float = 1.0
 var campaign_level: int = 1
+var level_profile_data: Dictionary = {}
 var weather_id: String = "clear"
 var time_phase: String = "day"
 var visual_effects_enabled: bool = true
@@ -91,11 +105,36 @@ var lightning_timer: float = 0.0
 var lightning_flash_timer: float = 0.0
 
 
+static func level_profile(level: int) -> Dictionary:
+	var safe_level := clampi(level, 1, LEVEL_WORLD_PROFILES.size())
+	var profile: Dictionary = LEVEL_WORLD_PROFILES[safe_level - 1].duplicate(true)
+	profile["level"] = safe_level
+	return profile
+
+
+static func level_identity(level: int) -> String:
+	var profile := level_profile(level)
+	return "第%d关 · %s" % [clampi(level, 1, LEVEL_WORLD_PROFILES.size()), str(profile["title"])]
+
+
+static func level_rule_summary(level: int) -> String:
+	return str(level_profile(level).get("rule", "随机生态 · 生存竞争"))
+
+
+func current_level_profile() -> Dictionary:
+	return level_profile_data.duplicate(true)
+
+
+func level_brief() -> String:
+	return "%s：%s" % [level_identity(campaign_level), level_rule_summary(campaign_level)]
+
+
 func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enable_visual_effects: bool = true, forced_weather: String = "", forced_time_phase: String = "", quality_value: String = "medium") -> void:
 	rng.seed = seed_value
 	event_rng.seed = seed_value ^ 0x5EED771
 	world_size = size_value
 	campaign_level = level_value
+	level_profile_data = level_profile(campaign_level)
 	visual_effects_enabled = enable_visual_effects
 	quality_preset = quality_value if quality_value in ["low", "medium", "high"] else "medium"
 	density_scale = clampf(world_size / 86.0, 1.0, 3.0)
@@ -112,6 +151,7 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	_build_biome_transitions()
 	_build_ground_details()
 	_build_paths_and_pond()
+	_build_level_signature()
 	_build_trees()
 	_build_rocks()
 	_build_bushes()
@@ -128,11 +168,10 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 
 
 func _select_world_conditions() -> void:
-	time_phase = "night" if campaign_level >= 6 and rng.randf() < 0.48 else "day"
-	weather_id = "clear"
-	if campaign_level >= 7:
-		var weather_pool: Array[String] = ["clear", "rain", "fog", "storm"]
-		weather_id = weather_pool[rng.randi_range(0, weather_pool.size() - 1)]
+	var phase_pool: Array = level_profile_data.get("phases", ["day"])
+	var weather_pool: Array = level_profile_data.get("weather", ["clear"])
+	time_phase = str(phase_pool[rng.randi_range(0, phase_pool.size() - 1)]) if not phase_pool.is_empty() else "day"
+	weather_id = str(weather_pool[rng.randi_range(0, weather_pool.size() - 1)]) if not weather_pool.is_empty() else "clear"
 
 
 func _build_environment() -> void:
@@ -420,8 +459,9 @@ func _build_paths_and_pond() -> void:
 	_add_winding_trail("NorthSouthMainTrail", north_south_points, 4.1, trail_color, 0.023)
 	_add_winding_trail("EastWestFootwear", east_west_points, 1.55, trail_color.darkened(0.11), 0.026)
 	_add_winding_trail("NorthSouthFootwear", north_south_points, 1.55, trail_color.darkened(0.13), 0.027)
-	for trail_index in range(3):
-		var angle := -0.55 + trail_index * 1.92 + rng.randf_range(-0.18, 0.18)
+	var side_trail_count := int(level_profile_data.get("side_trails", 3))
+	for trail_index in range(side_trail_count):
+		var angle := -0.55 + trail_index * TAU / maxf(float(side_trail_count), 1.0) + rng.randf_range(-0.18, 0.18)
 		var previous := Vector2(rng.randf_range(-2.0, 2.0), rng.randf_range(-2.0, 2.0))
 		for segment_index in range(6):
 			var distance := world_size * 0.068 + segment_index * world_size * 0.010
@@ -434,9 +474,10 @@ func _build_paths_and_pond() -> void:
 		Vector2(-16.0, -12.0), Vector2(-9.0, -9.4), Vector2(-2.0, -10.2),
 		Vector2(5.0, -7.6), Vector2(12.0, -8.5), Vector2(18.0, -5.2)
 	]
+	var water_scale := float(level_profile_data.get("water", 1.0))
 	for i in range(stream_points.size() - 1):
-		_add_ground_strip("StreamBank", stream_points[i], stream_points[i + 1], 7.6, Color("#657b57"), 0.030)
-		var stream := _add_ground_strip("ShallowStream", stream_points[i], stream_points[i + 1], 5.4, Color(0.20, 0.56, 0.60, 0.90), 0.044)
+		_add_ground_strip("StreamBank", stream_points[i], stream_points[i + 1], 7.6 * water_scale, Color("#657b57"), 0.030)
+		var stream := _add_ground_strip("ShallowStream", stream_points[i], stream_points[i + 1], 5.4 * water_scale, Color(0.20, 0.56, 0.60, 0.90), 0.044)
 		stream.material_override = Factory.water_material(Color("#62b8ac"), Color("#236b70"), 0.82)
 	for stone_index in range(9):
 		var t := float(stone_index) / 8.0
@@ -446,14 +487,50 @@ func _build_paths_and_pond() -> void:
 		decoration_root.add_child(stone)
 
 	var basin_center := Vector3(-world_size * 0.25, 0.052, world_size * 0.25)
-	var basin := Factory.disc("WetlandBasin", Color(0.17, 0.55, 0.58, 0.74), world_size * 0.145, 0.026, basin_center, 18)
+	var basin := Factory.disc("WetlandBasin", Color(0.17, 0.55, 0.58, 0.74), world_size * 0.145 * water_scale, 0.026, basin_center, 18)
 	basin.scale.z = 0.72
 	basin.material_override = Factory.water_material(Color("#62b9a8"), Color("#225f67"), 0.78)
 	decoration_root.add_child(basin)
-	var deep_center := Factory.disc("DeepWaterBand", Color(0.11, 0.42, 0.49, 0.82), world_size * 0.075, 0.028, basin_center + Vector3.UP * 0.004, 16)
+	var deep_center := Factory.disc("DeepWaterBand", Color(0.11, 0.42, 0.49, 0.82), world_size * 0.075 * water_scale, 0.028, basin_center + Vector3.UP * 0.004, 16)
 	deep_center.scale.z = 0.68
 	deep_center.material_override = Factory.water_material(Color("#438f8e"), Color("#174d5d"), 0.86)
 	decoration_root.add_child(deep_center)
+
+
+func _build_level_signature() -> void:
+	var signature := Node3D.new()
+	signature.name = "LevelSignature_%02d_%s" % [campaign_level, str(level_profile_data.get("id", "world"))]
+	signature.add_to_group("level_signature")
+	decoration_root.add_child(signature)
+	var accent := Color.from_string(str(level_profile_data.get("accent", "#d8c879")), Color("#d8c879"))
+	var halo := Factory.disc("LevelHalo", Color(accent, 0.34), 2.35, 0.020, Vector3.ZERO, 20)
+	halo.material_override = Factory.terrain_material(accent.darkened(0.50), accent.darkened(0.24), 7.0)
+	signature.add_child(halo)
+	var segment_count := int(level_profile_data.get("signature", 6))
+	for segment_index in range(segment_count):
+		var angle := TAU * float(segment_index) / float(segment_count)
+		var distance := 1.55 + sin(float(segment_index) * 2.17) * 0.14
+		var marker_position := Vector3(cos(angle) * distance, 0.38 + float(segment_index % 3) * 0.12, sin(angle) * distance)
+		var marker := Factory.cone("IdentityRay", accent.lightened(float(segment_index % 2) * 0.08), 0.13, 0.72 + float(segment_index % 3) * 0.14, marker_position, 6)
+		marker.rotation.z = cos(angle) * 0.34
+		marker.rotation.x = sin(angle) * 0.34
+		signature.add_child(marker)
+	signature.add_child(Factory.tapered_cylinder("IdentitySpire", accent.darkened(0.32), 0.24, 0.09, 2.25, Vector3(0.0, 1.12, 0.0), 8))
+	var core := Factory.sphere("IdentityCore", accent, Vector3(0.48, 0.48, 0.48), Vector3(0.0, 2.12, 0.0), 9, 6)
+	signature.add_child(core)
+	var label := Label3D.new()
+	label.name = "LevelIdentityLabel"
+	label.text = "%s\n%s" % [level_identity(campaign_level), level_rule_summary(campaign_level)]
+	label.font = load("res://assets/fonts/NotoSansSC-VF.ttf") as Font
+	label.font_size = 38
+	label.outline_size = 9
+	label.modulate = accent.lightened(0.12)
+	label.outline_modulate = Color(0.02, 0.055, 0.045, 0.96)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.pixel_size = 0.011
+	label.position = Vector3(0.0, 3.05, 0.0)
+	signature.add_child(label)
 
 
 func _add_winding_trail(node_name: String, points: Array[Vector2], width: float, color: Color, height: float) -> void:
@@ -487,7 +564,7 @@ func _add_ground_strip(node_name: String, start: Vector2, finish: Vector2, width
 
 func _build_trees() -> void:
 	var base_tree_count: int = {"low": 28, "medium": 38, "high": 46}.get(quality_preset, 38)
-	var tree_count := int(round(base_tree_count * density_scale))
+	var tree_count := int(round(base_tree_count * density_scale * float(level_profile_data.get("tree", 1.0))))
 	for i in range(tree_count):
 		var pos := _random_decor_position(7.0, 0.48)
 		var region_id := region_id_at(pos)
@@ -601,7 +678,7 @@ func _add_branch_segment(parent: Node3D, node_name: String, color: Color, start:
 
 
 func _build_rocks() -> void:
-	var rock_count := int(round(14 * density_scale))
+	var rock_count := int(round(14 * density_scale * float(level_profile_data.get("rock", 1.0))))
 	for i in range(rock_count):
 		var scale_value := Vector3(rng.randf_range(1.0, 2.2), rng.randf_range(0.7, 1.45), rng.randf_range(0.9, 1.8))
 		var collision_radius := maxf(scale_value.x, scale_value.z) * 0.50
@@ -640,7 +717,7 @@ func _build_rocks() -> void:
 
 
 func _build_bushes() -> void:
-	var bush_count := int(round(26 * density_scale))
+	var bush_count := int(round(26 * density_scale * float(level_profile_data.get("cover", 1.0))))
 	for i in range(bush_count):
 		var pos := _random_decor_position(3.0)
 		var bush := Node3D.new()
@@ -668,7 +745,7 @@ func _build_bushes() -> void:
 
 func _build_biome_props() -> void:
 	var base_prop_count: int = {"low": 28, "medium": 48, "high": 68}.get(quality_preset, 48)
-	var prop_count := int(round(base_prop_count * sqrt(density_scale)))
+	var prop_count := int(round(base_prop_count * sqrt(density_scale) * float(level_profile_data.get("props", 1.0))))
 	for prop_index in range(prop_count):
 		var pos := _random_decor_position(2.2)
 		var prop := Node3D.new()
@@ -751,10 +828,10 @@ func _decorate_highland_prop(prop: Node3D) -> void:
 
 
 func _build_food() -> void:
-	var food_count := int(round(18 * clampf(world_size / 86.0, 1.0, 4.0)))
+	var food_count := int(round(18 * clampf(world_size / 86.0, 1.0, 4.0) * float(level_profile_data.get("food", 1.0))))
 	for i in range(food_count):
 		var patch := FoodPatchScript.new()
-		patch.position = _random_valid_position(3.0)
+		patch.position = _random_level_food_position()
 		var food_pool: Array[String]
 		match region_id_at(patch.position):
 			"forest": food_pool = ["berries", "mushroom", "fruit", "berries"]
@@ -764,6 +841,18 @@ func _build_food() -> void:
 		patch.setup(food_pool[rng.randi_range(0, food_pool.size() - 1)], rng)
 		add_child(patch)
 		food_patches.append(patch)
+
+
+func _random_level_food_position() -> Vector3:
+	var focus_regions: Array = level_profile_data.get("focus", REGION_ORDER)
+	if focus_regions.is_empty() or rng.randf() > 0.58:
+		return _random_valid_position(3.0)
+	var desired_region := str(focus_regions[rng.randi_range(0, focus_regions.size() - 1)])
+	for attempt in range(40):
+		var candidate := _random_valid_position(3.0)
+		if region_id_at(candidate) == desired_region:
+			return candidate
+	return _random_valid_position(3.0)
 
 
 func _build_visible_border() -> void:
@@ -841,7 +930,7 @@ func _process(delta: float) -> void:
 	_process_ecology_events(delta)
 	_process_ecology_traces(delta)
 	if collapse_active:
-		var min_radius := world_size * COLLAPSE_MIN_RADIUS_RATIO
+		var min_radius := world_size * float(level_profile_data.get("collapse", COLLAPSE_MIN_RADIUS_RATIO))
 		if collapse_radius > min_radius:
 			var shrink_rate := (world_size * 0.47 - min_radius) / COLLAPSE_SHRINK_SECONDS
 			collapse_radius = maxf(collapse_radius - shrink_rate * delta, min_radius)
@@ -856,11 +945,13 @@ static func ecology_event_ids_for_level(level: int) -> Array[String]:
 
 
 static func ecology_event_first_delay(level: int, random_unit: float) -> float:
-	return ECOLOGY_EVENT_FIRST_BASE + float(clampi(level, 1, 10)) * 1.5 + clampf(random_unit, 0.0, 1.0) * 12.0
+	var profile := level_profile(level)
+	return (ECOLOGY_EVENT_FIRST_BASE + float(clampi(level, 1, 10)) * 1.5 + clampf(random_unit, 0.0, 1.0) * 12.0) * float(profile.get("event", 1.0))
 
 
 static func ecology_event_repeat_delay(level: int, random_unit: float) -> float:
-	return ECOLOGY_EVENT_REPEAT_BASE - float(clampi(level, 1, 10) - 1) * 1.5 + clampf(random_unit, 0.0, 1.0) * 18.0
+	var profile := level_profile(level)
+	return (ECOLOGY_EVENT_REPEAT_BASE - float(clampi(level, 1, 10) - 1) * 1.5 + clampf(random_unit, 0.0, 1.0) * 18.0) * float(profile.get("event", 1.0))
 
 
 static func compass_direction(origin: Vector3, target: Vector3) -> String:
@@ -1365,7 +1456,7 @@ func water_depth_at(pos: Vector3) -> float:
 	if region_id_at(pos) != "wetland":
 		return 0.0
 	var basin_center := Vector2(-world_size * 0.25, world_size * 0.25)
-	var basin_radius := world_size * 0.145
+	var basin_radius := world_size * 0.145 * float(level_profile_data.get("water", 1.0))
 	var normalized := Vector2(
 		(pos.x - basin_center.x) / maxf(basin_radius, 0.1),
 		(pos.z - basin_center.y) / maxf(basin_radius * 0.72, 0.1)

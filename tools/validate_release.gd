@@ -45,6 +45,7 @@ func _run_validation() -> void:
 	_validate_performance_baseline_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
+	_validate_level_identity_contract()
 	_validate_world_navigation_contract()
 	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
@@ -59,7 +60,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.33 发布校验通过：三端工具链诊断、独立批测报告与性能基线正常")
+		print("[release] V1.34 发布校验通过：十关世界档案、地图密度规则与开局身份提示正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -231,8 +232,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.33.0\"") and presets.contains("application/short_version=\"1.33.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=430") and presets.contains("application/version=\"430\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.34.0\"") and presets.contains("application/short_version=\"1.34.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=440") and presets.contains("application/version=\"440\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.34.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -331,8 +333,44 @@ func _validate_visual_kit_contract() -> void:
 		failures.append("有机 loft 网格无法生成")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("tail_visuals") and actor_source.contains("body_pitch_scale"), "V3 动物步态缺少身体起伏或尾部摆动")
+	_expect(actor_source.contains("game.get(\"batch_mode\") == true"), "缺少 batch_mode 字段的预览/工具场景仍会对 null 调用 bool 构造")
 	faceted.free()
 	loft.free()
+
+
+func _validate_level_identity_contract() -> void:
+	_expect(WorldScript.LEVEL_WORLD_PROFILES.size() == 10, "十关世界档案数量不完整")
+	var ids := {}
+	var titles := {}
+	var signatures := {}
+	for level in range(1, 11):
+		var profile := WorldScript.level_profile(level)
+		var profile_id := str(profile.get("id", ""))
+		var title := str(profile.get("title", ""))
+		ids[profile_id] = true
+		titles[title] = true
+		signatures[int(profile.get("signature", 0))] = true
+		_expect(int(profile.get("level", 0)) == level, "第%d关世界档案缺少稳定关卡编号" % level)
+		_expect(not profile_id.is_empty() and not title.is_empty() and not str(profile.get("rule", "")).is_empty(), "第%d关缺少标题或玩法规则" % level)
+		_expect(float(profile.get("tree", 0.0)) >= 0.50 and float(profile.get("tree", 0.0)) <= 1.35, "第%d关树木密度越界" % level)
+		_expect(float(profile.get("rock", 0.0)) >= 0.60 and float(profile.get("rock", 0.0)) <= 1.35, "第%d关岩石密度越界" % level)
+		_expect(float(profile.get("cover", 0.0)) >= 0.75 and float(profile.get("cover", 0.0)) <= 1.35, "第%d关掩体密度越界" % level)
+		_expect(float(profile.get("food", 0.0)) >= 0.75 and float(profile.get("food", 0.0)) <= 1.25, "第%d关食物密度越界" % level)
+		_expect(float(profile.get("water", 0.0)) >= 0.60 and float(profile.get("water", 0.0)) <= 1.50, "第%d关水域尺度越界" % level)
+		_expect(int(profile.get("side_trails", 0)) >= 2 and int(profile.get("side_trails", 0)) <= 6, "第%d关支路数量越界" % level)
+		_expect(float(profile.get("collapse", 0.0)) >= 0.18 and float(profile.get("collapse", 0.0)) <= 0.24, "第%d关终局收束半径越界" % level)
+		for phase in profile.get("phases", []):
+			_expect(str(phase) in ["day", "night"], "第%d关出现无效昼夜档案" % level)
+		for weather in profile.get("weather", []):
+			_expect(str(weather) in ["clear", "rain", "fog", "storm"], "第%d关出现无效天气档案" % level)
+	_expect(ids.size() == 10 and titles.size() == 10 and signatures.size() == 10, "十关缺少独立 ID、标题或中央图腾剪影")
+	_expect(WorldScript.level_identity(1) == "第1关 · 新生林地" and WorldScript.level_identity(10) == "第10关 · 终极生物圈", "首尾关卡身份文本错误")
+	_expect(str(WorldScript.level_profile(6)["phases"][0]) == "night", "第六关没有固定暮夜身份")
+	_expect(not WorldScript.level_profile(7)["weather"].has("clear"), "第七关风暴边境仍会生成无天气关局")
+	_expect(float(WorldScript.level_profile(9)["food"]) < float(WorldScript.level_profile(1)["food"]), "第九关资源稀缺没有区别于教学关")
+	_expect(WorldScript.ecology_event_repeat_delay(10, 0.0) < WorldScript.ecology_event_repeat_delay(5, 0.0), "终极生物圈的生态事件没有进入高频节奏")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("本关生态：") and ui_source.contains("level_profile"), "随机物种攻略没有显示当前关卡规则")
 
 
 func _validate_world_navigation_contract() -> void:
@@ -351,6 +389,7 @@ func _validate_world_navigation_contract() -> void:
 		root.add_child(world)
 		world.setup(int(level_case["seed"]), float(level_case["size"]), int(level_case["level"]), false, "clear", "day", "low")
 		_expect(world.region_landmark_positions.size() == 4, "第%d关没有生成四个生态区地标" % int(level_case["level"]))
+		_expect(world.find_children("LevelSignature_*", "Node3D", true, false).size() == 1, "第%d关没有生成独立中央生态图腾" % int(level_case["level"]))
 		_expect(world.migration_routes.size() == 2, "第%d关没有生成横纵迁徙主通道" % int(level_case["level"]))
 		for region_id in WorldScript.REGION_ORDER:
 			var marker_position: Vector3 = world.region_landmark_positions.get(region_id, Vector3.ZERO)

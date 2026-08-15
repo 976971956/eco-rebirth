@@ -3,6 +3,7 @@ extends SceneTree
 const UIScript = preload("res://scripts/game_ui.gd")
 const ActorScript = preload("res://scripts/eco_actor.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
+const WorldScript = preload("res://scripts/eco_world.gd")
 
 
 class PreviewGame:
@@ -245,6 +246,13 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var guide_result := root.get_texture().get_image().save_png("res://docs/images/v28-species-habit-guide.png")
+	game.current_level = 10
+	ui.threat_label.text = "第10关 · 世界威胁 0"
+	ui.update_hud(preview_actor, 73, 100, "古木林地 · 夜晚 · 风暴", "生态热点 · 下一次信号 12s", "迁徙 18 · 猎手 5 · 风险：高危", "生态踪迹 · 多条线索交汇")
+	ui.show_species_intro("rabbit", WorldScript.level_profile(10))
+	for _frame in range(5):
+		await process_frame
+	var level_identity_result := root.get_texture().get_image().save_png("res://docs/images/v41-ten-level-identity.png")
 	ui.intro_panel.hide()
 	preview_actor.health = 31.0
 	preview_actor.stamina = 34.0
@@ -257,7 +265,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and instinct_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and instinct_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

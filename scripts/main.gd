@@ -10,6 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 3
+const RELEASE_VERSION := "1.34.0"
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
@@ -380,17 +381,17 @@ func _start_new_world(free_mode: bool = false) -> void:
 		camera_rig.setup(player)
 		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode)
 		ui.update_leaderboard(_build_level_leaderboard())
-		ui.show_species_intro(player.species_id)
-		ui.add_event(("自由模式 · 第%d关 · %s" % [current_level, Catalog.display_name(player.species_id)]) if run_uses_free_mode else ("第%d关 · 新的生态已经苏醒" % current_level), "#a8e3ac")
+		ui.show_species_intro(player.species_id, world.current_level_profile())
+		ui.add_event(("自由模式 · %s · %s" % [WorldScript.level_identity(current_level), Catalog.display_name(player.species_id)]) if run_uses_free_mode else ("%s · 新的生态已经苏醒" % WorldScript.level_identity(current_level)), "#a8e3ac")
 		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
-		ui.add_battle_report("第%d关生态战场已开启，%d个体进入竞争" % [current_level, roster_size], "战场", "#a8cde3")
+		ui.add_battle_report("%s已开启 · %s · %d个体进入竞争" % [WorldScript.level_identity(current_level), WorldScript.level_rule_summary(current_level), roster_size], "战场", "#a8cde3")
 		var unlocked_names: Array[String] = []
 		for species_id in Catalog.ORDER:
 			if Catalog.unlock_level(species_id) == current_level and current_level > 1:
 				unlocked_names.append(Catalog.display_name(species_id))
 		if not unlocked_names.is_empty():
 			ui.add_event("本关新物种：%s" % "、".join(unlocked_names), "#f0cf78")
-		ui.show_hint("观察冲突，利用生态活到最后")
+		ui.show_hint("%s：%s" % [WorldScript.level_identity(current_level), WorldScript.level_rule_summary(current_level)])
 		if audio != null:
 			audio.set_context("game")
 			audio.play_sfx("world")
@@ -853,7 +854,7 @@ func _finish_benchmark(outcome: String) -> void:
 	var sampled_frames := maxi(benchmark_frames, 1)
 	var report := {
 		"schema_version": 1,
-		"game_version": "1.33.0",
+		"game_version": RELEASE_VERSION,
 		"level": benchmark_level,
 		"quality": benchmark_quality,
 		"species": benchmark_species,

@@ -967,12 +967,16 @@ func set_player(player_actor: EcoActor) -> void:
 	skill_button.add_theme_stylebox_override("pressed", _panel_style(Color(skill_color.lightened(0.06), 0.98), 42, Color.WHITE, 4))
 
 
-func show_species_intro(species_id: String) -> void:
+func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> void:
 	_cancel_intro_tween()
 	var data := Catalog.get_data(species_id)
 	var touch_layout := _uses_touch_layout()
-	intro_title.text = "%s · %s" % [data["name"], data["subtitle"]]
-	intro_controls.text = ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
+	var level_prefix := ""
+	if not level_profile.is_empty():
+		level_prefix = "第%d关 · %s" % [int(level_profile.get("level", 1)), str(level_profile.get("title", "随机生态"))]
+	intro_title.text = "%s%s · %s" % [(level_prefix + "　|　") if level_prefix != "" else "", data["name"], data["subtitle"]]
+	var level_rule := ("本关生态：%s\n" % str(level_profile.get("rule", ""))) if not level_profile.is_empty() else ""
+	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
 		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
