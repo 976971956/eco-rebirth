@@ -3,7 +3,7 @@ extends RefCounted
 
 const RIG_NAME := "SpeciesSkeleton3D"
 const RIGGED_SPECIES := ["rabbit", "wolf", "deer", "bear"]
-const WEIGHTED_SKIN_SPECIES := ["rabbit", "wolf"]
+const WEIGHTED_SKIN_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const SKILL_SOCKET_NAMES := ["SkillSocket_Mouth", "SkillSocket_Chest"]
 const ANIMATION_STATES := ["idle", "run", "attack", "hit"]
 const RABBIT_ANIMATION_STATES := ["idle", "run", "forage", "attack", "skill", "hit", "dead"]
@@ -81,8 +81,9 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 			_move_pivot_to_attachment(pivot, model, skeleton, attachment, bone_name)
 
 	if species_id in WEIGHTED_SKIN_SPECIES:
-		_add_weighted_skill_sockets(attachments, species_id)
-		var organic_name := "RabbitOrganicBody" if species_id == "rabbit" else "WolfOrganicBody"
+		if species_id in ["rabbit", "wolf"]:
+			_add_weighted_skill_sockets(attachments, species_id)
+		var organic_name := _organic_body_name(species_id)
 		var organic_body := _find_node_named(model, organic_name) as MeshInstance3D
 		if organic_body != null:
 			_apply_weighted_skin(organic_body, skeleton, species_id)
@@ -360,15 +361,7 @@ static func _add_attachment(skeleton: Skeleton3D, attachment_name: String, bone_
 
 
 static func _add_weighted_body_chain(skeleton: Skeleton3D, attachments: Dictionary, species_id: String) -> void:
-	var chain_global_rests := {
-		"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.10, -0.48)),
-		"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.28, -1.02)),
-		"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.36, -1.50)),
-	} if species_id == "rabbit" else {
-		"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.42, -0.45)),
-		"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.67, -1.12)),
-		"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.69, -1.78)),
-	}
+	var chain_global_rests := _body_chain_rests(species_id)
 	var parent_name := "Spine"
 	for bone_name in ["Chest", "Neck", "Head"]:
 		_add_bone(skeleton, bone_name, parent_name, chain_global_rests[bone_name])
@@ -388,13 +381,13 @@ static func _distribute_weighted_spine_children(
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if node_name == ("RabbitOrganicBody" if species_id == "rabbit" else "WolfOrganicBody"):
+		if node_name == _organic_body_name(species_id):
 			_move_node_to_model(visual_node, model)
 			continue
 		var target_bone := "Spine"
-		if node_name in ["ShoulderMass", "ChestFur"]:
+		if node_name in ["ShoulderMass", "ShoulderHump", "ChestFur", "ChestLight"]:
 			target_bone = "Chest"
-		elif node_name in ["CheekRuff", "Muzzle", "Nose", "EyeSocket", "Iris", "Pupil", "EyeCatchlight", "Whisker"]:
+		elif node_name in ["CheekRuff", "Muzzle", "Nose", "EyeSocket", "Iris", "Pupil", "EyeCatchlight", "Whisker"] or node_name.begins_with("Antler_"):
 			target_bone = "Head"
 		_move_node_to_attachment(visual_node, model, skeleton, attachments[target_bone], target_bone)
 	pivot.free()
@@ -513,6 +506,10 @@ static func _weighted_vertex_weights(vertex: Vector3, species_id: String) -> Pac
 			var rabbit_head_blend := smoothstep(-1.10, -1.48, vertex.z)
 			return PackedFloat32Array([0.0, 0.0, 1.0 - rabbit_head_blend, rabbit_head_blend])
 		return PackedFloat32Array([0.0, 0.0, 0.0, 1.0])
+	if species_id == "deer":
+		return _four_chain_weights(vertex.z, 0.34, -0.70, -1.44, -2.16)
+	if species_id == "bear":
+		return _four_chain_weights(vertex.z, 0.34, -0.66, -1.36, -2.14)
 	var result := PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
 	if vertex.z > 0.30:
 		return result
@@ -526,6 +523,58 @@ static func _weighted_vertex_weights(vertex: Vector3, species_id: String) -> Pac
 		var head_blend := smoothstep(-1.32, -2.05, vertex.z)
 		return PackedFloat32Array([0.0, 0.0, 1.0 - head_blend, head_blend])
 	return PackedFloat32Array([0.0, 0.0, 0.0, 1.0])
+
+
+static func _four_chain_weights(z_value: float, chest_start: float, neck_start: float, head_start: float, head_end: float) -> PackedFloat32Array:
+	if z_value > chest_start:
+		return PackedFloat32Array([1.0, 0.0, 0.0, 0.0])
+	if z_value > neck_start:
+		var chest_blend := smoothstep(chest_start, neck_start, z_value)
+		return PackedFloat32Array([1.0 - chest_blend, chest_blend, 0.0, 0.0])
+	if z_value > head_start:
+		var neck_blend := smoothstep(neck_start, head_start, z_value)
+		return PackedFloat32Array([0.0, 1.0 - neck_blend, neck_blend, 0.0])
+	if z_value > head_end:
+		var head_blend := smoothstep(head_start, head_end, z_value)
+		return PackedFloat32Array([0.0, 0.0, 1.0 - head_blend, head_blend])
+	return PackedFloat32Array([0.0, 0.0, 0.0, 1.0])
+
+
+static func _body_chain_rests(species_id: String) -> Dictionary:
+	match species_id:
+		"rabbit":
+			return {
+				"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.10, -0.48)),
+				"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.28, -1.02)),
+				"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.36, -1.50)),
+			}
+		"deer":
+			return {
+				"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.68, -0.52)),
+				"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 2.12, -1.08)),
+				"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 2.70, -1.74)),
+			}
+		"bear":
+			return {
+				"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.76, -0.54)),
+				"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 2.03, -1.18)),
+				"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 2.04, -1.82)),
+			}
+		_:
+			return {
+				"Chest": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.42, -0.45)),
+				"Neck": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.67, -1.12)),
+				"Head": Transform3D(Basis.IDENTITY, Vector3(0.0, 1.69, -1.78)),
+			}
+
+
+static func _organic_body_name(species_id: String) -> String:
+	return {
+		"rabbit": "RabbitOrganicBody",
+		"wolf": "WolfOrganicBody",
+		"deer": "DeerOrganicBody",
+		"bear": "BearOrganicBody",
+	}.get(species_id, "")
 
 
 static func _find_node_named(root: Node, node_name: String) -> Node:

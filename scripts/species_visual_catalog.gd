@@ -12,6 +12,14 @@ const EXTERNAL_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile
 const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const FLIGHT_RIG_SPECIES := ["eagle"]
 const LONG_BODY_RIG_SPECIES := ["crocodile"]
+const VISUAL_SCALE_CONTRACT := {
+	"rabbit": 1.02,
+	"wolf": 1.10,
+	"deer": 1.08,
+	"bear": 1.22,
+	"eagle": 1.04,
+	"crocodile": 1.18,
+}
 
 
 static func supports(species_id: String) -> bool:
@@ -39,8 +47,10 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 	var instance := packed.instantiate() as Node3D
 	if instance != null:
 		instance.name = "ExternalSpeciesModel"
+		instance.scale = Vector3.ONE * float(VISUAL_SCALE_CONTRACT.get(species_id, 1.0))
 		instance.set_meta("species_id", species_id)
 		instance.set_meta("visual_profile", profile)
+		instance.set_meta("visual_scale_contract", float(VISUAL_SCALE_CONTRACT.get(species_id, 1.0)))
 		if species_id in SKELETAL_SPECIES:
 			_apply_shared_fur_materials(instance)
 			SkeletonRig.upgrade(instance, species_id)

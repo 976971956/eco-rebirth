@@ -57,7 +57,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.28 发布校验通过：雪兔连续蒙皮、觅食/折跃动作与技能挂点正常")
+		print("[release] V1.29 发布校验通过：林鹿/棕熊连续蒙皮与六种代表动物比例契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -229,8 +229,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.28.0\"") and presets.contains("application/short_version=\"1.28.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=380") and presets.contains("application/version=\"380\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.29.0\"") and presets.contains("application/short_version=\"1.29.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=390") and presets.contains("application/version=\"390\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -347,7 +347,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf", "deer", "bear"], "第三阶段四足骨骼物种清单异常")
 	_expect(VisualCatalog.FLIGHT_RIG_SPECIES == ["eagle"], "飞行骨架物种清单异常")
 	_expect(VisualCatalog.LONG_BODY_RIG_SPECIES == ["crocodile"], "长躯干骨架物种清单异常")
-	_expect(SkeletonRig.WEIGHTED_SKIN_SPECIES == ["rabbit", "wolf"], "连续权重蒙皮物种清单异常")
+	_expect(SkeletonRig.WEIGHTED_SKIN_SPECIES == ["rabbit", "wolf", "deer", "bear"], "四足连续权重蒙皮物种清单异常")
 	_expect(SkeletonRig.SKILL_SOCKET_NAMES == ["SkillSocket_Mouth", "SkillSocket_Chest"], "雪兔/灰狼技能挂点契约异常")
 	_expect(SkeletonRig.RABBIT_ANIMATION_STATES == ["idle", "run", "forage", "attack", "skill", "hit", "dead"], "雪兔骨架缺少觅食、折跃或倒地状态")
 	_expect(FlightRig.RIGGED_SPECIES == ["eagle"], "金雕飞行骨架控制器物种清单异常")
@@ -369,6 +369,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0, 0.8, 0.0, false, "rabbit") == "forage", "雪兔进食没有切换觅食状态")
 	_expect(SkeletonRig.resolve_state(0.8, 0.0, 0.0, 0.0, 0.2, false, "rabbit") == "skill", "雪兔月影折跃没有切换技能状态")
 	_expect(SkeletonRig.resolve_state(0.8, 0.1, 0.1, 0.8, 0.2, true, "rabbit") == "dead", "雪兔倒地状态没有最高优先级")
+	_expect(VisualCatalog.VISUAL_SCALE_CONTRACT.size() == VisualCatalog.EXTERNAL_SPECIES.size(), "六种代表动物没有完整视觉比例契约")
+	_expect(is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["rabbit"]), 1.02) and is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["bear"]), 1.22), "小型雪兔与大型棕熊比例契约异常")
 	for species_id in VisualCatalog.EXTERNAL_SPECIES:
 		var profile_vertices := {}
 		for profile in ["hero", "mobile"]:
@@ -378,6 +380,7 @@ func _validate_external_species_model_contract() -> void:
 			if model == null:
 				failures.append("%s 的 %s GLB 模型无法实例化" % [species_id, profile])
 				continue
+			_expect(is_equal_approx(model.scale.x, float(VisualCatalog.VISUAL_SCALE_CONTRACT[species_id])) and model.scale.is_equal_approx(Vector3.ONE * model.scale.x), "%s 的 %s 模型没有遵循统一根缩放契约" % [species_id, profile])
 			var stats := _external_model_stats(model)
 			profile_vertices[profile] = int(stats["vertices"])
 			_expect(int(stats["meshes"]) >= 6, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
@@ -391,15 +394,14 @@ func _validate_external_species_model_contract() -> void:
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 4, "%s 的 %s 缺少毛皮、眼部、鼻部和足部 PBR 材质槽" % [species_id, profile])
 				_expect(int(stats["textured_coat_surfaces"]) > 0, "%s 的 %s 毛皮材质没有绑定 Albedo/Normal/Roughness 贴图" % [species_id, profile])
 				if species_id in SkeletonRig.WEIGHTED_SKIN_SPECIES:
-					var species_label := "雪兔" if species_id == "rabbit" else "灰狼"
+					var species_label: String = {"rabbit": "雪兔", "wolf": "灰狼", "deer": "林鹿", "bear": "棕熊"}.get(species_id, species_id)
 					_expect(int(stats["bones"]) >= 12, "%s 的 %s 模型缺少 Chest/Neck/Head 连续躯干骨链" % [species_label, profile])
 					_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
 					_expect(int(stats["weighted_vertices"]) > 100, "%s 的 %s 连续蒙皮顶点不足" % [species_label, profile])
 					_expect(int(stats["blended_vertices"]) > 20, "%s 的 %s 躯干没有跨骨骼平滑权重" % [species_label, profile])
 					_expect(int(stats["invalid_weight_vertices"]) == 0, "%s 的 %s 蒙皮权重没有归一化" % [species_label, profile])
-					_expect(int(stats["skill_sockets"]) == 2, "%s 的 %s 模型缺少嘴部或胸部技能挂点" % [species_label, profile])
-				else:
-					_expect(int(stats["skinned_meshes"]) == 0, "%s 的 %s 刚性骨架被意外切换为未验收连续蒙皮" % [species_id, profile])
+					var expected_sockets := 2 if species_id in ["rabbit", "wolf"] else 0
+					_expect(int(stats["skill_sockets"]) == expected_sockets, "%s 的 %s 技能挂点数量异常" % [species_label, profile])
 			elif species_id in VisualCatalog.FLIGHT_RIG_SPECIES:
 				_expect(int(stats["skeletons"]) == 1, "高原金雕的 %s 模型没有唯一飞行 Skeleton3D" % profile)
 				_expect(int(stats["bones"]) >= 8, "高原金雕的 %s 模型缺少身体、头、双翼、尾羽或双爪骨骼" % profile)
@@ -454,6 +456,7 @@ func _validate_external_species_model_contract() -> void:
 	var deer_run := SkeletonRig.pose_targets("run", 1.2, 0.6, 1.0, 0.0, 0.0, 0.2, "deer")
 	var bear_run := SkeletonRig.pose_targets("run", 1.2, 0.6, 1.0, 0.0, 0.0, 0.2, "bear")
 	_expect(not Vector3(deer_run["Leg_LH"]).is_equal_approx(Vector3(bear_run["Leg_LH"])), "林鹿小跑与棕熊重步仍错误共用同一动作参数")
+	_expect(Vector3(deer_run["Neck"]).length() > 0.01 and Vector3(bear_run["Chest"]).length() > 0.005, "林鹿或棕熊连续体轴没有响应奔跑姿势")
 	hero_actor._play_attack_pulse()
 	hero_actor._update_visual_motion(0.016)
 	_expect(hero_actor.external_animation_state == "attack", "真实普通攻击事件没有切换骨骼攻击状态")
@@ -484,7 +487,7 @@ func _validate_external_species_model_contract() -> void:
 		quadruped_actor.process_mode = Node.PROCESS_MODE_DISABLED
 		game_stub.add_child(quadruped_actor)
 		quadruped_actor.setup(game_stub, 910 + VisualCatalog.SKELETAL_SPECIES.find(species_id), species_id, false, Vector3.ZERO, 0)
-		_expect(is_instance_valid(quadruped_actor.external_skeleton) and quadruped_actor.external_skeleton.get_bone_count() >= 9, "%s 没有接入四足 Skeleton3D" % species_id)
+		_expect(is_instance_valid(quadruped_actor.external_skeleton) and quadruped_actor.external_skeleton.get_bone_count() >= 12, "%s 没有接入连续体轴 Skeleton3D" % species_id)
 		_expect(quadruped_actor.leg_pivots.is_empty() and quadruped_actor.ear_pivots.is_empty(), "%s 仍被骨骼与旧节点步态重复驱动" % species_id)
 		quadruped_actor.free()
 	game_stub.quality_preset = "high"
