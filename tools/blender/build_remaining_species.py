@@ -151,6 +151,71 @@ def cone_between(name: str, start: tuple[float, float, float], end: tuple[float,
     return obj
 
 
+def ellipsoid_between(
+    name: str,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    radius: float,
+    material: bpy.types.Material,
+    hero: bool,
+    flatten: float = 1.0,
+) -> bpy.types.Object:
+    """Create a smooth tapered-looking limb segment aligned between two Godot-space points."""
+    start_b = Vector(g2b(start))
+    end_b = Vector(g2b(end))
+    delta = end_b - start_b
+    bpy.ops.mesh.primitive_uv_sphere_add(
+        segments=16 if hero else 10,
+        ring_count=10 if hero else 6,
+        location=(start_b + end_b) * 0.5,
+    )
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = delta.to_track_quat("Z", "Y")
+    obj.scale = (radius, radius * flatten, max(delta.length * 0.54, radius))
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    obj.data.materials.append(material)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    return obj
+
+
+def tapered_segment_between(
+    name: str,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    start_radius: float,
+    end_radius: float,
+    material: bpy.types.Material,
+    hero: bool,
+) -> bpy.types.Object:
+    """Create a softly bevelled tapered segment for species-specific limbs."""
+    start_b = Vector(g2b(start))
+    end_b = Vector(g2b(end))
+    delta = end_b - start_b
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=16 if hero else 10,
+        radius1=end_radius,
+        radius2=start_radius,
+        depth=delta.length * 1.04,
+        location=(start_b + end_b) * 0.5,
+    )
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = delta.to_track_quat("Z", "Y")
+    bevel = obj.modifiers.new("OrganicEdge", "BEVEL")
+    bevel.width = min(start_radius, end_radius) * 0.42
+    bevel.segments = 2 if hero else 1
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=bevel.name)
+    obj.data.materials.append(material)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    return obj
+
+
 def add_bone(edit_bones, name: str, head: tuple[float, float, float], tail: tuple[float, float, float], parent=None):
     result = edit_bones.new(name)
     result.head = g2b(head)
@@ -198,6 +263,7 @@ def config_for(species: str) -> dict:
     specific = SPECIES[species]
     result = dict(FAMILY_BASE[specific["family"]])
     result.update(specific)
+    result["species"] = species
     result["features"] = set(result.get("features", ()))
     return result
 
@@ -214,7 +280,211 @@ def ground_layout(cfg: dict) -> dict:
     return dict(body_y=body_y, shoulder_y=shoulder_y, front_z=front_z, rear_z=rear_z, neck_z=neck_z, head_z=head_z, head_y=head_y, muzzle_z=muzzle_z)
 
 
+def deer_limb_points(suffix: str) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+    """Anatomical two-link deer leg guides in Godot space (Y up, -Z forward)."""
+    side = -1.0 if suffix.startswith("L") else 1.0
+    if suffix.endswith("F"):
+        return (
+            (side * 0.40, 1.72, -0.58),
+            (side * 0.42, 0.91, -0.46),
+            (side * 0.43, 0.13, -0.69),
+        )
+    return (
+        (side * 0.42, 1.68, 0.58),
+        (side * 0.44, 0.72, 0.82),
+        (side * 0.44, 0.13, 0.39),
+    )
+
+
+def build_deer_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, float]]]:
+    bpy.ops.object.armature_add(enter_editmode=True, location=(0.0, 0.0, 0.0))
+    rig = bpy.context.active_object
+    rig.name = "SpeciesSkeleton3D"
+    rig.data.name = "DeerV3Rig"
+    edit = rig.data.edit_bones
+    root = edit[0]
+    root.name = "Root"
+    root.head = g2b((0.0, 0.05, 0.24))
+    root.tail = g2b((0.0, 0.55, 0.24))
+    spine = add_bone(edit, "Spine", (0.0, 1.66, 0.72), (0.0, 1.69, 0.10), root)
+    chest = add_bone(edit, "Chest", (0.0, 1.69, 0.10), (0.0, 1.76, -0.62), spine)
+    neck = add_bone(edit, "Neck", (0.0, 1.76, -0.62), (0.0, 2.18, -1.24), chest)
+    head = add_bone(edit, "Head", (0.0, 2.18, -1.24), (0.0, 2.13, -2.12), neck)
+    anchors: dict[str, tuple[float, float, float]] = {
+        "Spine": (0.0, 1.67, 0.52),
+        "Chest": (0.0, 1.73, -0.43),
+        "Neck": (0.0, 1.99, -0.94),
+        "Head": (0.0, 2.17, -1.65),
+    }
+    for suffix in LIMBS:
+        hip, joint, paw = deer_limb_points(suffix)
+        upper = add_bone(edit, f"Leg_{suffix}", hip, joint, chest if suffix.endswith("F") else spine)
+        add_bone(edit, f"Paw_{suffix}", joint, paw, upper)
+        anchors[f"Leg_{suffix}"] = tuple((Vector(hip) + Vector(joint)) * 0.5)
+        anchors[f"Paw_{suffix}"] = tuple((Vector(joint) + Vector(paw)) * 0.5)
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        ear_base = (side * 0.20, 2.37, -1.43)
+        ear_tip = (side * 0.40, 2.60, -1.31)
+        add_bone(edit, f"Ear_{suffix}", ear_base, ear_tip, head)
+        anchors[f"Ear_{suffix}"] = tuple((Vector(ear_base) + Vector(ear_tip)) * 0.5)
+    tail_base = (0.0, 1.70, 0.84)
+    tail_tip = (0.0, 1.48, 1.18)
+    add_bone(edit, "Tail", tail_base, tail_tip, spine)
+    anchors["Tail"] = tuple((Vector(tail_base) + Vector(tail_tip)) * 0.5)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    rig["eco_species"] = "deer"
+    rig["eco_rig_family"] = "ungulate_v3"
+    return rig, anchors
+
+
+def skin_deer_body(body: bpy.types.Object, rig: bpy.types.Object, anchors: dict[str, tuple[float, float, float]]) -> None:
+    body_bones = ("Spine", "Chest", "Neck", "Head")
+    scales = {
+        "Spine": Vector((0.78, 0.68, 0.86)),
+        "Chest": Vector((0.72, 0.72, 0.82)),
+        "Neck": Vector((0.45, 0.72, 0.62)),
+        "Head": Vector((0.48, 0.48, 0.78)),
+    }
+    weights = {name: [] for name in body_bones}
+    for vertex in body.data.vertices:
+        point = Vector((vertex.co.x, vertex.co.z, vertex.co.y))
+        raw = {}
+        for name in body_bones:
+            delta = point - Vector(anchors[name])
+            distance = math.sqrt(sum((delta[index] / scales[name][index]) ** 2 for index in range(3)))
+            raw[name] = max(0.0, 1.0 - distance) ** 2
+        total = sum(raw.values())
+        if total < 0.0001:
+            nearest = min(body_bones, key=lambda name: (point - Vector(anchors[name])).length)
+            raw[nearest] = 1.0
+            total = 1.0
+        for name in body_bones:
+            weights[name].append(raw[name] / total)
+    add_armature_weights(body, rig, weights)
+
+
+def build_deer_parts(hero: bool, rig: bpy.types.Object, anchors: dict) -> list[bpy.types.Object]:
+    """AI-art-directed deer benchmark: species-specific silhouette, anatomy and details."""
+    coat = pbr_material("deer_coat_pbr", "#96592f", 0.82)
+    accent = pbr_material("deer_accent_pbr", "#d7b47c", 0.78)
+    dark = pbr_material("deer_detail_pbr", "#3b291f", 0.54)
+    eye = pbr_material("deer_eye_pbr", "#17100c", 0.10)
+    horn = pbr_material("deer_keratin_pbr", "#8d7352", 0.70)
+
+    body_elements = [
+        ((0.0, 1.67, 0.58), (0.57, 0.57, 0.72), 2.30),
+        ((0.0, 1.66, 0.08), (0.55, 0.59, 0.76), 2.35),
+        ((0.0, 1.73, -0.48), (0.54, 0.64, 0.63), 2.35),
+        ((0.0, 1.78, -0.70), (0.40, 0.49, 0.40), 2.20),
+        ((0.0, 1.90, -0.86), (0.34, 0.47, 0.40), 2.20),
+        ((0.0, 2.04, -1.06), (0.30, 0.43, 0.37), 2.18),
+        ((0.0, 2.18, -1.30), (0.29, 0.33, 0.34), 2.18),
+        ((0.0, 2.22, -1.52), (0.32, 0.34, 0.39), 2.25),
+        ((0.0, 2.16, -1.79), (0.25, 0.25, 0.38), 2.18),
+        ((0.0, 2.10, -2.04), (0.19, 0.17, 0.27), 2.12),
+    ]
+    body = metaball_mesh("DeerOrganicBodyV2", body_elements, coat, hero)
+    skin_deer_body(body, rig, anchors)
+    parts = [body]
+
+    def sphere(name: str, pos, scale, material=accent, bone_name="Head"):
+        obj = uv_sphere(name, pos, scale, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    def limb(name: str, start, end, start_radius, end_radius, material, bone_name):
+        obj = tapered_segment_between(name, start, end, start_radius, end_radius, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    def cone(name: str, start, end, radius, material=horn, bone_name="Head"):
+        obj = cone_between(name, start, end, radius, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    for suffix in LIMBS:
+        hip, joint, paw = deer_limb_points(suffix)
+        front = suffix.endswith("F")
+        shoulder_bone = "Chest" if front else "Spine"
+        sphere(
+            f"DeerMuscle_{suffix}",
+            tuple(Vector(hip).lerp(Vector(joint), 0.18)),
+            (0.20 if front else 0.26, 0.34 if front else 0.40, 0.24 if front else 0.31),
+            coat,
+            shoulder_bone,
+        )
+        limb(
+            f"DeerUpperLeg_{suffix}",
+            hip,
+            tuple(Vector(joint).lerp(Vector(hip), -0.06)),
+            0.18 if front else 0.22,
+            0.105 if front else 0.12,
+            coat,
+            f"Leg_{suffix}",
+        )
+        limb(
+            f"DeerLowerLeg_{suffix}",
+            tuple(Vector(joint).lerp(Vector(paw), -0.06)),
+            paw,
+            0.105 if front else 0.12,
+            0.060 if front else 0.067,
+            coat,
+            f"Paw_{suffix}",
+        )
+        sphere(f"DeerJoint_{suffix}", joint, (0.115, 0.125, 0.12), coat, f"Paw_{suffix}")
+        hoof_z = paw[2] - 0.055
+        sphere(
+            f"DeerHoofDetail_{suffix}",
+            (paw[0], 0.105, hoof_z),
+            (0.10, 0.075, 0.17),
+            dark,
+            f"Paw_{suffix}",
+        )
+
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        ear_position = (side * 0.31, 2.49, -1.37)
+        sphere(f"DeerEar_{suffix}", ear_position, (0.12, 0.23, 0.075), coat, f"Ear_{suffix}")
+        if hero:
+            sphere(f"DeerInnerEar_{suffix}", (side * 0.325, 2.50, -1.38), (0.072, 0.17, 0.045), accent, f"Ear_{suffix}")
+        sphere(f"DeerEyeDetail_{suffix}", (side * 0.292, 2.27, -1.68), (0.050, 0.058, 0.040), eye, "Head")
+
+    sphere("DeerMuzzlePatchDetail", (0.0, 2.10, -2.02), (0.19, 0.15, 0.24), accent, "Head")
+    sphere("DeerNoseDetail", (0.0, 2.08, -2.27), (0.15, 0.105, 0.12), dark, "Head")
+    sphere("DeerThroatPatchDetail", (0.0, 1.93, -1.12), (0.20, 0.34, 0.13), accent, "Neck")
+    tail = ellipsoid_between("DeerTail", (0.0, 1.70, 0.84), (0.0, 1.48, 1.18), 0.15, accent, hero, 0.72)
+    rigid_skin(tail, rig, "Tail")
+    parts.append(tail)
+
+    for side in (-1.0, 1.0):
+        antler_base = (side * 0.18, 2.40, -1.50)
+        beam_mid = (side * 0.30, 2.76, -1.40)
+        beam_tip = (side * 0.39, 3.05, -1.23)
+        cone(f"DeerAntlerBase_{side:+.0f}", antler_base, beam_mid, 0.055)
+        cone(f"DeerAntlerBeam_{side:+.0f}", beam_mid, beam_tip, 0.043)
+        cone(
+            f"DeerAntlerBrow_{side:+.0f}",
+            tuple(Vector(antler_base).lerp(Vector(beam_mid), 0.46)),
+            (side * 0.47, 2.74, -1.74),
+            0.036,
+        )
+        cone(
+            f"DeerAntlerRoyal_{side:+.0f}",
+            tuple(Vector(beam_mid).lerp(Vector(beam_tip), 0.42)),
+            (side * 0.62, 3.05, -1.47),
+            0.032,
+        )
+
+    attach_socket("SkillSocket_Mouth", (0.0, 2.10, -2.30), rig, "Head")
+    attach_socket("SkillSocket_Chest", (0.0, 1.72, -0.58), rig, "Chest")
+    return parts
+
+
 def build_ground_rig(species: str, cfg: dict, layout: dict) -> tuple[bpy.types.Object, dict[str, tuple[float, float, float]]]:
+    if species == "deer":
+        return build_deer_rig()
     bpy.ops.object.armature_add(enter_editmode=True, location=(0.0, 0.0, 0.0))
     rig = bpy.context.active_object
     rig.name = "SpeciesSkeleton3D"
@@ -291,6 +561,8 @@ def skin_ground_body(body: bpy.types.Object, rig: bpy.types.Object, anchors: dic
 
 
 def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict, layout: dict) -> list[bpy.types.Object]:
+    if species == "deer":
+        return build_deer_parts(hero, rig, anchors)
     coat = pbr_material(f"{species}_coat_pbr", cfg["coat"], 0.80)
     accent = pbr_material(f"{species}_accent_pbr", cfg["accent"], 0.74)
     dark = pbr_material(f"{species}_detail_pbr", cfg["dark"], 0.47)
@@ -448,7 +720,95 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
     return parts
 
 
+def create_deer_actions(rig: bpy.types.Object) -> None:
+    """Eight deer-specific actions with a four-beat walk and gathered gallop."""
+    rig.animation_data_create()
+
+    def insert_rotation(bone_name: str, frame: int, xyz: tuple[float, float, float]) -> None:
+        bone = rig.pose.bones[bone_name]
+        bone.rotation_mode = "XYZ"
+        bone.rotation_euler = xyz
+        bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone_name)
+
+    for action_name in ACTIONS:
+        action = bpy.data.actions.new(action_name)
+        rig.animation_data.action = action
+        for pose_bone in rig.pose.bones:
+            insert_rotation(pose_bone.name, 1, (0.0, 0.0, 0.0))
+
+        if action_name in ("locomotion", "sprint"):
+            frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
+            if action_name == "locomotion":
+                phases = {"LF": 0.0, "RH": math.pi * 0.5, "RF": math.pi, "LH": math.pi * 1.5}
+                amount, flex = 0.33, 0.43
+            else:
+                phases = {"LF": math.pi * 1.10, "RF": math.pi * 0.90, "LH": math.pi * 0.10, "RH": 0.0}
+                amount, flex = 0.67, 0.72
+            for frame in frames:
+                cycle = math.tau * (frame - 1) / 32.0
+                for suffix in LIMBS:
+                    phase = phases[suffix]
+                    swing = math.sin(cycle + phase)
+                    lift = max(0.0, math.sin(cycle + phase - 0.34))
+                    upper = amount * swing
+                    lower = -flex * lift + 0.07 * math.sin(cycle + phase + 0.60)
+                    if suffix.endswith("H"):
+                        upper *= 1.08
+                        lower *= 1.10
+                    insert_rotation(f"Leg_{suffix}", frame, (upper, 0.0, 0.0))
+                    insert_rotation(f"Paw_{suffix}", frame, (lower, 0.0, 0.0))
+                body_wave = math.sin(cycle * (2.0 if action_name == "sprint" else 1.0))
+                side_wave = math.sin(cycle)
+                insert_rotation("Spine", frame, (0.025 * body_wave, 0.0, 0.025 * side_wave))
+                insert_rotation("Chest", frame, (-0.035 * body_wave, 0.0, -0.022 * side_wave))
+                insert_rotation("Neck", frame, (0.026 * body_wave, 0.0, 0.0))
+                insert_rotation("Head", frame, (-0.018 * body_wave, 0.0, 0.0))
+                insert_rotation("Tail", frame, (0.02 + 0.035 * body_wave, 0.0, -0.05 * side_wave))
+
+        elif action_name == "idle":
+            for frame, breath, flick in ((1, -1.0, 0.0), (11, 0.2, 1.0), (21, 1.0, -0.35), (31, -1.0, 0.0)):
+                insert_rotation("Chest", frame, (0.018 * breath, 0.0, 0.0))
+                insert_rotation("Neck", frame, (-0.012 * breath, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.008 * breath, 0.0, 0.0))
+                insert_rotation("Ear_L", frame, (0.0, 0.10 * flick, 0.05 * flick))
+                insert_rotation("Ear_R", frame, (0.0, -0.035 * flick, -0.02 * flick))
+                insert_rotation("Tail", frame, (0.0, 0.0, 0.04 * flick))
+
+        elif action_name in ("attack", "skill"):
+            strength = 1.0 if action_name == "attack" else 1.28
+            for frame, brace, strike in ((1, 0.0, 0.0), (7, 1.0, -0.20), (12, 0.55, 1.0), (22, 0.0, 0.0)):
+                insert_rotation("Spine", frame, (-0.09 * brace * strength, 0.0, 0.0))
+                insert_rotation("Chest", frame, (-0.12 * brace * strength, 0.0, 0.0))
+                insert_rotation("Neck", frame, (0.25 * strike * strength, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.32 * strike * strength, 0.0, 0.0))
+                insert_rotation("Leg_LF", frame, (-0.17 * brace, 0.0, 0.0))
+                insert_rotation("Leg_RF", frame, (-0.17 * brace, 0.0, 0.0))
+
+        elif action_name == "hit":
+            for frame, curve in ((1, 0.0), (5, 1.0), (14, 0.0)):
+                insert_rotation("Spine", frame, (-0.12 * curve, 0.0, 0.21 * curve))
+                insert_rotation("Neck", frame, (0.15 * curve, 0.0, -0.13 * curve))
+                insert_rotation("Head", frame, (0.10 * curve, 0.0, -0.16 * curve))
+
+        elif action_name == "eat":
+            for frame, lower, nibble in ((1, 0.0, 0.0), (10, 0.72, 0.0), (18, 1.0, 1.0), (25, 1.0, -1.0), (34, 0.0, 0.0)):
+                insert_rotation("Neck", frame, (0.64 * lower, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.48 * lower + 0.05 * nibble, 0.0, 0.0))
+
+        elif action_name == "death":
+            for frame, fall in ((1, 0.0), (12, 0.30), (23, 0.82), (34, 1.0)):
+                insert_rotation("Spine", frame, (0.06 * fall, 0.0, 1.28 * fall))
+                insert_rotation("Chest", frame, (-0.11 * fall, 0.0, 0.24 * fall))
+                insert_rotation("Neck", frame, (0.22 * fall, 0.0, -0.16 * fall))
+                insert_rotation("Head", frame, (0.19 * fall, 0.0, -0.12 * fall))
+        action.use_fake_user = True
+    rig.animation_data.action = bpy.data.actions["idle"]
+
+
 def create_ground_actions(rig: bpy.types.Object, cfg: dict) -> None:
+    if cfg.get("species") == "deer":
+        create_deer_actions(rig)
+        return
     rig.animation_data_create()
     gait = "pace" if cfg["family"] in ("heavy", "primate", "chelonian") else "bound" if cfg["family"] == "felid" else "trot"
     rate = 0.76 if cfg["family"] in ("heavy", "chelonian") else 1.18 if cfg["family"] in ("felid", "canid") else 1.0
