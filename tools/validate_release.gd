@@ -57,7 +57,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.29 发布校验通过：林鹿/棕熊连续蒙皮与六种代表动物比例契约正常")
+		print("[release] V1.30 发布校验通过：四足材质图集、自动细节 LOD 与移动端性能基线正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -229,8 +229,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.29.0\"") and presets.contains("application/short_version=\"1.29.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=390") and presets.contains("application/version=\"390\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.30.0\"") and presets.contains("application/short_version=\"1.30.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=400") and presets.contains("application/version=\"400\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -321,18 +321,19 @@ func _validate_visual_kit_contract() -> void:
 
 func _validate_external_species_model_contract() -> void:
 	var fur_texture_paths := [
-		"res://assets/textures/animals/shared/fur_micro_albedo_ai.png",
-		"res://assets/textures/animals/shared/fur_micro_normal_ai.png",
-		"res://assets/textures/animals/shared/fur_micro_roughness_ai.png",
+		"res://assets/textures/animals/shared/quadruped_fur_atlas_albedo.png",
+		"res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png",
+		"res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png",
 	]
 	for texture_path in fur_texture_paths:
-		_expect(ResourceLoader.exists(texture_path), "四足物种毛发 PBR 贴图缺失：%s" % texture_path)
+		_expect(ResourceLoader.exists(texture_path), "四足物种毛发 PBR 图集缺失：%s" % texture_path)
 		var texture := load(texture_path) as Texture2D
-		_expect(texture != null and texture.get_width() == 256 and texture.get_height() == 256, "毛发 PBR 贴图没有保持 256×256 移动端预算：%s" % texture_path)
+		_expect(texture != null and texture.get_width() == 256 and texture.get_height() == 256, "毛发 PBR 图集没有保持 256×256 移动端预算：%s" % texture_path)
 		var import_source := FileAccess.get_file_as_string(texture_path + ".import")
-		_expect(import_source.contains("compress/mode=2") and import_source.contains("mipmaps/generate=true"), "毛发 PBR 贴图没有启用跨端 VRAM 压缩与 mipmap：%s" % texture_path)
+		_expect(import_source.contains("compress/mode=2") and import_source.contains("mipmaps/generate=true"), "毛发 PBR 图集没有启用跨端 VRAM 压缩与 mipmap：%s" % texture_path)
 	var normal_import := FileAccess.get_file_as_string(fur_texture_paths[1] + ".import")
-	_expect(normal_import.contains("compress/normal_map=1"), "毛发法线贴图没有使用法线压缩模式")
+	_expect(normal_import.contains("compress/normal_map=1"), "毛发法线图集没有使用法线压缩模式")
+	_expect(VisualCatalog.FUR_ATLAS_REGIONS.size() == 4 and VisualCatalog.FUR_ATLAS_REGIONS["bear"] == Vector2(0.5, 0.5), "四种四足动物的 2×2 材质图集分区异常")
 	var expected_motion_nodes := {
 		"rabbit": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
 		"wolf": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
@@ -371,6 +372,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(SkeletonRig.resolve_state(0.8, 0.1, 0.1, 0.8, 0.2, true, "rabbit") == "dead", "雪兔倒地状态没有最高优先级")
 	_expect(VisualCatalog.VISUAL_SCALE_CONTRACT.size() == VisualCatalog.EXTERNAL_SPECIES.size(), "六种代表动物没有完整视觉比例契约")
 	_expect(is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["rabbit"]), 1.02) and is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["bear"]), 1.22), "小型雪兔与大型棕熊比例契约异常")
+	var total_mobile_vertices := 0
 	for species_id in VisualCatalog.EXTERNAL_SPECIES:
 		var profile_vertices := {}
 		for profile in ["hero", "mobile"]:
@@ -388,11 +390,14 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
 			if profile == "mobile":
 				_expect(int(stats["vertices"]) <= 16000, "%s 的 Mobile 模型超出移动端顶点预算" % species_id)
+				total_mobile_vertices += int(stats["vertices"])
+			_expect(int(stats["lod_meshes"]) == int(stats["meshes"]), "%s 的 %s 网格没有完整配置自动可见距离 LOD" % [species_id, profile])
+			_expect(int(stats["detail_lod_meshes"]) > 0, "%s 的 %s 没有可独立裁剪的远景细节层" % [species_id, profile])
 			if species_id in VisualCatalog.SKELETAL_SPECIES:
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 运行时模型没有唯一 Skeleton3D" % [species_id, profile])
 				_expect(int(stats["bones"]) >= 9, "%s 的 %s 骨骼数量不足，躯干或四肢绑定可能丢失" % [species_id, profile])
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 4, "%s 的 %s 缺少毛皮、眼部、鼻部和足部 PBR 材质槽" % [species_id, profile])
-				_expect(int(stats["textured_coat_surfaces"]) > 0, "%s 的 %s 毛皮材质没有绑定 Albedo/Normal/Roughness 贴图" % [species_id, profile])
+				_expect(int(stats["textured_coat_surfaces"]) > 0 and int(stats["atlas_coat_surfaces"]) == int(stats["textured_coat_surfaces"]), "%s 的 %s 毛皮材质没有绑定共享 PBR 图集" % [species_id, profile])
 				if species_id in SkeletonRig.WEIGHTED_SKIN_SPECIES:
 					var species_label: String = {"rabbit": "雪兔", "wolf": "灰狼", "deer": "林鹿", "bear": "棕熊"}.get(species_id, species_id)
 					_expect(int(stats["bones"]) >= 12, "%s 的 %s 模型缺少 Chest/Neck/Head 连续躯干骨链" % [species_label, profile])
@@ -421,6 +426,7 @@ func _validate_external_species_model_contract() -> void:
 			model.free()
 		if profile_vertices.has("hero") and profile_vertices.has("mobile"):
 			_expect(int(profile_vertices["hero"]) > int(profile_vertices["mobile"]), "%s 的 Hero 模型细节没有高于 Mobile LOD" % species_id)
+	_expect(total_mobile_vertices <= 42000, "六种代表动物 Mobile 模型总顶点超出 42000 性能基线")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("uses_external_model = _build_external_species_visual()"), "角色运行时没有优先加载外部物种模型")
 	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
@@ -563,6 +569,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"bones": 0,
 		"pbr_slots": {},
 		"textured_coat_surfaces": 0,
+		"atlas_coat_surfaces": 0,
+		"lod_meshes": 0,
+		"detail_lod_meshes": 0,
 		"named_nodes": {},
 		"skinned_meshes": 0,
 		"weighted_vertices": 0,
@@ -586,6 +595,10 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 		stats["bones"] = int(stats["bones"]) + (node as Skeleton3D).get_bone_count()
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.visibility_range_end > 0.0:
+			stats["lod_meshes"] = int(stats["lod_meshes"]) + 1
+			if str(mesh_instance.get_meta("lod_class", "")) == "detail":
+				stats["detail_lod_meshes"] = int(stats["detail_lod_meshes"]) + 1
 		var mesh := mesh_instance.mesh
 		if mesh != null:
 			if mesh_instance.skin != null:
@@ -613,15 +626,22 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 							# renderer-safe one-percent normalization envelope.
 							if absf(weight_sum - 1.0) > 0.01:
 								stats["invalid_weight_vertices"] = int(stats["invalid_weight_vertices"]) + 1
-				var material := mesh_instance.get_active_material(surface_index) as StandardMaterial3D
-				if material != null and not material.albedo_color.is_equal_approx(Color.WHITE):
+				var material := mesh_instance.get_active_material(surface_index)
+				if material is StandardMaterial3D and not (material as StandardMaterial3D).albedo_color.is_equal_approx(Color.WHITE):
 					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
 					var material_name := material.resource_name
 					for slot_name in ["coat", "eye", "nose", "paw", "detail"]:
 						if "_%s_pbr" % slot_name in material_name:
 							stats["pbr_slots"][slot_name] = true
-					if "_coat_pbr" in material_name and material.albedo_texture != null and material.normal_texture != null and material.roughness_texture != null:
+					if "_coat_pbr" in material_name and (material as StandardMaterial3D).albedo_texture != null and (material as StandardMaterial3D).normal_texture != null and (material as StandardMaterial3D).roughness_texture != null:
 						stats["textured_coat_surfaces"] = int(stats["textured_coat_surfaces"]) + 1
+				elif material is ShaderMaterial and "_coat_atlas_pbr" in material.resource_name:
+					var shader_material := material as ShaderMaterial
+					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
+					stats["pbr_slots"]["coat"] = true
+					if shader_material.get_shader_parameter("albedo_atlas") is Texture2D and shader_material.get_shader_parameter("normal_atlas") is Texture2D and shader_material.get_shader_parameter("roughness_atlas") is Texture2D:
+						stats["textured_coat_surfaces"] = int(stats["textured_coat_surfaces"]) + 1
+						stats["atlas_coat_surfaces"] = int(stats["atlas_coat_surfaces"]) + 1
 	for child in node.get_children():
 		_accumulate_external_model_stats(child, stats)
 

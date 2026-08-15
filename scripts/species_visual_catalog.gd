@@ -4,9 +4,10 @@ extends RefCounted
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
-const FUR_ALBEDO = preload("res://assets/textures/animals/shared/fur_micro_albedo_ai.png")
-const FUR_NORMAL = preload("res://assets/textures/animals/shared/fur_micro_normal_ai.png")
-const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/fur_micro_roughness_ai.png")
+const FUR_ATLAS_SHADER = preload("res://assets/shaders/quadruped_fur_atlas.gdshader")
+const FUR_ALBEDO = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_albedo.png")
+const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png")
+const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
 const MODEL_ROOT := "res://assets/models/animals"
 const EXTERNAL_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile"]
 const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
@@ -20,6 +21,17 @@ const VISUAL_SCALE_CONTRACT := {
 	"eagle": 1.04,
 	"crocodile": 1.18,
 }
+const FUR_ATLAS_REGIONS := {
+	"rabbit": Vector2(0.0, 0.0),
+	"wolf": Vector2(0.5, 0.0),
+	"deer": Vector2(0.0, 0.5),
+	"bear": Vector2(0.5, 0.5),
+}
+const DETAIL_LOD_TOKENS := ["iris", "pupil", "catchlight", "innerear", "whisker", "antlerbranch", "tooth", "claw"]
+const HERO_DETAIL_RANGE := 28.0
+const MOBILE_DETAIL_RANGE := 20.0
+const HERO_BODY_RANGE := 82.0
+const MOBILE_BODY_RANGE := 68.0
 
 
 static func supports(species_id: String) -> bool:
@@ -51,17 +63,20 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 		instance.set_meta("species_id", species_id)
 		instance.set_meta("visual_profile", profile)
 		instance.set_meta("visual_scale_contract", float(VISUAL_SCALE_CONTRACT.get(species_id, 1.0)))
+		instance.set_meta("automatic_detail_lod", true)
 		if species_id in SKELETAL_SPECIES:
-			_apply_shared_fur_materials(instance)
+			instance.set_meta("fur_atlas_region", FUR_ATLAS_REGIONS[species_id])
+			_apply_shared_fur_materials(instance, species_id)
 			SkeletonRig.upgrade(instance, species_id)
 		elif species_id in FLIGHT_RIG_SPECIES:
 			FlightRig.upgrade(instance, species_id)
 		elif species_id in LONG_BODY_RIG_SPECIES:
 			CrocodileRig.upgrade(instance, species_id)
+		_apply_automatic_detail_lod(instance, profile)
 	return instance
 
 
-static func _apply_shared_fur_materials(node: Node) -> void:
+static func _apply_shared_fur_materials(node: Node, species_id: String) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh != null:
@@ -69,16 +84,27 @@ static func _apply_shared_fur_materials(node: Node) -> void:
 				var source := mesh_instance.mesh.surface_get_material(surface_index) as StandardMaterial3D
 				if source == null or not "_coat_pbr" in source.resource_name:
 					continue
-				var material := source.duplicate() as StandardMaterial3D
-				material.albedo_texture = FUR_ALBEDO
-				material.normal_enabled = true
-				material.normal_texture = FUR_NORMAL
-				material.normal_scale = 0.72
-				material.roughness_texture = FUR_ROUGHNESS
-				material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-				material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-				material.texture_repeat = true
-				material.uv1_scale = Vector3(2.35, 2.35, 2.35)
+				var material := ShaderMaterial.new()
+				material.resource_name = "%s_coat_atlas_pbr" % species_id
+				material.shader = FUR_ATLAS_SHADER
+				material.set_shader_parameter("albedo_atlas", FUR_ALBEDO)
+				material.set_shader_parameter("normal_atlas", FUR_NORMAL)
+				material.set_shader_parameter("roughness_atlas", FUR_ROUGHNESS)
+				material.set_shader_parameter("coat_tint", source.albedo_color)
+				material.set_shader_parameter("atlas_offset", FUR_ATLAS_REGIONS[species_id])
+				material.set_shader_parameter("pattern_scale", 2.55 if species_id == "rabbit" else 2.10 if species_id == "bear" else 2.35)
 				mesh_instance.set_surface_override_material(surface_index, material)
 	for child in node.get_children():
-		_apply_shared_fur_materials(child)
+		_apply_shared_fur_materials(child, species_id)
+
+
+static func _apply_automatic_detail_lod(node: Node, profile: String) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		var lowered := str(mesh_instance.name).to_lower()
+		var is_detail := DETAIL_LOD_TOKENS.any(func(token: String): return token in lowered)
+		mesh_instance.visibility_range_end = (HERO_DETAIL_RANGE if profile == "hero" else MOBILE_DETAIL_RANGE) if is_detail else (HERO_BODY_RANGE if profile == "hero" else MOBILE_BODY_RANGE)
+		mesh_instance.visibility_range_end_margin = 3.0 if is_detail else 7.0
+		mesh_instance.set_meta("lod_class", "detail" if is_detail else "body")
+	for child in node.get_children():
+		_apply_automatic_detail_lod(child, profile)
