@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.41 发布候选校验通过：30 种 Blender V2 双档骨骼模型、自动门禁与三端发布契约正常")
+		print("[release] V1.41 发布候选校验通过：30 种 Blender V2 双档骨骼模型、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -599,9 +599,9 @@ func _validate_external_species_model_contract() -> void:
 	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
 	_expect(actor_source.contains("_bind_external_skill_sockets(model)"), "外部物种模型没有绑定技能挂点")
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Mouth\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Chest\""), "雪兔折跃或灰狼群猎特效没有使用骨骼挂点")
-	_expect(actor_source.contains("FlightRig.resolve_state") and actor_source.contains("FlightRig.apply_pose"), "真实角色流程没有按飞行状态驱动金雕骨架")
+	_expect(actor_source.contains("FlightRig.resolve_state") and actor_source.contains("_play_external_baked_animation"), "真实角色流程没有用烘焙动作驱动金雕骨架")
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Beak\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_L\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_Wing_R\""), "金雕俯冲和翼流特效没有使用骨骼挂点")
-	_expect(actor_source.contains("CrocodileRig.resolve_state") and actor_source.contains("CrocodileRig.apply_pose"), "真实角色流程没有按两栖状态驱动沼泽鳄长躯干骨架")
+	_expect(actor_source.contains("CrocodileRig.resolve_state") and actor_source.contains("_play_external_baked_animation"), "真实角色流程没有用烘焙动作驱动沼泽鳄长躯干骨架")
 	_expect(actor_source.contains("skill_socket_world_position(\"SkillSocket_Jaw\"") and actor_source.contains("skill_socket_world_position(\"SkillSocket_TailTip\""), "沼泽鳄死亡翻滚没有使用吻部和尾端骨骼挂点")
 	_expect(actor_source.contains("if not uses_external_model:"), "外部模型失败时没有保留程序模型降级路径")
 	var game_stub := ExternalModelGame.new()
@@ -612,6 +612,8 @@ func _validate_external_species_model_contract() -> void:
 	hero_actor.setup(game_stub, 901, "rabbit", true, Vector3.ZERO, 0)
 	_expect(hero_actor.uses_external_model and hero_actor.external_model_profile == "hero", "真实角色流程没有为高画质玩家加载 Hero GLB")
 	_expect(is_instance_valid(hero_actor.external_skeleton) and hero_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有绑定雪兔连续躯干 Skeleton3D")
+	_expect(is_instance_valid(hero_actor.external_animation_player) and hero_actor.external_animation_player.has_animation("locomotion"), "真实雪兔角色没有绑定 Blender 烘焙动作")
+	_expect(hero_actor.external_baked_animation == "idle", "真实雪兔角色没有从完整体表待机动作开始")
 	_expect(hero_actor.external_skill_sockets.size() == 2, "真实雪兔角色流程没有绑定嘴部和胸部技能挂点")
 	_expect(hero_actor.leg_pivots.is_empty() and hero_actor.ear_pivots.is_empty() and hero_actor.tail_visuals.is_empty(), "骨骼物种仍被旧节点枢轴重复驱动")
 	var run_pose := SkeletonRig.pose_targets("run", 1.2, 0.6, 1.0, 0.0, 0.0, 0.2, "rabbit")
@@ -633,18 +635,24 @@ func _validate_external_species_model_contract() -> void:
 	hero_actor._play_attack_pulse()
 	hero_actor._update_visual_motion(0.016)
 	_expect(hero_actor.external_animation_state == "attack", "真实普通攻击事件没有切换骨骼攻击状态")
+	_expect(hero_actor.external_baked_animation == "attack", "真实普通攻击没有播放 Blender 攻击动作")
 	hero_actor._play_hit_pulse()
 	hero_actor._update_visual_motion(0.016)
 	_expect(hero_actor.external_animation_state == "hit", "真实受击事件没有以更高优先级切换骨骼受击状态")
+	_expect(hero_actor.external_baked_animation == "hit", "真实受击事件没有播放 Blender 受击动作")
 	hero_actor.external_hit_animation_timer = 0.0
 	hero_actor.external_attack_animation_timer = 0.0
 	hero_actor.eat_timer = 1.0
 	hero_actor._update_visual_motion(0.016)
 	_expect(hero_actor.external_animation_state == "forage", "真实雪兔进食流程没有切换觅食状态")
+	_expect(hero_actor.external_baked_animation == "eat", "真实雪兔进食流程没有播放 Blender 进食动作")
 	hero_actor.eat_timer = 0.0
 	hero_actor.external_skill_animation_timer = SkeletonRig.RABBIT_SKILL_DURATION
 	hero_actor._update_visual_motion(0.016)
 	_expect(hero_actor.external_animation_state == "skill", "真实雪兔技能流程没有切换月影折跃状态")
+	_expect(hero_actor.external_baked_animation == "skill", "真实雪兔技能流程没有播放 Blender 技能动作")
+	_expect(ActorScript.baked_action_for_state("run", 0.8) == "locomotion" and ActorScript.baked_action_for_state("run", 1.2) == "sprint", "普通移动和冲刺没有分流到对应烘焙动作")
+	_expect(ActorScript.baked_action_for_state("forage", 0.0) == "eat" and ActorScript.baked_action_for_state("dead", 0.0) == "death", "觅食或死亡状态没有映射到模型动作")
 	game_stub.quality_preset = "low"
 	var mobile_actor: EcoActor = ActorScript.new()
 	mobile_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -652,6 +660,7 @@ func _validate_external_species_model_contract() -> void:
 	mobile_actor.setup(game_stub, 902, "wolf", false, Vector3.ZERO, 0)
 	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
 	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有为灰狼 Mobile 模型绑定连续躯干骨链")
+	_expect(is_instance_valid(mobile_actor.external_animation_player) and mobile_actor.external_baked_animation == "idle", "真实灰狼 AI 没有启用 Mobile 烘焙动作")
 	_expect(mobile_actor.external_skill_sockets.size() == 2, "真实灰狼角色流程没有绑定两个技能挂点")
 	var wolf_mouth_position := mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55)
 	var wolf_mouth_offset := wolf_mouth_position - mobile_actor.global_position
@@ -666,6 +675,7 @@ func _validate_external_species_model_contract() -> void:
 		game_stub.add_child(quadruped_actor)
 		quadruped_actor.setup(game_stub, 910 + VisualCatalog.SKELETAL_SPECIES.find(species_id), species_id, false, Vector3.ZERO, 0)
 		_expect(is_instance_valid(quadruped_actor.external_skeleton) and quadruped_actor.external_skeleton.get_bone_count() >= 12, "%s 没有接入连续体轴 Skeleton3D" % species_id)
+		_expect(is_instance_valid(quadruped_actor.external_animation_player) and quadruped_actor.external_baked_animation == "idle", "%s 没有在真实角色流程启用烘焙动作" % species_id)
 		_expect(quadruped_actor.external_skill_sockets.size() == 2, "%s 没有接入嘴部和胸部技能挂点" % species_id)
 		var mouth_offset := quadruped_actor.skill_socket_world_position("SkillSocket_Mouth", 0.70) - quadruped_actor.global_position
 		_expect(mouth_offset.length() > 0.35 and mouth_offset.dot(-quadruped_actor.global_basis.z) > 0.25, "%s 的嘴部挂点没有位于模型前方" % species_id)
@@ -678,6 +688,7 @@ func _validate_external_species_model_contract() -> void:
 	eagle_actor.setup(game_stub, 920, "eagle", true, Vector3.ZERO, 0)
 	_expect(eagle_actor.uses_external_model and eagle_actor.external_model_profile == "hero", "真实金雕角色流程没有加载 Hero GLB")
 	_expect(is_instance_valid(eagle_actor.external_skeleton) and eagle_actor.external_skeleton.get_bone_count() >= 8, "真实金雕角色流程没有绑定飞行 Skeleton3D")
+	_expect(is_instance_valid(eagle_actor.external_animation_player), "真实金雕角色没有绑定 Blender 飞行动作")
 	_expect(eagle_actor.wing_pivots.is_empty() and eagle_actor.tail_visuals.is_empty(), "金雕仍被飞行骨架与旧节点振翅重复驱动")
 	_expect(eagle_actor.external_skill_sockets.size() == 3, "真实金雕角色流程没有绑定喙部和双翼技能挂点")
 	_expect(eagle_actor.skill_socket_world_position("SkillSocket_Beak", 1.65).distance_to(eagle_actor.global_position) > 0.5, "金雕喙部技能挂点退化到了角色原点")
@@ -690,14 +701,17 @@ func _validate_external_species_model_contract() -> void:
 	eagle_actor.flight_dive_timer = FlightRig.DIVE_DURATION
 	eagle_actor._update_visual_motion(0.016)
 	_expect(eagle_actor.external_animation_state == "dive", "真实天穹贯击没有切换飞行骨架俯冲状态")
+	_expect(eagle_actor.external_baked_animation == "dive", "真实天穹贯击没有播放 Blender 俯冲动作")
 	eagle_actor._play_hit_pulse()
 	eagle_actor._update_visual_motion(0.016)
 	_expect(eagle_actor.external_animation_state == "hit", "真实金雕受击没有以最高优先级切换飞行骨架状态")
+	_expect(eagle_actor.external_baked_animation == "hit", "真实金雕受击没有播放 Blender 受击动作")
 	var owl_actor: EcoActor = ActorScript.new()
 	owl_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	game_stub.add_child(owl_actor)
 	owl_actor.setup(game_stub, 921, "owl", false, Vector3.ZERO, 0)
 	_expect(owl_actor.uses_external_model and is_instance_valid(owl_actor.external_skeleton), "真实雪鸮 AI 没有加载 Mobile 飞行骨架")
+	_expect(is_instance_valid(owl_actor.external_animation_player), "真实雪鸮 AI 没有绑定 Blender 飞行动作")
 	_expect(owl_actor.external_skill_sockets.size() == 3, "真实雪鸮 AI 没有绑定喙部和双翼技能挂点")
 	_expect(owl_actor.skill_socket_world_position("SkillSocket_Beak", 1.65).distance_to(owl_actor.global_position) > 0.5, "雪鸮喙部技能挂点退化到了角色原点")
 	var crocodile_actor: EcoActor = ActorScript.new()
@@ -706,6 +720,7 @@ func _validate_external_species_model_contract() -> void:
 	crocodile_actor.setup(game_stub, 930, "crocodile", true, Vector3.ZERO, 0)
 	_expect(crocodile_actor.uses_external_model and crocodile_actor.external_model_profile == "hero", "真实沼泽鳄角色流程没有加载 Hero GLB")
 	_expect(is_instance_valid(crocodile_actor.external_skeleton) and crocodile_actor.external_skeleton.get_bone_count() >= 12, "真实沼泽鳄角色流程没有绑定长躯干/尾链 Skeleton3D")
+	_expect(is_instance_valid(crocodile_actor.external_animation_player), "真实沼泽鳄角色没有绑定 Blender 长躯干动作")
 	_expect(crocodile_actor.leg_pivots.is_empty() and crocodile_actor.tail_visuals.is_empty(), "沼泽鳄仍被长躯干骨架与旧节点步态重复驱动")
 	_expect(crocodile_actor.external_skill_sockets.size() == 2, "真实沼泽鳄角色流程没有绑定吻部和尾端技能挂点")
 	_expect(crocodile_actor.skill_socket_world_position("SkillSocket_Jaw", 0.66).distance_to(crocodile_actor.global_position) > 1.0, "沼泽鳄吻部技能挂点退化到了角色原点")
@@ -722,9 +737,11 @@ func _validate_external_species_model_contract() -> void:
 	crocodile_actor._play_attack_pulse()
 	crocodile_actor._update_visual_motion(0.016)
 	_expect(crocodile_actor.external_animation_state == "attack", "真实沼泽鳄普通攻击没有切换咬击状态")
+	_expect(crocodile_actor.external_baked_animation == "attack", "真实沼泽鳄普通攻击没有播放 Blender 咬击动作")
 	crocodile_actor.external_skill_animation_timer = CrocodileRig.ROLL_DURATION
 	crocodile_actor._update_visual_motion(0.016)
 	_expect(crocodile_actor.external_animation_state == "roll", "真实沼泽鳄死亡翻滚没有切换长躯干骨架状态")
+	_expect(crocodile_actor.external_baked_animation == "skill", "真实沼泽鳄死亡翻滚没有播放 Blender 技能动作")
 	crocodile_actor._play_hit_pulse()
 	crocodile_actor._update_visual_motion(0.016)
 	_expect(crocodile_actor.external_animation_state == "hit", "真实沼泽鳄受击没有以最高优先级切换骨架状态")
@@ -733,6 +750,7 @@ func _validate_external_species_model_contract() -> void:
 	game_stub.add_child(snake_actor)
 	snake_actor.setup(game_stub, 931, "snake", false, Vector3.ZERO, 0)
 	_expect(snake_actor.uses_external_model and is_instance_valid(snake_actor.external_skeleton) and snake_actor.external_skeleton.get_bone_count() >= 8, "真实森蚺 AI 没有加载 Mobile 长体骨架")
+	_expect(is_instance_valid(snake_actor.external_animation_player), "真实森蚺 AI 没有绑定 Blender 长体动作")
 	_expect(snake_actor.external_skill_sockets.size() == 2, "真实森蚺 AI 没有绑定颌部和尾端技能挂点")
 	_expect(snake_actor.skill_socket_world_position("SkillSocket_Jaw", 0.66).distance_to(snake_actor.global_position) > 0.7, "森蚺颌部技能挂点退化到了角色原点")
 	var expansion_actors: Array[EcoActor] = []

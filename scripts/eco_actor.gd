@@ -201,8 +201,10 @@ var tail_visuals: Array[Node3D] = []
 var uses_external_model: bool = false
 var external_model_profile: String = ""
 var external_skeleton: Skeleton3D
+var external_animation_player: AnimationPlayer
 var external_skill_sockets: Dictionary = {}
 var external_animation_state: String = "idle"
+var external_baked_animation: String = ""
 var external_attack_animation_timer: float = 0.0
 var external_hit_animation_timer: float = 0.0
 var visual_lod_elapsed: float = 0.0
@@ -494,27 +496,86 @@ func _build_external_species_visual() -> bool:
 
 func _bind_external_motion_nodes(root: Node) -> void:
 	for child in root.get_children():
-		if not child is Node3D:
+		if child is AnimationPlayer:
+			external_animation_player = child as AnimationPlayer
+			_configure_external_baked_animations()
+		elif child is Node3D:
+			var visual_node := child as Node3D
+			var node_name := str(visual_node.name)
+			if visual_node is Skeleton3D and (node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME, CrocodileRig.RIG_NAME] or visual_node.has_meta("species_id")):
+				external_skeleton = visual_node as Skeleton3D
+			elif visual_node is BoneAttachment3D:
+				continue
+			elif node_name.begins_with("LegPivot_"):
+				leg_pivots.append(visual_node)
+				var suffix := node_name.trim_prefix("LegPivot_")
+				leg_phases.append(0.0 if suffix in ["LF", "RH"] else PI)
+				if species_id == "rabbit":
+					leg_stride_scales.append(0.78 if suffix.ends_with("F") else 1.28)
+				else:
+					leg_stride_scales.append(1.0 if suffix.ends_with("F") else 0.92)
+			elif node_name.begins_with("WingPivot_"):
+				wing_pivots.append(visual_node)
+			elif node_name.begins_with("EarPivot_"):
+				ear_pivots.append(visual_node)
+		_bind_external_motion_nodes(child)
+
+
+func _configure_external_baked_animations() -> void:
+	if not is_instance_valid(external_animation_player):
+		return
+	for action_name in ["idle", "locomotion", "sprint", "eat", "glide", "flap", "swim"]:
+		if not external_animation_player.has_animation(action_name):
 			continue
-		var visual_node := child as Node3D
-		var node_name := str(visual_node.name)
-		if visual_node is Skeleton3D and (node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME, CrocodileRig.RIG_NAME] or visual_node.has_meta("species_id")):
-			external_skeleton = visual_node as Skeleton3D
-		elif visual_node is BoneAttachment3D:
-			continue
-		elif node_name.begins_with("LegPivot_"):
-			leg_pivots.append(visual_node)
-			var suffix := node_name.trim_prefix("LegPivot_")
-			leg_phases.append(0.0 if suffix in ["LF", "RH"] else PI)
-			if species_id == "rabbit":
-				leg_stride_scales.append(0.78 if suffix.ends_with("F") else 1.28)
-			else:
-				leg_stride_scales.append(1.0 if suffix.ends_with("F") else 0.92)
-		elif node_name.begins_with("WingPivot_"):
-			wing_pivots.append(visual_node)
-		elif node_name.begins_with("EarPivot_"):
-			ear_pivots.append(visual_node)
-		_bind_external_motion_nodes(visual_node)
+		var animation := external_animation_player.get_animation(action_name)
+		if animation != null:
+			animation.loop_mode = Animation.LOOP_LINEAR
+	_play_external_baked_animation("idle", 0.0)
+
+
+static func baked_action_for_state(state: String, speed_ratio: float) -> String:
+	match state:
+		"run":
+			return "sprint" if speed_ratio > 1.05 else "locomotion"
+		"forage":
+			return "eat"
+		"dead":
+			return "death"
+		"crawl":
+			return "locomotion"
+		"roll":
+			return "skill"
+		_:
+			return state
+
+
+static func baked_animation_speed(state: String, speed_ratio: float) -> float:
+	match state:
+		"run", "crawl", "swim", "flap":
+			return clampf(0.72 + speed_ratio * 0.58, 0.72, 1.68)
+		"attack", "dive":
+			return 2.8
+		"skill", "roll":
+			return 2.0
+		"hit":
+			return 2.2
+		"dead":
+			return 3.2
+		_:
+			return 1.0
+
+
+func _play_external_baked_animation(state: String, speed_ratio: float) -> bool:
+	if not is_instance_valid(external_animation_player):
+		return false
+	var action_name := baked_action_for_state(state, speed_ratio)
+	if not external_animation_player.has_animation(action_name):
+		return false
+	external_animation_player.speed_scale = baked_animation_speed(state, speed_ratio)
+	if external_baked_animation != action_name or not external_animation_player.is_playing():
+		external_animation_player.play(action_name, 0.08)
+		external_baked_animation = action_name
+	return true
 
 
 func _bind_external_skill_sockets(model: Node3D) -> void:
@@ -4259,7 +4320,10 @@ func die(killer: EcoActor) -> void:
 	if is_instance_valid(killer):
 		killer.kills += 1
 	died.emit(self, killer)
-	if SkeletonRig.supports(species_id) and is_instance_valid(external_skeleton):
+	if is_instance_valid(external_animation_player):
+		external_animation_state = "dead"
+		_play_external_baked_animation("dead", 0.0)
+	elif SkeletonRig.supports(species_id) and is_instance_valid(external_skeleton):
 		external_animation_state = "dead"
 		SkeletonRig.apply_pose(external_skeleton, "dead", move_time, 0.0, 0.0, 1.0, 1.0, float(actor_id) * 0.47, 1.0, species_id)
 		external_skeleton.force_update_all_bone_transforms()
@@ -4406,17 +4470,19 @@ func _update_visual_motion(delta: float) -> void:
 	if is_instance_valid(external_skeleton):
 		if FlightRig.supports(species_id):
 			external_animation_state = FlightRig.resolve_state(gait_blend, flight_dive_timer, external_attack_animation_timer, external_hit_animation_timer, is_airborne())
-			var dive_remaining := maxf(flight_dive_timer, external_attack_animation_timer)
-			var dive_progress := 1.0 - clampf(dive_remaining / FlightRig.DIVE_DURATION, 0.0, 1.0)
-			var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
-			FlightRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, dive_progress, hit_progress, float(actor_id) * 0.47, delta)
+			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+				var dive_remaining := maxf(flight_dive_timer, external_attack_animation_timer)
+				var dive_progress := 1.0 - clampf(dive_remaining / FlightRig.DIVE_DURATION, 0.0, 1.0)
+				var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
+				FlightRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, dive_progress, hit_progress, float(actor_id) * 0.47, delta)
 		elif CrocodileRig.supports(species_id):
 			var swimming: bool = game.world != null and game.world.has_method("water_depth_at") and float(game.world.water_depth_at(global_position)) > 0.01
 			external_animation_state = CrocodileRig.resolve_state(gait_blend, external_attack_animation_timer, external_skill_animation_timer, external_hit_animation_timer, swimming)
-			var attack_progress := 1.0 - clampf(external_attack_animation_timer / CrocodileRig.ATTACK_DURATION, 0.0, 1.0)
-			var roll_progress := 1.0 - clampf(external_skill_animation_timer / CrocodileRig.ROLL_DURATION, 0.0, 1.0)
-			var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
-			CrocodileRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, attack_progress, roll_progress, hit_progress, float(actor_id) * 0.47, delta)
+			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+				var attack_progress := 1.0 - clampf(external_attack_animation_timer / CrocodileRig.ATTACK_DURATION, 0.0, 1.0)
+				var roll_progress := 1.0 - clampf(external_skill_animation_timer / CrocodileRig.ROLL_DURATION, 0.0, 1.0)
+				var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
+				CrocodileRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, attack_progress, roll_progress, hit_progress, float(actor_id) * 0.47, delta)
 		else:
 			external_animation_state = SkeletonRig.resolve_state(
 				gait_blend,
@@ -4427,22 +4493,23 @@ func _update_visual_motion(delta: float) -> void:
 				dead,
 				species_id
 			)
-			var action_timer := external_skill_animation_timer if external_animation_state == "skill" else external_attack_animation_timer
-			var action_duration := SkeletonRig.skill_duration(species_id) if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
-			var attack_progress := 1.0 - action_timer / action_duration
-			var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
-			SkeletonRig.apply_pose(
-				external_skeleton,
-				external_animation_state,
-				move_time,
-				stride_amplitude,
-				speed_ratio,
-				attack_progress,
-				hit_progress,
-				float(actor_id) * 0.47,
-				delta,
-				species_id
-			)
+			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+				var action_timer := external_skill_animation_timer if external_animation_state == "skill" else external_attack_animation_timer
+				var action_duration := SkeletonRig.skill_duration(species_id) if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
+				var attack_progress := 1.0 - action_timer / action_duration
+				var hit_progress := 1.0 - external_hit_animation_timer / SkeletonRig.HIT_DURATION
+				SkeletonRig.apply_pose(
+					external_skeleton,
+					external_animation_state,
+					move_time,
+					stride_amplitude,
+					speed_ratio,
+					attack_progress,
+					hit_progress,
+					float(actor_id) * 0.47,
+					delta,
+					species_id
+				)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
