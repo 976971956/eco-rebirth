@@ -43,6 +43,7 @@ var game: Node
 var menu_root: Control
 var menu_content_margin: MarginContainer
 var menu_start_button: Button
+var menu_bestiary_button: Button
 var hud_root: Control
 var modal_root: Control
 var modal_shade: ColorRect
@@ -370,6 +371,13 @@ func _build_menu() -> void:
 	free_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	free_button.pressed.connect(show_free_mode)
 	content.add_child(free_button)
+
+	menu_bestiary_button = Button.new()
+	menu_bestiary_button.text = "生态图鉴　发现 0 / 30"
+	_style_button(menu_bestiary_button, false)
+	menu_bestiary_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	menu_bestiary_button.pressed.connect(show_bestiary)
+	content.add_child(menu_bestiary_button)
 
 	var settings_button := Button.new()
 	settings_button.text = "游戏设置"
@@ -888,6 +896,8 @@ func show_menu() -> void:
 		intro_panel.hide()
 	if menu_start_button != null and game != null:
 		menu_start_button.text = game.menu_start_text() if game.has_method("menu_start_text") else ("继续轮回" if game.has_campaign_progress() else "开始轮回")
+	if menu_bestiary_button != null and game != null and game.has_method("bestiary_progress_text"):
+		menu_bestiary_button.text = game.bestiary_progress_text()
 	menu_root.show()
 	hud_root.hide()
 	modal_root.hide()
@@ -1130,6 +1140,19 @@ func add_battle_report(text_value: String, category: String = "战斗", color_he
 	_refresh_battle_ticker()
 
 
+func recent_battle_report_lines(window_seconds: int = 10, maximum: int = 3) -> Array[String]:
+	var lines: Array[String] = []
+	var current_seconds := maxi(int(float(game.get("level_elapsed"))) if game != null and game.get("level_elapsed") != null else 0, 0)
+	for report_index in range(battle_reports.size() - 1, -1, -1):
+		var report: Dictionary = battle_reports[report_index]
+		if current_seconds - int(report.get("time", 0)) > maxi(window_seconds, 0):
+			break
+		lines.push_front("%s %s" % [str(report.get("category", "战斗")), str(report.get("text", ""))])
+		if lines.size() >= maxi(maximum, 1):
+			break
+	return lines
+
+
 func _refresh_battle_ticker() -> void:
 	if battle_ticker_button == null or battle_reports.is_empty():
 		return
@@ -1342,7 +1365,7 @@ func show_result(title_text: String, body_text: String, retry_text: String = "�
 	_clear_modal_content(Color(0.01, 0.045, 0.04, 0.78))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	_add_modal_panel(panel, Vector2(560, 400) if _uses_compact_touch_layout() else (Vector2(600, 440) if _uses_touch_layout() else Vector2(600, 410)))
+	_add_modal_panel(panel, Vector2(760, 610) if _uses_compact_touch_layout() else (Vector2(820, 650) if _uses_touch_layout() else Vector2(760, 620)))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 15)
@@ -1353,38 +1376,140 @@ func show_result(title_text: String, body_text: String, retry_text: String = "�
 	title.add_theme_font_size_override("font_size", _font_size(40, 46))
 	title.add_theme_color_override("font_color", Color("#f5efc8"))
 	box.add_child(title)
-	var body := Label.new()
+	var body := RichTextLabel.new()
 	body.text = body_text
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.fit_content = false
+	body.scroll_active = true
+	body.custom_minimum_size = Vector2(0, 250)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_theme_font_size_override("font_size", _font_size(18, 22))
+	body.add_theme_font_size_override("normal_font_size", _font_size(18, 21))
 	body.add_theme_color_override("font_color", Color("#dcebd7"))
 	box.add_child(body)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 12)
+	box.add_child(actions)
 	var retry := Button.new()
 	retry.text = retry_text
 	_style_button(retry, true)
 	retry.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	retry.pressed.connect(func(): retry_requested.emit())
-	box.add_child(retry)
+	actions.add_child(retry)
 	if include_settings:
 		var settings_button := Button.new()
 		settings_button.text = "游戏设置"
 		_style_button(settings_button, false)
 		settings_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		settings_button.pressed.connect(func(): show_settings(true))
-		box.add_child(settings_button)
+		actions.add_child(settings_button)
 	var menu_button := Button.new()
 	menu_button.text = "返回主菜单"
 	_style_button(menu_button, false)
 	menu_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	menu_button.pressed.connect(func(): menu_requested.emit())
-	box.add_child(menu_button)
+	actions.add_child(menu_button)
 
 
 func show_pause() -> void:
 	show_result("生态暂停", "世界的呼吸暂时停止。\n继续观察、追猎或寻找食物。", "继续游戏", true)
+
+
+func show_bestiary() -> void:
+	_clear_modal_content(Color(0.006, 0.028, 0.024, 0.91))
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.09, 0.075, 0.99), 24, Color(0.66, 0.90, 0.56, 0.70), 2))
+	_add_modal_panel(panel, Vector2(1080, 630) if _uses_compact_touch_layout() else Vector2(1120, 660))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 9)
+	panel.add_child(box)
+
+	var title := Label.new()
+	title.text = game.bestiary_progress_text() if game != null and game.has_method("bestiary_progress_text") else "生态图鉴"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", _font_size(38, 43))
+	title.add_theme_color_override("font_color", Color("#f5efc8"))
+	box.add_child(title)
+	var subtitle := Label.new()
+	subtitle.text = "记录你遇见过的生命、生态习性与个人最佳战绩 · 图鉴知识不会永久强化属性"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", _font_size(16, 18))
+	subtitle.add_theme_color_override("font_color", Color("#b9d5b7"))
+	box.add_child(subtitle)
+
+	var entries: Array[Dictionary] = game.get_bestiary_entries() if game != null and game.has_method("get_bestiary_entries") else []
+	var columns := HBoxContainer.new()
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_theme_constant_override("separation", 14)
+	box.add_child(columns)
+	var list_panel := PanelContainer.new()
+	list_panel.custom_minimum_size = Vector2(370 if _uses_touch_layout() else 340, 0)
+	list_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.006, 0.045, 0.038, 0.92), 16, Color(0.40, 0.68, 0.44, 0.38), 1))
+	columns.add_child(list_panel)
+	var species_list := ItemList.new()
+	species_list.name = "SpeciesIndex"
+	species_list.add_theme_font_size_override("font_size", _font_size(17, 20))
+	species_list.select_mode = ItemList.SELECT_SINGLE
+	species_list.allow_reselect = true
+	species_list.mouse_filter = Control.MOUSE_FILTER_STOP
+	list_panel.add_child(species_list)
+	var first_discovered := -1
+	for entry_index in range(entries.size()):
+		var entry: Dictionary = entries[entry_index]
+		species_list.add_item(str(entry.get("list_text", "？？？")))
+		if bool(entry.get("discovered", false)):
+			species_list.set_item_custom_fg_color(entry_index, Color("#e6edcf"))
+			if first_discovered < 0:
+				first_discovered = entry_index
+		else:
+			species_list.set_item_custom_fg_color(entry_index, Color("#71837a"))
+
+	var detail_panel := PanelContainer.new()
+	detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.006, 0.045, 0.038, 0.92), 16, Color(0.40, 0.68, 0.44, 0.38), 1))
+	columns.add_child(detail_panel)
+	var detail := RichTextLabel.new()
+	detail.name = "SpeciesDetail"
+	detail.fit_content = false
+	detail.scroll_active = true
+	detail.mouse_filter = Control.MOUSE_FILTER_STOP
+	detail.add_theme_font_size_override("normal_font_size", _font_size(17, 20))
+	detail.add_theme_color_override("default_color", Color("#dcebd7"))
+	detail_panel.add_child(detail)
+	var refresh_detail := func(index: int):
+		if index >= 0 and index < entries.size():
+			detail.text = str(entries[index].get("detail", "暂无记录"))
+	species_list.item_selected.connect(refresh_detail)
+	var initial_index := first_discovered if first_discovered >= 0 else 0
+	if not entries.is_empty():
+		species_list.select(initial_index)
+		refresh_detail.call(initial_index)
+
+	var recent_label := Label.new()
+	recent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	recent_label.text = _recent_run_summary()
+	recent_label.add_theme_font_size_override("font_size", _font_size(15, 17))
+	recent_label.add_theme_color_override("font_color", Color("#c9c28f"))
+	box.add_child(recent_label)
+	var close_button := Button.new()
+	close_button.text = "返回首页"
+	_style_button(close_button, false)
+	close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_button.pressed.connect(func(): modal_root.hide())
+	box.add_child(close_button)
+
+
+func _recent_run_summary() -> String:
+	if game == null or not game.has_method("get_recent_runs"):
+		return "最近轮回：暂无完成记录"
+	var runs: Array[Dictionary] = game.get_recent_runs()
+	if runs.is_empty():
+		return "最近轮回：暂无完成记录"
+	var latest: Dictionary = runs[0]
+	return "最近轮回：第%d关 · %s · %s · 存活%s · Lv.%d · %d击杀" % [
+		int(latest.get("level", 1)), Catalog.display_name(str(latest.get("species_id", "rabbit"))),
+		("胜利" if bool(latest.get("won", false)) else "死亡"), _format_report_time(roundi(float(latest.get("survival", 0.0)))),
+		int(latest.get("player_level", 1)), int(latest.get("kills", 0)),
+	]
 
 
 func show_free_mode() -> void:

@@ -183,6 +183,9 @@ var stuck_recoveries: int = 0
 var route_replans: int = 0
 var food_bites: int = 0
 var distance_travelled: float = 0.0
+var damage_dealt: float = 0.0
+var damage_taken: float = 0.0
+var sprint_seconds: float = 0.0
 var visual_root: Node3D
 var body_root: Node3D
 var selection_ring: MeshInstance3D
@@ -1731,7 +1734,11 @@ func _update_timers(delta: float) -> void:
 			slow_multiplier = 1.0
 	if poison_timer > 0.0:
 		poison_timer -= delta
-		health -= poison_dps * delta
+		var poison_damage := minf(poison_dps * delta, maxf(health, 0.0))
+		health -= poison_damage
+		damage_taken += poison_damage
+		if is_instance_valid(poison_source):
+			poison_source.damage_dealt += poison_damage
 		health_changed.emit(health, max_health)
 		_update_health_bar()
 		if health <= 0.0:
@@ -1913,7 +1920,9 @@ func _update_cover_visual() -> void:
 func _update_needs(delta: float) -> void:
 	hunger = minf(hunger + float(data["hunger_rate"]) * delta, 100.0)
 	if hunger >= 100.0:
+		var health_before_starvation := health
 		health = starvation_health_after(health, max_health, delta)
+		damage_taken += maxf(health_before_starvation - health, 0.0)
 		health_changed.emit(health, max_health)
 		_update_health_bar()
 		if health <= 0.0:
@@ -3068,6 +3077,7 @@ func _apply_movement(delta: float) -> void:
 		straight_run_timer = 0.0
 	previous_flat_direction = flat_direction
 	if sprinting:
+		sprint_seconds += delta
 		speed *= float(data["sprint"])
 		var sprint_cost := 8.5 + int(data["size"]) * 1.7
 		if Catalog.has_trait(species_id, "straight_runner") and straight_run_timer > 2.0:
@@ -3848,7 +3858,11 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	if Catalog.has_trait(species_id, "giant") and is_instance_valid(source):
 		if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
 			final_damage *= 1.32
+	var applied_damage := minf(final_damage, maxf(health, 0.0))
 	health -= final_damage
+	damage_taken += applied_damage
+	if is_instance_valid(source):
+		source.damage_dealt += applied_damage
 	if health > 0.0 and is_instance_valid(source):
 		_trigger_ecology_intervention(source)
 	if opportunity_strike and game.has_method("on_opportunity_strike"):

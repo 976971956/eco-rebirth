@@ -34,6 +34,7 @@ func _initialize() -> void:
 
 func _run_validation() -> void:
 	_validate_save_migration()
+	_validate_bestiary_and_recap_contract()
 	_validate_quality_presets()
 	_validate_spawn_distribution_contract()
 	_validate_tutorial_contract()
@@ -60,7 +61,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.36 发布校验通过：20 种外部动物、Hero/Mobile 双档、自动 LOD 与移动端预算正常")
+		print("[release] V1.37 发布校验通过：生态图鉴、个人记录、局后复盘与版本化存档正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -101,6 +102,9 @@ func _validate_save_migration() -> void:
 	main.tutorial_completed = true
 	main.selected_free_level = 9
 	main.selected_free_species = "eagle"
+	main.discovered_species = ["rabbit", "eagle"]
+	main.species_records = {"rabbit": {"runs": 3, "wins": 1, "best_level": 4, "best_survival": 123.0, "best_player_level": 3, "most_kills": 2}}
+	main.recent_runs = [{"species_id": "rabbit", "level": 4, "won": false, "survival": 123.0, "player_level": 3, "kills": 2}]
 	main._save_progress(test_path)
 	var reload := MainScript.new()
 	reload._load_progress(test_path)
@@ -109,9 +113,51 @@ func _validate_save_migration() -> void:
 	_expect(reload.current_level == 6, "自由模式选择不应覆盖战役关卡")
 	_expect(reload.quality_preset == "high", "画质档位无法回读")
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
+	_expect(reload.discovered_species == ["rabbit", "eagle"], "图鉴发现顺序或内容无法回读")
+	_expect(int(reload.species_records.get("rabbit", {}).get("runs", 0)) == 3, "物种个人记录无法回读")
+	_expect(reload.recent_runs.size() == 1 and int(reload.recent_runs[0].get("level", 0)) == 4, "最近轮回记录无法回读")
 	DirAccess.remove_absolute(test_path)
 	main.free()
 	reload.free()
+
+
+func _validate_bestiary_and_recap_contract() -> void:
+	var main := MainScript.new()
+	_expect(main.bestiary_progress_text() == "生态图鉴　发现 0 / 30", "空白图鉴进度不正确")
+	main._discover_roster(["wolf", "rabbit", "wolf"], false)
+	_expect(main.discovered_species == ["rabbit", "wolf"], "同局重复物种没有去重或目录顺序不稳定")
+	_expect(main.new_discoveries_current_run == ["wolf", "rabbit"], "本局新发现列表没有保留实际遇见顺序")
+	var entries := main.get_bestiary_entries()
+	_expect(entries.size() == Catalog.ORDER.size(), "图鉴没有覆盖全部 30 种动物")
+	_expect(bool(entries[Catalog.ORDER.find("rabbit")].get("discovered", false)), "已发现动物仍显示为锁定")
+	_expect(not bool(entries[Catalog.ORDER.find("eagle")].get("discovered", true)), "未发现动物提前泄露完整图鉴")
+	var hostile_records := {"rabbit": {"runs": -4, "wins": 99, "best_level": 99, "best_player_level": 99}, "missing": {"runs": 8}}
+	var sanitized := main._sanitize_species_records(hostile_records)
+	_expect(int(sanitized["rabbit"]["runs"]) == 0 and int(sanitized["rabbit"]["wins"]) == 0, "损坏的图鉴战绩没有限制到安全范围")
+	_expect(int(sanitized["rabbit"]["best_level"]) == 10 and int(sanitized["rabbit"]["best_player_level"]) == 8, "图鉴最佳成绩上限没有与玩法一致")
+	_expect(not sanitized.has("missing"), "图鉴保留了不存在的物种记录")
+	var player_actor := ActorScript.new()
+	player_actor.species_id = "rabbit"
+	player_actor.level = 4
+	player_actor.experience = 37
+	player_actor.kills = 2
+	player_actor.assists = 3
+	player_actor.tactical_actions = 5
+	player_actor.food_bites = 8
+	main.player = player_actor
+	main.current_level = 4
+	main.run_uses_free_mode = false
+	var recap := main._record_completed_run(false, "草原雄狮结束了你的这次生命", "lion", 318.0)
+	_expect(int(main.species_records["rabbit"]["runs"]) == 1 and int(main.species_records["rabbit"]["most_kills"]) == 2, "局后数据没有汇总到物种个人记录")
+	_expect(main.recent_runs.size() == 1 and str(recap.get("killer_species", "")) == "lion", "局后复盘没有记录死亡来源")
+	_expect(str(recap.get("advice", "")).contains("不要正面对耗"), "被强敌击败后没有生成可执行建议")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("func show_bestiary()") and ui_source.contains("SpeciesIndex") and ui_source.contains("SpeciesDetail"), "首页图鉴缺少可滚动物种索引或详情")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(ui_source.contains("func recent_battle_report_lines") and main_source.contains("最后 10 秒"), "结算没有接入最后十秒生态事件")
+	_expect(main_source.contains("图鉴只解锁知识与战绩，不会永久增加任何属性"), "图鉴没有明确保持无永久属性加成")
+	player_actor.free()
+	main.free()
 
 
 func _validate_quality_presets() -> void:
@@ -232,9 +278,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.36.0\"") and presets.contains("application/short_version=\"1.36.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=460") and presets.contains("application/version=\"460\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.36.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.37.0\"") and presets.contains("application/short_version=\"1.37.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=470") and presets.contains("application/version=\"470\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.37.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")

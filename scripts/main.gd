@@ -9,8 +9,9 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
-const SAVE_VERSION := 3
-const RELEASE_VERSION := "1.36.0"
+const SAVE_VERSION := 4
+const RELEASE_VERSION := "1.37.0"
+const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
@@ -107,6 +108,10 @@ var quality_preset: String = "medium"
 var selected_free_level: int = 1
 var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
+var discovered_species: Array[String] = []
+var species_records: Dictionary = {}
+var recent_runs: Array[Dictionary] = []
+var new_discoveries_current_run: Array[String] = []
 var leaderboard_refresh_remaining: float = 0.0
 var orientation_blocked: bool = false
 var world_seed_override: int = -1
@@ -319,6 +324,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 	danger_memory_avoidances = 0
 	ecology_trace_report_cooldown = 0.0
 	danger_memory_report_cooldown = 0.0
+	new_discoveries_current_run.clear()
 	var batch_run_offset := batch_total_runs - batch_runs_remaining if batch_mode else 0
 	world_seed = world_seed_override + batch_run_offset if world_seed_override >= 0 else int(Time.get_unix_time_from_system() * 1000.0) ^ int(Time.get_ticks_msec()) ^ (total_deaths * 7919) ^ randi()
 	rng.seed = world_seed
@@ -346,6 +352,8 @@ func _start_new_world(free_mode: bool = false) -> void:
 	corpses.clear()
 
 	var roster := Catalog.build_roster(rng, individual_count, species_range, current_level)
+	if not batch_mode:
+		_discover_roster(roster)
 	roster_size = roster.size()
 	var player_index := _select_player_roster_index(roster)
 	var run_threat := 0 if run_uses_free_mode else threat_level
@@ -549,7 +557,6 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 		if not run_uses_free_mode:
 			total_deaths += 1
 			threat_level = mini(threat_level + 1, 8)
-		_save_progress()
 		_finish_loss(killer)
 		return
 
@@ -560,8 +567,6 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 			threat_level = maxi(threat_level - 2, 0)
 			last_completed_level = current_level
 			campaign_level = mini(current_level + 1, LEVEL_CONFIG.size())
-			current_level = campaign_level
-		_save_progress()
 		_finish_victory()
 
 
@@ -573,20 +578,33 @@ func _finish_loss(killer: EcoActor) -> void:
 	if is_instance_valid(killer):
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
+	var killer_species := killer.species_id if is_instance_valid(killer) else ""
+	var recap := _record_completed_run(false, cause, killer_species, seconds)
+	_save_progress()
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　存活：%s\n击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
+		current_level,
 		_format_time(seconds),
+		player.level if is_instance_valid(player) else 1,
+		player.experience if is_instance_valid(player) else 0,
 		player.kills if is_instance_valid(player) else 0,
 		player.assists if is_instance_valid(player) else 0,
 		player.tactical_actions if is_instance_valid(player) else 0,
+		player.food_bites if is_instance_valid(player) else 0,
+		roundi(player.damage_dealt) if is_instance_valid(player) else 0,
+		roundi(player.damage_taken) if is_instance_valid(player) else 0,
+		_format_time(player.sprint_seconds if is_instance_valid(player) else 0.0),
 		player_hotspots_visited,
 		ecology_events_started,
 		ecology_hunter_peak,
 		ecology_trace_investigations,
 		danger_memory_avoidances,
-		pressure_text
+		pressure_text,
+		str(recap.get("advice", "")),
+		_new_discovery_recap(),
+		_recent_battle_recap(),
 	]
 	ui.show_result("本次生命结束", body, "重新自由挑战" if run_uses_free_mode else "轮回重生")
 	if audio != null:
@@ -600,13 +618,22 @@ func _finish_victory() -> void:
 	if state != "ending" or not is_instance_valid(player):
 		return
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
-	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % current_level)
-	var body := "你以%s的身份成为森林中最后的战斗个体。\n\n存活：%s　直接击杀：%d　生态助攻：%d　战术行动：%d\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var recap := _record_completed_run(true, "成为最后的存活物种", "", seconds)
+	_save_progress()
+	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % campaign_level)
+	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
+		current_level,
 		_format_time(seconds),
+		player.level,
+		player.experience,
 		player.kills,
 		player.assists,
 		player.tactical_actions,
+		player.food_bites,
+		roundi(player.damage_dealt),
+		roundi(player.damage_taken),
+		_format_time(player.sprint_seconds),
 		player_hotspots_visited,
 		ecology_events_started,
 		ecology_hunter_peak,
@@ -614,7 +641,10 @@ func _finish_victory() -> void:
 		danger_memory_avoidances,
 		total_deaths,
 		world_seed,
-		progression_text
+		progression_text,
+		str(recap.get("advice", "")),
+		_new_discovery_recap(),
+		_recent_battle_recap(),
 	]
 	ui.show_result("生态胜者", body, "再次自由挑战" if run_uses_free_mode else "再启新世界")
 	if audio != null:
@@ -1390,6 +1420,135 @@ func menu_start_text() -> String:
 	return "继续轮回" if has_campaign_progress() else "开始轮回"
 
 
+func bestiary_progress_text() -> String:
+	return "生态图鉴　发现 %d / %d" % [discovered_species.size(), Catalog.ORDER.size()]
+
+
+func get_bestiary_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for species_id in Catalog.ORDER:
+		var discovered := species_id in discovered_species
+		var record: Dictionary = species_records.get(species_id, {})
+		if not discovered:
+			entries.append({
+				"species_id": species_id,
+				"discovered": false,
+				"name": "未发现物种",
+				"list_text": "？？？　·　第 %d 关起可能出现" % Catalog.unlock_level(species_id),
+				"detail": "继续进入第 %d 关及之后的生态世界，在阵容中遇见它即可记录。\n\n图鉴只解锁知识与战绩，不会永久增加任何属性。" % Catalog.unlock_level(species_id),
+			})
+			continue
+		var data := Catalog.get_data(species_id)
+		var record_text := "尚未以该物种完成一局"
+		if not record.is_empty():
+			record_text = "出战 %d　获胜 %d　最高挑战第 %d 关\n最佳存活 %s　最高 Lv.%d　单局最多击杀 %d" % [
+				int(record.get("runs", 0)), int(record.get("wins", 0)), int(record.get("best_level", 0)),
+				_format_time(float(record.get("best_survival", 0.0))), int(record.get("best_player_level", 1)), int(record.get("most_kills", 0)),
+			]
+		var diet_name: String = str({"herbivore": "植食", "omnivore": "杂食", "carnivore": "肉食"}.get(str(data.get("diet", "omnivore")), "杂食"))
+		entries.append({
+			"species_id": species_id,
+			"discovered": true,
+			"name": str(data["name"]),
+			"list_text": "%s　·　%s　·　战斗阶位 %d" % [str(data["name"]), diet_name, Catalog.combat_tier(species_id)],
+			"detail": "%s · %s\n%s　体型 %d　生命 %d　攻击 %.1f　速度 %.2f\n\n%s\n%s\n偏爱食物：%s\n反制组合：%s\n\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s\n\n个人记录\n%s" % [
+				str(data["name"]), str(data["subtitle"]), diet_name, int(data["size"]), int(data["health"]), float(data["attack"]), float(data["speed"]),
+				Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.habit_foods_display_text(species_id), Catalog.counterplay_plan(species_id),
+				str(data["passive"]), str(data["passive_hint"]), str(data["skill"]), str(data["skill_hint"]), Catalog.victory_guide(species_id), record_text,
+			],
+		})
+	return entries
+
+
+func get_recent_runs() -> Array[Dictionary]:
+	return recent_runs.duplicate(true)
+
+
+func _discover_roster(roster: Array[String], persist: bool = true) -> void:
+	var changed := false
+	for species_id in roster:
+		if species_id not in discovered_species:
+			discovered_species.append(species_id)
+			new_discoveries_current_run.append(species_id)
+			changed = true
+	discovered_species.sort_custom(func(a: String, b: String): return Catalog.ORDER.find(a) < Catalog.ORDER.find(b))
+	if changed and persist:
+		_save_progress()
+
+
+func _record_completed_run(won: bool, cause: String, killer_species: String, seconds: float) -> Dictionary:
+	if not is_instance_valid(player):
+		return {}
+	var species_id := player.species_id
+	var record: Dictionary = species_records.get(species_id, {})
+	record["runs"] = int(record.get("runs", 0)) + 1
+	record["wins"] = int(record.get("wins", 0)) + (1 if won else 0)
+	record["campaign_runs"] = int(record.get("campaign_runs", 0)) + (0 if run_uses_free_mode else 1)
+	record["free_runs"] = int(record.get("free_runs", 0)) + (1 if run_uses_free_mode else 0)
+	record["best_level"] = maxi(int(record.get("best_level", 0)), current_level)
+	record["best_survival"] = maxf(float(record.get("best_survival", 0.0)), seconds)
+	record["best_player_level"] = maxi(int(record.get("best_player_level", 1)), player.level)
+	record["most_kills"] = maxi(int(record.get("most_kills", 0)), player.kills)
+	record["most_assists"] = maxi(int(record.get("most_assists", 0)), player.assists)
+	record["most_tactical_actions"] = maxi(int(record.get("most_tactical_actions", 0)), player.tactical_actions)
+	species_records[species_id] = record
+	var starvation := killer_species == "" and not won
+	var advice := _run_advice(species_id, killer_species, starvation, won)
+	var summary := {
+		"species_id": species_id,
+		"level": current_level,
+		"won": won,
+		"free_mode": run_uses_free_mode,
+		"survival": seconds,
+		"player_level": player.level,
+		"experience": player.experience,
+		"kills": player.kills,
+		"assists": player.assists,
+		"tactical_actions": player.tactical_actions,
+		"food_bites": player.food_bites,
+		"damage_dealt": player.damage_dealt,
+		"damage_taken": player.damage_taken,
+		"sprint_seconds": player.sprint_seconds,
+		"cause": cause,
+		"killer_species": killer_species,
+		"advice": advice,
+		"world_seed": world_seed,
+		"new_discoveries": new_discoveries_current_run.duplicate(),
+	}
+	recent_runs.push_front(summary)
+	if recent_runs.size() > RUN_HISTORY_LIMIT:
+		recent_runs.resize(RUN_HISTORY_LIMIT)
+	return summary
+
+
+func _run_advice(species_id: String, killer_species: String, starvation: bool, won: bool) -> String:
+	if won:
+		return "%s 下次可尝试更高压力或不同反制路线。" % Catalog.victory_guide(species_id)
+	if starvation:
+		return "饱腹归零后会持续掉血。优先沿%s寻找%s，并在生命低于习性阈值前脱离战斗。" % [
+			Catalog.habitat_description(species_id).trim_prefix("环境适应："), Catalog.habit_foods_display_text(species_id),
+		]
+	if killer_species != "":
+		return "面对%s不要正面对耗。%s" % [Catalog.display_name(killer_species), Catalog.counterplay_plan(species_id)]
+	return Catalog.victory_guide(species_id)
+
+
+func _new_discovery_recap() -> String:
+	if new_discoveries_current_run.is_empty():
+		return ""
+	var names: Array[String] = []
+	for species_id in new_discoveries_current_run:
+		names.append(Catalog.display_name(species_id))
+	return "\n新发现：%s（已写入生态图鉴）" % "、".join(names)
+
+
+func _recent_battle_recap() -> String:
+	if ui == null or not ui.has_method("recent_battle_report_lines"):
+		return ""
+	var lines: Array[String] = ui.recent_battle_report_lines(10, 3)
+	return "" if lines.is_empty() else "\n最后 10 秒：%s" % "；".join(lines)
+
+
 func get_selected_free_level() -> int:
 	return selected_free_level
 
@@ -1452,6 +1611,10 @@ func reset_game_progress() -> void:
 	selected_free_level = 1
 	selected_free_species = "rabbit"
 	run_uses_free_mode = false
+	discovered_species.clear()
+	species_records.clear()
+	recent_runs.clear()
+	new_discoveries_current_run.clear()
 	_save_progress()
 	if audio != null:
 		audio.set_context("menu")
@@ -1506,6 +1669,9 @@ func _save_progress(path: String = CONFIG_PATH) -> void:
 	config.set_value("video", "quality_preset", quality_preset)
 	config.set_value("gameplay", "selected_free_level", selected_free_level)
 	config.set_value("gameplay", "selected_free_species", selected_free_species)
+	config.set_value("bestiary", "discovered_species", discovered_species)
+	config.set_value("bestiary", "species_records", species_records)
+	config.set_value("bestiary", "recent_runs", recent_runs)
 	if config.has_section_key("gameplay", "all_levels_unlocked"):
 		config.erase_section_key("gameplay", "all_levels_unlocked")
 	config.save(path)
@@ -1529,6 +1695,15 @@ func _load_progress(path: String = CONFIG_PATH) -> void:
 	selected_free_species = str(config.get_value("gameplay", "selected_free_species", "rabbit"))
 	if not Catalog.ORDER.has(selected_free_species):
 		selected_free_species = "rabbit"
+	discovered_species.clear()
+	var loaded_discoveries: Array = config.get_value("bestiary", "discovered_species", [])
+	for species_id_value in loaded_discoveries:
+		var species_id := str(species_id_value)
+		if Catalog.ORDER.has(species_id) and species_id not in discovered_species:
+			discovered_species.append(species_id)
+	discovered_species.sort_custom(func(a: String, b: String): return Catalog.ORDER.find(a) < Catalog.ORDER.find(b))
+	species_records = _sanitize_species_records(config.get_value("bestiary", "species_records", {}))
+	recent_runs = _sanitize_recent_runs(config.get_value("bestiary", "recent_runs", []))
 	current_level = campaign_level
 	if loaded_version < SAVE_VERSION:
 		_save_progress(path)
@@ -1536,3 +1711,74 @@ func _load_progress(path: String = CONFIG_PATH) -> void:
 
 func _sanitize_quality(value: String) -> String:
 	return value if QUALITY_PRESETS.has(value) else "medium"
+
+
+func _sanitize_species_records(value: Variant) -> Dictionary:
+	var sanitized: Dictionary = {}
+	if not value is Dictionary:
+		return sanitized
+	for species_id_value in value:
+		var species_id := str(species_id_value)
+		var raw_record: Variant = value[species_id_value]
+		if not Catalog.ORDER.has(species_id) or not raw_record is Dictionary:
+			continue
+		var raw: Dictionary = raw_record
+		sanitized[species_id] = {
+			"runs": maxi(int(raw.get("runs", 0)), 0),
+			"wins": maxi(int(raw.get("wins", 0)), 0),
+			"campaign_runs": maxi(int(raw.get("campaign_runs", 0)), 0),
+			"free_runs": maxi(int(raw.get("free_runs", 0)), 0),
+			"best_level": clampi(int(raw.get("best_level", 0)), 0, LEVEL_CONFIG.size()),
+			"best_survival": clampf(float(raw.get("best_survival", 0.0)), 0.0, 86400.0),
+			"best_player_level": clampi(int(raw.get("best_player_level", 1)), 1, 8),
+			"most_kills": maxi(int(raw.get("most_kills", 0)), 0),
+			"most_assists": maxi(int(raw.get("most_assists", 0)), 0),
+			"most_tactical_actions": maxi(int(raw.get("most_tactical_actions", 0)), 0),
+		}
+		if int(sanitized[species_id]["wins"]) > int(sanitized[species_id]["runs"]):
+			sanitized[species_id]["wins"] = sanitized[species_id]["runs"]
+	return sanitized
+
+
+func _sanitize_recent_runs(value: Variant) -> Array[Dictionary]:
+	var sanitized: Array[Dictionary] = []
+	if not value is Array:
+		return sanitized
+	for item in value:
+		if not item is Dictionary:
+			continue
+		var raw: Dictionary = item
+		var species_id := str(raw.get("species_id", ""))
+		if not Catalog.ORDER.has(species_id):
+			continue
+		var safe_new_discoveries: Array[String] = []
+		var raw_new_discoveries: Variant = raw.get("new_discoveries", [])
+		if raw_new_discoveries is Array:
+			for discovered_id_value in raw_new_discoveries:
+				var discovered_id := str(discovered_id_value)
+				if Catalog.ORDER.has(discovered_id) and discovered_id not in safe_new_discoveries:
+					safe_new_discoveries.append(discovered_id)
+		sanitized.append({
+			"species_id": species_id,
+			"level": clampi(int(raw.get("level", 1)), 1, LEVEL_CONFIG.size()),
+			"won": bool(raw.get("won", false)),
+			"free_mode": bool(raw.get("free_mode", false)),
+			"survival": clampf(float(raw.get("survival", 0.0)), 0.0, 86400.0),
+			"player_level": clampi(int(raw.get("player_level", 1)), 1, 8),
+			"experience": maxi(int(raw.get("experience", 0)), 0),
+			"kills": maxi(int(raw.get("kills", 0)), 0),
+			"assists": maxi(int(raw.get("assists", 0)), 0),
+			"tactical_actions": maxi(int(raw.get("tactical_actions", 0)), 0),
+			"food_bites": maxi(int(raw.get("food_bites", 0)), 0),
+			"damage_dealt": maxf(float(raw.get("damage_dealt", 0.0)), 0.0),
+			"damage_taken": maxf(float(raw.get("damage_taken", 0.0)), 0.0),
+			"sprint_seconds": clampf(float(raw.get("sprint_seconds", 0.0)), 0.0, 86400.0),
+			"cause": str(raw.get("cause", "")),
+			"killer_species": str(raw.get("killer_species", "")) if Catalog.ORDER.has(str(raw.get("killer_species", ""))) else "",
+			"advice": str(raw.get("advice", "")),
+			"world_seed": int(raw.get("world_seed", 0)),
+			"new_discoveries": safe_new_discoveries,
+		})
+		if sanitized.size() >= RUN_HISTORY_LIMIT:
+			break
+	return sanitized
