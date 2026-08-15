@@ -1,4 +1,4 @@
-# 《生态轮回》V1.32 运行与导出
+# 《生态轮回》V1.33 运行与导出
 
 ## 直接运行
 
@@ -29,6 +29,8 @@ godot --path .
 普通攻击只在攻击范围内触发。食草物种吃绿色植物，肉食物种吃尸体，狐狸和熊两者都能吃。
 
 V1.32 为四个生态区增加古木门、日轮、芦苇扇和石峰地标。地标不生成碰撞；树木与岩石则按实际弯曲主路节点留出迁徙通道，不再仅保护水平/垂直直线。发布检查会对第 1/10 关执行最大通行体型的 97% 连通率验收。
+
+V1.33 增加可复现的三端工具链诊断和第 1/5/10 关性能采样。批量模拟与性能报告可通过 `--report-dir` 写到独立目录，不再共享并覆盖同一组 `user://batch_*.csv`。无画面采样是 CPU/场景复杂度回归基线；手机温度、耗电、GPU 帧率和触控体验仍必须在对应真机确认。
 
 V1.31 为赤狐、青环蛇和獠牙野猪新增 Hero/Mobile 外部 GLB：赤狐的四足/双耳/蓬尾和野猪的四足/双耳/卷尾接入原有步态，青环蛇保留无足整体游走。九种外部动物都有自动 LOD 和固定根比例，AI 只加载 Mobile，资源失败时仍安全回退。九种 Mobile 模型总顶点基线为 60000；碰撞、数值、AI 和存档没有改变。
 
@@ -76,6 +78,12 @@ V1.14 中每关开局有 20–38 秒的生态建立期，关卡越高时间越�
 
 ## Web
 
+先检查本机 Web 导出条件：
+
+```bash
+./tools/check_platform_toolchain.sh web
+```
+
 项目固定使用 Compatibility 渲染器、GDScript 和单线程 Web 预设，避免 `SharedArrayBuffer` 和跨源隔离要求。安装与 Godot 4.7.1 完全匹配的导出模板后：
 
 ```bash
@@ -109,7 +117,13 @@ https://976971956.github.io/eco-rebirth/
 
 ## Android
 
-需要 JDK 17、Android SDK Platform 35、Build-Tools 35.0.1，以及与 Godot 4.7.1 匹配的 Android 导出模板。调试 APK：
+先检查本机 Android 导出条件：
+
+```bash
+./tools/check_platform_toolchain.sh android
+```
+
+需要 JDK 17、Android SDK Platform 36、Build-Tools 35.0.1，以及与 Godot 4.7.1 匹配的 Android 导出模板。调试 APK：
 
 ```bash
 mkdir -p build/android
@@ -119,6 +133,12 @@ godot --headless --path . --export-debug Android build/android/EcoRebirth.apk
 Google Play 发布应改为 Gradle 构建、AAB 格式，并在 Godot 编辑器设置自己的正式签名。不要把 keystore 或密码提交到项目。
 
 ## iOS
+
+先检查本机 iOS 导出条件：
+
+```bash
+./tools/check_platform_toolchain.sh ios
+```
 
 iOS 只能在 macOS 上导出，需要 Xcode、Godot 4.7.1 iOS 模板和有效 Apple Developer Team ID。
 
@@ -149,6 +169,29 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 - Android 同时启用 `armeabi-v7a` 与 `arm64-v8a`；iOS 使用 arm64；Web 使用单线程模板。
 
 ## 自动验证
+
+固定种子生成第 1、5、10 关性能基线：
+
+```bash
+./tools/run_performance_baseline.sh /tmp/eco-rebirth-performance
+```
+
+每份 JSON 都包含实际墙钟帧率、平均/峰值脚本和物理耗时、节点/对象峰值、绘制调用、三角形近似量、静态内存、关卡、画质与种子。若要单独采样：
+
+```bash
+godot --headless --path . -- \
+  --benchmark-level=10 --benchmark-duration=20 --benchmark-quality=medium \
+  --benchmark-species=rabbit --world-seed=133710 \
+  --report-dir=/tmp/eco-rebirth-performance
+```
+
+批量生态模拟也支持独立输出目录：
+
+```bash
+godot --headless --path . -- \
+  --batch-sim=3 --batch-level=10 --world-seed=135010 \
+  --report-dir=/tmp/eco-rebirth-balance
+```
 
 检查 30 种物种、解锁、技能和移动域：
 

@@ -370,6 +370,14 @@ Resource 默认可能被多个实例共享。任何运行时会变化的状态�
 
 不要一开始把所有对象改成 Server RID。节点结构更利于开发和调试，只有实测到数千高频实例等明确瓶颈时再下沉。
 
+### 13.2 V1.33 可复现性能基线
+
+- 主流程接受 `--benchmark-level`、`--benchmark-duration`、`--benchmark-quality`、`--benchmark-species` 和 `--report-dir`，以正常玩家 + AI 视觉路径生成固定种子的 JSON 报告。
+- 标准基线固定覆盖第 1、5、10 关，分别代表教学人口、中期生态和 100 个体压力场景；采样时限制到目标 60 FPS。
+- JSON 同时保留墙钟 FPS、进程/物理平均与峰值、帧间隔峰值、节点/对象数、绘制调用、图元数和静态内存，便于版本间机器内纵向对比。
+- `--headless` 的绘制指标可能为 0，且不能衡量真机 GPU、温度或功耗；发布候选必须在 Web 手机浏览器、Android 和 iOS 真机复跑相同关卡。
+- 批量生态模拟使用 `batch_level_XX_results.csv` 与 `batch_level_XX_deaths.csv`，因此多关测试可以共享报告目录而不发生文件覆盖。
+
 ## 14. 多线程边界
 
 适合后台线程：

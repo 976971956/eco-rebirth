@@ -73,6 +73,25 @@ var batch_deaths: Array = []
 var batch_results: Array = []
 var batch_log_file: FileAccess
 var batch_death_log_file: FileAccess
+var report_directory: String = ""
+var benchmark_mode: bool = false
+var benchmark_level: int = 1
+var benchmark_duration: float = 20.0
+var benchmark_quality: String = "medium"
+var benchmark_species: String = "rabbit"
+var benchmark_started_usec: int = 0
+var benchmark_finished: bool = false
+var benchmark_frames: int = 0
+var benchmark_process_seconds: float = 0.0
+var benchmark_physics_seconds: float = 0.0
+var benchmark_max_frame_ms: float = 0.0
+var benchmark_max_process_ms: float = 0.0
+var benchmark_max_physics_ms: float = 0.0
+var benchmark_max_nodes: int = 0
+var benchmark_max_objects: int = 0
+var benchmark_max_draw_calls: int = 0
+var benchmark_max_primitives: int = 0
+var benchmark_max_static_memory: int = 0
 var state: String = "menu"
 var last_player_species: String = ""
 var world_started_msec: int = 0
@@ -117,20 +136,33 @@ func _ready() -> void:
 	ui.orientation_blocked_changed.connect(_on_orientation_blocked_changed)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
+	var benchmark_arg := _find_cmdline_value("--benchmark-level")
 	var seed_arg := _find_cmdline_value("--world-seed")
+	report_directory = _find_cmdline_value("--report-dir").strip_edges()
 	if seed_arg != "":
 		world_seed_override = int(seed_arg)
-	if batch_arg != "":
+	if benchmark_arg != "":
+		benchmark_mode = true
+		benchmark_level = clampi(int(benchmark_arg), 1, LEVEL_CONFIG.size())
+		benchmark_duration = clampf(float(_find_cmdline_value("--benchmark-duration")) if _find_cmdline_value("--benchmark-duration") != "" else 20.0, 5.0, 120.0)
+		var requested_quality := _find_cmdline_value("--benchmark-quality")
+		benchmark_quality = requested_quality if requested_quality in QUALITY_PRESETS else "medium"
+		var requested_species := _find_cmdline_value("--benchmark-species")
+		benchmark_species = requested_species if requested_species in Catalog.ORDER else "rabbit"
+		tutorial_completed = true
+		Engine.max_fps = 60
+		_start_benchmark.call_deferred()
+	elif batch_arg != "":
 		batch_total_runs = maxi(int(batch_arg), 1)
 		batch_runs_remaining = batch_total_runs
 		var level_arg := _find_cmdline_value("--batch-level")
 		batch_level = clampi(int(level_arg) if level_arg != "" else 1, 1, LEVEL_CONFIG.size())
 		batch_mode = true
 		Engine.time_scale = 8.0
-		batch_log_file = FileAccess.open("user://batch_results.csv", FileAccess.WRITE)
+		batch_log_file = _open_report_file(batch_results_filename(batch_level))
 		if batch_log_file != null:
 			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,outcome")
-		batch_death_log_file = FileAccess.open("user://batch_deaths.csv", FileAccess.WRITE)
+		batch_death_log_file = _open_report_file(batch_deaths_filename(batch_level))
 		if batch_death_log_file != null:
 			batch_death_log_file.store_line("run,time_s,victim,killer")
 		_start_batch_run.call_deferred()
@@ -178,6 +210,8 @@ func _process(delta: float) -> void:
 		elif state == "playing" or state == "paused":
 			_toggle_pause()
 	corpses = corpses.filter(func(item): return is_instance_valid(item) and not item.is_queued_for_deletion())
+	if benchmark_mode:
+		_tick_benchmark(delta)
 
 
 func _notification(what: int) -> void:
@@ -765,6 +799,109 @@ func _start_batch_run() -> void:
 	_start_new_world()
 
 
+func _start_benchmark() -> void:
+	selected_free_level = benchmark_level
+	selected_free_species = benchmark_species
+	quality_preset = benchmark_quality
+	if world_seed_override < 0:
+		world_seed_override = 133700 + benchmark_level
+	benchmark_finished = false
+	benchmark_frames = 0
+	benchmark_process_seconds = 0.0
+	benchmark_physics_seconds = 0.0
+	benchmark_max_frame_ms = 0.0
+	benchmark_max_process_ms = 0.0
+	benchmark_max_physics_ms = 0.0
+	benchmark_max_nodes = 0
+	benchmark_max_objects = 0
+	benchmark_max_draw_calls = 0
+	benchmark_max_primitives = 0
+	benchmark_max_static_memory = 0
+	_start_new_world(true)
+	benchmark_started_usec = Time.get_ticks_usec()
+	print("[benchmark] 第%d关 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, benchmark_quality, benchmark_species, benchmark_duration])
+
+
+func _tick_benchmark(delta: float) -> void:
+	if benchmark_finished or benchmark_started_usec <= 0:
+		return
+	if state == "playing":
+		var process_seconds := float(Performance.get_monitor(Performance.TIME_PROCESS))
+		var physics_seconds := float(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS))
+		benchmark_frames += 1
+		benchmark_process_seconds += process_seconds
+		benchmark_physics_seconds += physics_seconds
+		benchmark_max_frame_ms = maxf(benchmark_max_frame_ms, delta * 1000.0)
+		benchmark_max_process_ms = maxf(benchmark_max_process_ms, process_seconds * 1000.0)
+		benchmark_max_physics_ms = maxf(benchmark_max_physics_ms, physics_seconds * 1000.0)
+		benchmark_max_nodes = maxi(benchmark_max_nodes, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+		benchmark_max_objects = maxi(benchmark_max_objects, int(Performance.get_monitor(Performance.OBJECT_COUNT)))
+		benchmark_max_draw_calls = maxi(benchmark_max_draw_calls, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
+		benchmark_max_primitives = maxi(benchmark_max_primitives, int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
+		benchmark_max_static_memory = maxi(benchmark_max_static_memory, int(Performance.get_monitor(Performance.MEMORY_STATIC)))
+		if level_elapsed >= benchmark_duration:
+			_finish_benchmark("duration_complete")
+	elif state in ["ending", "result", "victory"]:
+		_finish_benchmark("run_ended_early")
+
+
+func _finish_benchmark(outcome: String) -> void:
+	if benchmark_finished:
+		return
+	benchmark_finished = true
+	var wall_seconds := maxf(float(Time.get_ticks_usec() - benchmark_started_usec) / 1000000.0, 0.001)
+	var sampled_frames := maxi(benchmark_frames, 1)
+	var report := {
+		"schema_version": 1,
+		"game_version": "1.33.0",
+		"level": benchmark_level,
+		"quality": benchmark_quality,
+		"species": benchmark_species,
+		"world_seed": world_seed,
+		"target_simulation_seconds": benchmark_duration,
+		"sampled_simulation_seconds": level_elapsed,
+		"wall_seconds": wall_seconds,
+		"sampled_frames": benchmark_frames,
+		"wall_fps": float(benchmark_frames) / wall_seconds,
+		"average_process_ms": benchmark_process_seconds * 1000.0 / float(sampled_frames),
+		"average_physics_ms": benchmark_physics_seconds * 1000.0 / float(sampled_frames),
+		"max_frame_ms": benchmark_max_frame_ms,
+		"max_process_ms": benchmark_max_process_ms,
+		"max_physics_ms": benchmark_max_physics_ms,
+		"max_nodes": benchmark_max_nodes,
+		"max_objects": benchmark_max_objects,
+		"max_draw_calls": benchmark_max_draw_calls,
+		"max_primitives": benchmark_max_primitives,
+		"max_static_memory_bytes": benchmark_max_static_memory,
+		"living_actors_at_end": get_living_actors().size(),
+		"outcome": outcome,
+		"display_driver": DisplayServer.get_name(),
+		"rendering_method": str(ProjectSettings.get_setting("rendering/renderer/rendering_method", "gl_compatibility")),
+	}
+	var output_path := _report_path(benchmark_report_filename(benchmark_level, benchmark_quality))
+	var report_file := FileAccess.open(output_path, FileAccess.WRITE)
+	if report_file != null:
+		report_file.store_string(JSON.stringify(report, "\t"))
+		report_file.close()
+	else:
+		push_error("[benchmark] 无法写入性能报告：%s" % output_path)
+	print("[benchmark] 完成 · wall FPS %.1f · process avg/max %.2f/%.2f ms · physics avg/max %.2f/%.2f ms · nodes %d · memory %.1f MiB" % [
+		float(report["wall_fps"]), float(report["average_process_ms"]), float(report["max_process_ms"]),
+		float(report["average_physics_ms"]), float(report["max_physics_ms"]), benchmark_max_nodes,
+		float(benchmark_max_static_memory) / 1048576.0,
+	])
+	print("[benchmark] 报告：%s" % ProjectSettings.globalize_path(output_path))
+	state = "ending"
+	_quit_after_benchmark_cleanup.call_deferred()
+
+
+func _quit_after_benchmark_cleanup() -> void:
+	_clear_game_root()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	get_tree().quit()
+
+
 func _finish_batch_run(living: Array[EcoActor]) -> void:
 	state = "ending"
 	var winner := "none"
@@ -879,8 +1016,38 @@ func _print_batch_report() -> void:
 	print("死亡次数（按物种，越高越常成为猎物/牺牲品）：")
 	for species_id in death_counts.keys():
 		print("  %s: %d" % [species_id, death_counts[species_id]])
-	print("详细数据：%s" % ProjectSettings.globalize_path("user://batch_results.csv"))
+	print("详细数据：%s" % ProjectSettings.globalize_path(_report_path(batch_results_filename(batch_level))))
 	print("========================================\n")
+
+
+static func batch_results_filename(level: int) -> String:
+	return "batch_level_%02d_results.csv" % clampi(level, 1, LEVEL_CONFIG.size())
+
+
+static func batch_deaths_filename(level: int) -> String:
+	return "batch_level_%02d_deaths.csv" % clampi(level, 1, LEVEL_CONFIG.size())
+
+
+static func benchmark_report_filename(level: int, quality: String) -> String:
+	var safe_quality := quality if quality in QUALITY_PRESETS else "medium"
+	return "benchmark_level_%02d_%s.json" % [clampi(level, 1, LEVEL_CONFIG.size()), safe_quality]
+
+
+func _open_report_file(filename: String) -> FileAccess:
+	return FileAccess.open(_report_path(filename), FileAccess.WRITE)
+
+
+func _report_path(filename: String) -> String:
+	if report_directory.is_empty():
+		return "user://%s" % filename
+	var directory := report_directory
+	if directory.begins_with("user://") or directory.begins_with("res://"):
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
+		return directory.path_join(filename)
+	if not directory.is_absolute_path():
+		directory = ProjectSettings.globalize_path("res://").path_join(directory)
+	DirAccess.make_dir_recursive_absolute(directory)
+	return directory.path_join(filename)
 
 
 func _find_cmdline_value(prefix: String) -> String:

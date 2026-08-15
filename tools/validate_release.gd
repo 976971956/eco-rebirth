@@ -42,6 +42,7 @@ func _run_validation() -> void:
 	_validate_world_transition_contract()
 	_validate_death_lifecycle_contract()
 	_validate_export_contract()
+	_validate_performance_baseline_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
 	_validate_world_navigation_contract()
@@ -58,7 +59,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.32 发布校验通过：四生态区地标、迁徙通道与大地图连通性正常")
+		print("[release] V1.33 发布校验通过：三端工具链诊断、独立批测报告与性能基线正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -230,11 +231,25 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.32.0\"") and presets.contains("application/short_version=\"1.32.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=420") and presets.contains("application/version=\"420\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.33.0\"") and presets.contains("application/short_version=\"1.33.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=430") and presets.contains("application/version=\"430\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
+
+
+func _validate_performance_baseline_contract() -> void:
+	_expect(MainScript.batch_results_filename(1) == "batch_level_01_results.csv", "第一关批测结果文件名不稳定")
+	_expect(MainScript.batch_results_filename(10) == "batch_level_10_results.csv", "第十关批测结果会覆盖其他关卡")
+	_expect(MainScript.batch_deaths_filename(1) != MainScript.batch_deaths_filename(10), "不同关卡的死亡明细仍会互相覆盖")
+	_expect(MainScript.benchmark_report_filename(5, "medium") == "benchmark_level_05_medium.json", "性能报告文件名没有包含关卡和画质")
+	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
+	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
+	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
+	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
+	_expect(doctor_script.contains("android-36") and doctor_script.contains("web_nothreads_release.zip") and doctor_script.contains("ios.zip"), "三端工具链诊断不完整")
 
 
 func _validate_web_audio_contract() -> void:
