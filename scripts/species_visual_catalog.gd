@@ -9,6 +9,8 @@ const FUR_ALBEDO = preload("res://assets/textures/animals/shared/quadruped_fur_a
 const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png")
 const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
 const MODEL_ROOT := "res://assets/models/animals"
+const MODEL_V2_ROOT := "res://assets/models_v2/animals"
+const V2_SPECIES := ["rabbit", "wolf"]
 const EXTERNAL_SPECIES := [
 	"rabbit", "fox", "deer", "wolf", "snake", "bear",
 	"boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine",
@@ -77,6 +79,10 @@ static func model_path(species_id: String, profile: String) -> String:
 	if not supports(species_id):
 		return ""
 	var safe_profile := profile if profile in ["hero", "mobile"] else "mobile"
+	if species_id in V2_SPECIES:
+		var v2_path := "%s/%s/%s_%s.glb" % [MODEL_V2_ROOT, species_id, species_id, safe_profile]
+		if ResourceLoader.exists(v2_path):
+			return v2_path
 	return "%s/%s/%s_%s.glb" % [MODEL_ROOT, species_id, species_id, safe_profile]
 
 

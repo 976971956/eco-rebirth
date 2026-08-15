@@ -7,7 +7,12 @@ const WEIGHTED_SKIN_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const SKILL_SOCKET_NAMES := ["SkillSocket_Mouth", "SkillSocket_Chest"]
 const ANIMATION_STATES := ["idle", "run", "attack", "hit"]
 const RABBIT_ANIMATION_STATES := ["idle", "run", "forage", "attack", "skill", "hit", "dead"]
-const DRIVEN_BONES := ["Spine", "Chest", "Neck", "Head", "Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH", "Ear_L", "Ear_R", "Tail"]
+const DRIVEN_BONES := [
+	"Spine", "Chest", "Neck", "Head",
+	"Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH",
+	"Paw_LF", "Paw_RF", "Paw_LH", "Paw_RH",
+	"Ear_L", "Ear_R", "Tail",
+]
 const ATTACK_DURATION := 0.26
 const HIT_DURATION := 0.28
 const RABBIT_SKILL_DURATION := 0.38
@@ -48,6 +53,7 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 		return null
 	var existing := _find_skeleton(model)
 	if existing != null:
+		_register_existing_rig(model, existing, species_id)
 		return existing
 	var pivots: Array[Node3D] = []
 	_collect_motion_pivots(model, pivots)
@@ -96,6 +102,17 @@ static func upgrade(model: Node3D, species_id: String) -> Skeleton3D:
 	skeleton.set_meta("animation_states", RABBIT_ANIMATION_STATES.duplicate() if species_id == "rabbit" else ANIMATION_STATES.duplicate())
 	model.set_meta("uses_skeleton_rig", true)
 	return skeleton
+
+
+static func _register_existing_rig(model: Node3D, skeleton: Skeleton3D, species_id: String) -> void:
+	var has_articulated_paws := skeleton.find_bone("Paw_LF") >= 0 and skeleton.find_bone("Paw_RH") >= 0
+	skeleton.set_meta("species_id", species_id)
+	skeleton.set_meta("rig_version", 4 if has_articulated_paws else 3)
+	skeleton.set_meta("skin_mode", "blender_weighted_articulated" if has_articulated_paws else "imported_weighted")
+	skeleton.set_meta("locomotion_profile", str(RIG_PROFILES[species_id]["gait"]))
+	skeleton.set_meta("animation_states", RABBIT_ANIMATION_STATES.duplicate() if species_id == "rabbit" else ANIMATION_STATES.duplicate())
+	model.set_meta("uses_skeleton_rig", true)
+	model.set_meta("articulated_lower_limbs", has_articulated_paws)
 
 
 static func resolve_state(
@@ -178,6 +195,8 @@ static func pose_targets(
 	targets["Head"] = Vector3.ZERO
 	for bone_name in ["Leg_LF", "Leg_RF", "Leg_LH", "Leg_RH"]:
 		targets[bone_name] = Vector3.ZERO
+	for bone_name in ["Paw_LF", "Paw_RF", "Paw_LH", "Paw_RH"]:
+		targets[bone_name] = Vector3.ZERO
 
 	match state:
 		"run":
@@ -190,6 +209,10 @@ static func pose_targets(
 			for bone_name in phases:
 				var swing := sin(motion_time * float(profile["gait_rate"]) + float(phases[bone_name])) * stride_amplitude * float(stride_scales[bone_name])
 				targets[bone_name] = Vector3(swing, 0.0, 0.0)
+				var paw_name := "Paw_%s" % bone_name.trim_prefix("Leg_")
+				var flex_curve := maxf(0.0, sin(motion_time * float(profile["gait_rate"]) + float(phases[bone_name])))
+				var flex_scale := 0.78 if species_id == "rabbit" else 0.56
+				targets[paw_name] = Vector3(-flex_curve * stride_amplitude * flex_scale, 0.0, 0.0)
 			targets["Spine"] = Vector3(
 				sin(motion_time * 2.0 * float(profile["gait_rate"]) + 0.65) * 0.030 * run_strength * float(profile["spine_run"]),
 				0.0,
@@ -244,8 +267,10 @@ static func pose_targets(
 				targets["Head"] = Vector3(0.06 * leap_curve, 0.0, 0.0)
 				for bone_name in ["Leg_LF", "Leg_RF"]:
 					targets[bone_name] = Vector3(-0.52 * leap_curve, 0.0, 0.0)
+					targets["Paw_%s" % bone_name.trim_prefix("Leg_")] = Vector3(0.34 * leap_curve, 0.0, 0.0)
 				for bone_name in ["Leg_LH", "Leg_RH"]:
 					targets[bone_name] = Vector3(0.82 * leap_curve, 0.0, 0.0)
+					targets["Paw_%s" % bone_name.trim_prefix("Leg_")] = Vector3(-0.58 * leap_curve, 0.0, 0.0)
 				targets["Ear_L"] = Vector3(0.42 * leap_curve, 0.0, -0.06)
 				targets["Ear_R"] = Vector3(0.42 * leap_curve, 0.0, 0.06)
 				targets["Tail"] = Vector3(-0.12 * leap_curve, 0.18 * leap_curve, 0.0)
@@ -297,8 +322,11 @@ static func _gait_phases(gait: String) -> Dictionary:
 
 
 static func _find_skeleton(root: Node) -> Skeleton3D:
-	if root is Skeleton3D and str(root.name) == RIG_NAME:
-		return root as Skeleton3D
+	if root is Skeleton3D:
+		var skeleton := root as Skeleton3D
+		var imported_wrapper := skeleton.get_parent()
+		if str(skeleton.name) == RIG_NAME or (imported_wrapper != null and str(imported_wrapper.name) == RIG_NAME):
+			return skeleton
 	for child in root.get_children():
 		var found := _find_skeleton(child)
 		if found != null:

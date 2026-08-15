@@ -1,6 +1,11 @@
 class_name EcoWorld
 extends Node3D
 
+const FOREST_TREE_V2_PATHS: Array[String] = [
+	"res://assets/models_v2/biomes/forest/ancient_tree_1.glb",
+	"res://assets/models_v2/biomes/forest/ancient_tree_2.glb",
+]
+
 signal ecology_event_started(event: Dictionary)
 signal ecology_event_ended(event: Dictionary)
 
@@ -610,6 +615,8 @@ func _build_trees() -> void:
 
 
 func _decorate_forest_tree(tree: Node3D, radius: float, height: float) -> void:
+	if quality_preset != "low" and _instantiate_forest_tree_v2(tree, radius, height):
+		return
 	var trunk_color := Color("#4a372b").lightened(rng.randf_range(-0.035, 0.055))
 	var trunk := Factory.tapered_cylinder("AncientTrunk", trunk_color, radius * 0.58, radius * 0.34, height, Vector3(0.0, height * 0.5, 0.0), 9)
 	tree.add_child(trunk)
@@ -627,6 +634,28 @@ func _decorate_forest_tree(tree: Node3D, radius: float, height: float) -> void:
 			var cluster_pos := branch_end + Vector3(cos(branch_angle + cluster_index * 1.18) * 0.62, cluster_index * 0.55, sin(branch_angle + cluster_index * 1.18) * 0.62)
 			tree.add_child(Factory.sphere("LeafMass", leaf_color.lightened(rng.randf_range(-0.06, 0.08)), Vector3(2.15, 1.34, 1.85), cluster_pos, 9, 6))
 	tree.add_child(Factory.sphere("CrownHeart", leaf_color.lightened(0.05), Vector3(2.35, 1.62, 2.05), Vector3(0.0, height + 1.30, 0.0), 10, 6))
+
+
+func _instantiate_forest_tree_v2(tree: Node3D, radius: float, height: float) -> bool:
+	var path: String = FOREST_TREE_V2_PATHS[rng.randi_range(0, FOREST_TREE_V2_PATHS.size() - 1)]
+	if not ResourceLoader.exists(path):
+		return false
+	var packed := load(path) as PackedScene
+	if packed == null:
+		return false
+	var visual := packed.instantiate() as Node3D
+	if visual == null:
+		return false
+	visual.name = "AncientForestTreeV2"
+	# Authored at 5.4 m trunk height; scale XZ independently so the existing
+	# collision and clearance contract remains authoritative.
+	var height_scale := height / 5.4
+	var radius_scale := radius / 0.72
+	visual.scale = Vector3(radius_scale, height_scale, radius_scale)
+	visual.set_meta("visual_only", true)
+	visual.set_meta("collision_contract_radius", maxf(radius * 0.56, 0.32))
+	tree.add_child(visual)
+	return true
 
 
 func _decorate_grassland_tree(tree: Node3D, radius: float, height: float) -> void:

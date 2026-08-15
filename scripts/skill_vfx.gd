@@ -153,6 +153,106 @@ static func status_aura(actor: Node3D, color: Color, duration: float, radius: fl
 	tween.finished.connect(root.queue_free)
 
 
+## Signature escape effect for the snow hare. The low, alternating prints show
+## the route after a sudden direction change; the cool landing pulse shows where
+## the temporary concealment begins without covering the animal.
+static func moonstep(parent: Node, world_position: Vector3, direction: Vector3, color: Color) -> void:
+	if not is_instance_valid(parent):
+		return
+	dash_trail(parent, world_position, direction, color, 3.65)
+	_footprint_trail(parent, world_position, direction, color.lightened(0.16), 4)
+	ring(parent, world_position + direction.normalized() * 0.42, color, 0.32, 2.55, 0.38)
+	radial_burst(parent, world_position + Vector3.UP * 0.52, color.lightened(0.24), 1.88, 9, 0.10, 0.34, 0.18)
+	impact_core(parent, world_position + Vector3.UP * 0.62, color.lightened(0.32), 0.42, 0.25)
+
+
+## Signature pounce effect for the wolf. Three converging claw strokes carry the
+## attack direction, while the short ground shock makes the exact hit readable.
+static func pack_pounce(parent: Node, origin: Vector3, impact: Vector3, direction: Vector3, color: Color) -> void:
+	if not is_instance_valid(parent):
+		return
+	dash_trail(parent, origin, direction, color.darkened(0.12), 3.9)
+	claw_slash(parent, impact + Vector3.UP * 0.76, direction, Color("#e7a06a"), 1.12)
+	ring(parent, impact, Color("#d66f50"), 0.28, 2.20, 0.30)
+	radial_burst(parent, impact + Vector3.UP * 0.18, Color("#cf7652"), 1.62, 8, 0.13, 0.32, 0.12)
+	impact_core(parent, impact + Vector3.UP * 0.74, Color("#ffd09a"), 0.48, 0.20)
+
+
+static func claw_slash(parent: Node, world_position: Vector3, direction: Vector3, color: Color, scale_value: float = 1.0) -> void:
+	if not is_instance_valid(parent):
+		return
+	var flat_direction := Vector3(direction.x, 0.0, direction.z).normalized()
+	if flat_direction.length_squared() < 0.01:
+		flat_direction = Vector3.FORWARD
+	var root := Node3D.new()
+	root.name = "SkillClawSlash"
+	parent.add_child(root)
+	root.global_position = world_position
+	root.rotation.y = atan2(-flat_direction.x, -flat_direction.z)
+	var tween := parent.create_tween()
+	tween.set_parallel(true)
+	for slash_index in range(3):
+		var slash_root := Node3D.new()
+		slash_root.position = Vector3((float(slash_index) - 1.0) * 0.27 * scale_value, (1.0 - float(slash_index)) * 0.08, 0.0)
+		slash_root.rotation.z = -0.48 + float(slash_index) * 0.13
+		root.add_child(slash_root)
+		for segment_index in range(4):
+			var progress := float(segment_index) / 3.0
+			var segment := Factory.box(
+				"ClawSegment", color.lightened(progress * 0.12),
+				Vector3(0.055 * scale_value, 0.055 * scale_value, (0.48 - progress * 0.12) * scale_value),
+				Vector3(0.0, (progress - 0.5) * 0.42 * scale_value, (progress - 0.5) * 1.25 * scale_value)
+			)
+			segment.rotation.x = 0.12 + progress * 0.16
+			segment.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			segment.material_override = _fx_material(color.lightened(progress * 0.12))
+			slash_root.add_child(segment)
+			tween.tween_property(segment, "scale", Vector3(0.15, 0.15, 0.36), 0.24).from(Vector3.ONE).set_delay(progress * 0.025)
+			tween.tween_property(segment.material_override, "albedo_color", Color(color.r, color.g, color.b, 0.0), 0.24).from(Color(color.r, color.g, color.b, 0.90)).set_delay(0.055 + progress * 0.025)
+	tween.finished.connect(root.queue_free)
+
+
+static func impact_core(parent: Node, world_position: Vector3, color: Color, radius: float = 0.42, duration: float = 0.22) -> void:
+	if not is_instance_valid(parent):
+		return
+	var core := Factory.sphere("SkillImpactCore", color, Vector3.ONE * radius, Vector3.ZERO, 10, 5)
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	core.material_override = _fx_material(color)
+	parent.add_child(core)
+	core.global_position = world_position
+	var tween := parent.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(core, "scale", Vector3.ONE * 1.85, duration).from(Vector3.ONE * 0.25).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tween.tween_property(core.material_override, "albedo_color", Color(color.r, color.g, color.b, 0.0), duration).from(Color(color.r, color.g, color.b, 0.92))
+	tween.finished.connect(core.queue_free)
+
+
+static func _footprint_trail(parent: Node, world_position: Vector3, direction: Vector3, color: Color, pair_count: int) -> void:
+	var flat_direction := Vector3(direction.x, 0.0, direction.z).normalized()
+	if flat_direction.length_squared() < 0.01:
+		flat_direction = Vector3.FORWARD
+	var side_axis := Vector3.UP.cross(flat_direction).normalized()
+	var root := Node3D.new()
+	root.name = "MoonstepFootprints"
+	parent.add_child(root)
+	var tween := parent.create_tween()
+	tween.set_parallel(true)
+	for pair_index in range(pair_count):
+		for side_value in [-1.0, 1.0]:
+			var side := float(side_value)
+			var print_position: Vector3 = world_position - flat_direction * (0.46 + float(pair_index) * 0.50) + side_axis * side * 0.16
+			var footprint := Factory.sphere("MoonPrint", color, Vector3(0.105, 0.018, 0.23), Vector3.ZERO, 7, 3)
+			footprint.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			footprint.material_override = _fx_material(color)
+			root.add_child(footprint)
+			footprint.global_position = Vector3(print_position.x, world_position.y + 0.055, print_position.z)
+			footprint.rotation.y = atan2(-flat_direction.x, -flat_direction.z)
+			var delay := float(pair_count - 1 - pair_index) * 0.035
+			tween.tween_property(footprint, "scale", Vector3(1.35, 0.20, 1.35), 0.48).from(Vector3.ONE).set_delay(delay)
+			tween.tween_property(footprint.material_override, "albedo_color", Color(color.r, color.g, color.b, 0.0), 0.46).from(Color(color.r, color.g, color.b, 0.72)).set_delay(0.08 + delay)
+	tween.finished.connect(root.queue_free)
+
+
 static func _fx_material(color: Color) -> StandardMaterial3D:
 	var mat := Factory.material(Color(color.r, color.g, color.b, 0.76), 0.38, Color(color.r, color.g, color.b, 1.0))
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

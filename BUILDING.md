@@ -1,4 +1,4 @@
-# 《生态轮回》V1.39 RC1 运行与导出
+# 《生态轮回》V1.40 RC1 运行与导出
 
 ## 直接运行
 
@@ -42,7 +42,16 @@ V1.37 在首页加入生态图鉴，记录 30 种动物的发现状态、生态�
 
 V1.38 增加统一发布候选门禁。运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v138-rc` 会执行解析、数据/发布校验、1200 帧烟测、第 1/5/10 关性能基线及阈值检查、Web 与 iOS 构建，并在 Android 工具链完整时生成调试 APK；设置 `ECO_RC_SOAK=1` 还会追加第 1/10 关各两局完整收束。结果目录包含日志、性能 JSON 和带 SHA-256 的 `release_candidate_manifest.json`。实体设备步骤见[发布候选与真机验收](docs/15_发布候选与真机验收.md)。
 
-V1.39 为浣熊、豪猪、水豚、水獭、狼獾、斑马、雪鸮、陆龟、猎豹和斑鬣狗补齐 Hero/Mobile 外部 GLB。30 种动物现共有 60 份外部模型，Mobile 实测总顶点 131,749，发布上限 140,000；脚、耳、翼和尾枢轴依然由共享 `EcoActor` 动作逻辑驱动，资源失败时保留程序模型回退。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v139-rc`。
+V1.39 为浣熊、豪猪、水豚、水獭、狼獾、斑马、雪鸮、陆龟、猎豹和斑鬣狗补齐 Hero/Mobile 外部 GLB。30 种动物现共有 60 份稳定回退模型。
+
+V1.40 开始 Blender V2 重制：雪兔和灰狼已使用连续毛皮主网格、16 骨骼、两段式四肢和 8 个动作，并为古木林地增加两款 Blender 古树；中/高画质启用新资产，低画质与资源加载失败时继续使用稳定回退。新树只替换视觉节点，不改变碰撞与导航净空。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v140-rc`。
+
+本地有 Blender 5.2 LTS 时，可以重新生成并校验竖向切片资产：
+
+```bash
+./tools/check_blender_pipeline.sh
+./tools/build_realistic_vertical_slice.sh
+```
 
 V1.31 为赤狐、青环蛇和獠牙野猪新增 Hero/Mobile 外部 GLB：赤狐的四足/双耳/蓬尾和野猪的四足/双耳/卷尾接入原有步态，青环蛇保留无足整体游走。九种外部动物都有自动 LOD 和固定根比例，AI 只加载 Mobile，资源失败时仍安全回退。九种 Mobile 模型总顶点基线为 60000；碰撞、数值、AI 和存档没有改变。
 

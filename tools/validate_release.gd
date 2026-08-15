@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.39 发布候选校验通过：30 种 Hero/Mobile 模型、自动门禁、三端构建清单、隐私与真机验收契约正常")
+		print("[release] V1.40 发布候选校验通过：Blender V2 竖向切片、30 种回退模型、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.39.0\"") and presets.contains("application/short_version=\"1.39.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=490") and presets.contains("application/version=\"490\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.39.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.40.0\"") and presets.contains("application/short_version=\"1.40.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=500") and presets.contains("application/version=\"500\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.40.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -482,8 +482,9 @@ func _validate_external_species_model_contract() -> void:
 	_expect(normal_import.contains("compress/normal_map=1"), "毛发法线图集没有使用法线压缩模式")
 	_expect(VisualCatalog.FUR_ATLAS_REGIONS.size() == 4 and VisualCatalog.FUR_ATLAS_REGIONS["bear"] == Vector2(0.5, 0.5), "四种四足动物的 2×2 材质图集分区异常")
 	var expected_motion_nodes := {
-		"rabbit": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
-		"wolf": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		# Blender V2 species use real armature bones instead of legacy Node3D pivots.
+		"rabbit": {},
+		"wolf": {},
 		"deer": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
 		"bear": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
 		"eagle": {"WingPivot_": 2, "TailPivot": 1},
@@ -516,6 +517,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(true, "high") == "hero", "高画质玩家没有选择 Hero 物种模型")
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
+	_expect(VisualCatalog.V2_SPECIES == ["rabbit", "wolf"], "Blender V2 竖向切片物种清单异常")
 	_expect(VisualCatalog.SKELETAL_SPECIES == ["rabbit", "wolf", "deer", "bear"], "第三阶段四足骨骼物种清单异常")
 	_expect(VisualCatalog.FLIGHT_RIG_SPECIES == ["eagle"], "飞行骨架物种清单异常")
 	_expect(VisualCatalog.LONG_BODY_RIG_SPECIES == ["crocodile"], "长躯干骨架物种清单异常")
@@ -556,7 +558,8 @@ func _validate_external_species_model_contract() -> void:
 			_expect(is_equal_approx(model.scale.x, float(VisualCatalog.VISUAL_SCALE_CONTRACT[species_id])) and model.scale.is_equal_approx(Vector3.ONE * model.scale.x), "%s 的 %s 模型没有遵循统一根缩放契约" % [species_id, profile])
 			var stats := _external_model_stats(model)
 			profile_vertices[profile] = int(stats["vertices"])
-			_expect(int(stats["meshes"]) >= 6, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
+			var minimum_meshes := 4 if species_id in VisualCatalog.V2_SPECIES else 6
+			_expect(int(stats["meshes"]) >= minimum_meshes, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
 			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
 			if profile == "mobile":
@@ -567,12 +570,18 @@ func _validate_external_species_model_contract() -> void:
 			if species_id in VisualCatalog.SKELETAL_SPECIES:
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 运行时模型没有唯一 Skeleton3D" % [species_id, profile])
 				_expect(int(stats["bones"]) >= 9, "%s 的 %s 骨骼数量不足，躯干或四肢绑定可能丢失" % [species_id, profile])
-				_expect((stats["pbr_slots"] as Dictionary).size() >= 4, "%s 的 %s 缺少毛皮、眼部、鼻部和足部 PBR 材质槽" % [species_id, profile])
+				var minimum_pbr_slots := 3 if species_id in VisualCatalog.V2_SPECIES else 4
+				_expect((stats["pbr_slots"] as Dictionary).size() >= minimum_pbr_slots, "%s 的 %s 缺少物种化毛皮、眼部或鼻足 PBR 材质槽" % [species_id, profile])
 				_expect(int(stats["textured_coat_surfaces"]) > 0 and int(stats["atlas_coat_surfaces"]) == int(stats["textured_coat_surfaces"]), "%s 的 %s 毛皮材质没有绑定共享 PBR 图集" % [species_id, profile])
 				if species_id in SkeletonRig.WEIGHTED_SKIN_SPECIES:
 					var species_label: String = {"rabbit": "雪兔", "wolf": "灰狼", "deer": "林鹿", "bear": "棕熊"}.get(species_id, species_id)
 					_expect(int(stats["bones"]) >= 12, "%s 的 %s 模型缺少 Chest/Neck/Head 连续躯干骨链" % [species_label, profile])
-					_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
+					if species_id in VisualCatalog.V2_SPECIES:
+						_expect(int(stats["continuous_coat_skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一的 Blender V2 连续毛皮躯干" % [species_label, profile])
+						_expect(int(stats["articulated_paw_bones"]) == 4, "%s 的 %s 模型没有四条两段式腿骨" % [species_label, profile])
+						_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [species_label, profile])
+					else:
+						_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
 					_expect(int(stats["weighted_vertices"]) > 100, "%s 的 %s 连续蒙皮顶点不足" % [species_label, profile])
 					_expect(int(stats["blended_vertices"]) > 20, "%s 的 %s 躯干没有跨骨骼平滑权重" % [species_label, profile])
 					_expect(int(stats["invalid_weight_vertices"]) == 0, "%s 的 %s 蒙皮权重没有归一化" % [species_label, profile])
@@ -661,7 +670,10 @@ func _validate_external_species_model_contract() -> void:
 	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
 	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有为灰狼 Mobile 模型绑定连续躯干骨链")
 	_expect(mobile_actor.external_skill_sockets.size() == 2, "真实灰狼角色流程没有绑定两个技能挂点")
-	_expect(mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55).distance_to(mobile_actor.global_position) > 0.5, "灰狼嘴部技能挂点退化到了角色原点")
+	var wolf_mouth_position := mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55)
+	var wolf_mouth_offset := wolf_mouth_position - mobile_actor.global_position
+	_expect(wolf_mouth_offset.length() > 0.5, "灰狼嘴部技能挂点退化到了角色原点")
+	_expect(wolf_mouth_offset.dot(-mobile_actor.global_basis.z) > 0.5, "灰狼 V2 模型前向轴反转，嘴部挂点没有位于角色朝向前方")
 	_expect(Vector3(attack_pose.get("Neck", Vector3.ZERO)).length() > 0.05 and Vector3(attack_pose.get("Head", Vector3.ZERO)).length() > 0.02, "灰狼扑咬没有驱动连续蒙皮头颈骨链")
 	for species_id in ["deer", "bear"]:
 		var quadruped_actor: EcoActor = ActorScript.new()
@@ -772,6 +784,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"blended_vertices": 0,
 		"invalid_weight_vertices": 0,
 		"skill_sockets": 0,
+		"continuous_coat_skinned_meshes": 0,
+		"articulated_paw_bones": 0,
+		"required_actions": 0,
 	}
 	_accumulate_external_model_stats(root_node, stats)
 	return stats
@@ -786,7 +801,21 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 			stats["named_nodes"][prefix] = int(stats["named_nodes"].get(prefix, 0)) + 1
 	if node is Skeleton3D:
 		stats["skeletons"] = int(stats["skeletons"]) + 1
-		stats["bones"] = int(stats["bones"]) + (node as Skeleton3D).get_bone_count()
+		var skeleton := node as Skeleton3D
+		stats["bones"] = int(stats["bones"]) + skeleton.get_bone_count()
+		for paw_name in ["Paw_LF", "Paw_RF", "Paw_LH", "Paw_RH"]:
+			if skeleton.find_bone(paw_name) >= 0:
+				stats["articulated_paw_bones"] = int(stats["articulated_paw_bones"]) + 1
+	if node is AnimationPlayer:
+		var imported_actions := {}
+		var animation_player := node as AnimationPlayer
+		for library_name in animation_player.get_animation_library_list():
+			var library := animation_player.get_animation_library(library_name)
+			for animation_name in library.get_animation_list():
+				imported_actions[str(animation_name).trim_prefix("RESET_")] = true
+		for required_action in ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death"]:
+			if imported_actions.has(required_action):
+				stats["required_actions"] = int(stats["required_actions"]) + 1
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.visibility_range_end > 0.0:
@@ -797,6 +826,8 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 		if mesh != null:
 			if mesh_instance.skin != null:
 				stats["skinned_meshes"] = int(stats["skinned_meshes"]) + 1
+				if "OrganicBodyV2" in node_name:
+					stats["continuous_coat_skinned_meshes"] = int(stats["continuous_coat_skinned_meshes"]) + 1
 			stats["meshes"] = int(stats["meshes"]) + 1
 			for surface_index in range(mesh.get_surface_count()):
 				var arrays := mesh.surface_get_arrays(surface_index)

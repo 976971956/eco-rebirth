@@ -12,12 +12,13 @@
 | `scripts/game_ui.gd` | Home, free-mode picker, HUD, live level leaderboard, rotating battle ticker/report, enemy health, touch controls, tutorial, settings, pause/result modals |
 | `scripts/audio_manager.gd` | Procedural adaptive music, ambient sound, SFX pool, audio persistence |
 | `scripts/low_poly_factory.gd` | Faceted procedural animal/environment meshes plus shared terrain and animated water shaders |
-| `scripts/species_visual_catalog.gd` | External Hero/Mobile GLB registry and skeletal-species routing |
-| `scripts/species_skeleton_rig.gd` | Reusable rabbit/wolf/deer/bear `Skeleton3D`; wolf weighted-skin/body-chain/socket prototype; species-tuned idle/run/attack/hit pose controller |
+| `scripts/species_visual_catalog.gd` | V1 fallback and Blender V2 Hero/Mobile GLB registry, LOD and skeletal-species routing |
+| `scripts/species_skeleton_rig.gd` | Rabbit/wolf/deer/bear `Skeleton3D`; imported Blender V2 lower-limb articulation, weighted body chains, sockets and species-tuned pose controller |
 | `scripts/species_flight_rig.gd` | Eagle-only eight-bone `Skeleton3D`; glide/flap/dive/hit pose controller and beak/left-wing/right-wing skill sockets |
 | `scripts/species_crocodile_rig.gd` | Crocodile-only weighted long-body `Skeleton3D`; land/swim/combat controller, jaw bone, three-bone tail chain, and jaw/tail-tip sockets |
 | `scripts/skill_vfx.gd` and `scripts/skill_projectile.gd` | Skill presentation and projectiles |
 | `tools/*.gd` | Deterministic validation, balance simulation, reports, and UI preview rendering |
+| `tools/blender/*.py` and `tools/build_realistic_vertical_slice.sh` | Deterministic Blender pipeline checks and V2 animal/forest GLB generation |
 
 ## Current product contracts
 
@@ -35,7 +36,7 @@
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
-- Keep the V1.39 hybrid art path mobile/Web safe: all 30 species use versioned Hero/Mobile GLBs, an explicit per-species root-scale contract and automatic body/detail visibility ranges. Rabbit/wolf/deer/bear share one quadruped rig, one 256×256 four-region fur PBR atlas and species-tuned weighted body chains; eagle uses a separate flight rig; crocodile uses a weighted long-body rig. The other 24 species use shared low-cost leg/ear/wing/tail pivots as appropriate, while snake deliberately uses whole-body motion without fake legs. AI and low-quality players always use Mobile; missing-resource and batch-mode cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`. Keep the 30-species Mobile total at or below 140,000 vertices.
+- Keep the V1.40 hybrid art path mobile/Web safe: all 30 species retain versioned V1 Hero/Mobile GLBs and automatic body/detail ranges. Rabbit/wolf prefer Blender V2 continuous coat meshes with 16 bones, articulated lower limbs and eight baked action contracts; missing V2 assets fall back to V1. Deer/bear keep the shared quadruped rig, eagle uses a flight rig, crocodile uses a weighted long-body rig, and the other 24 species keep low-cost pivots until their V2 family batch passes. AI and low-quality players always use Mobile. Collision, stats, AI and combat-event ownership remain in `EcoActor`. Keep the active 30-species Mobile total at or below 140,000 vertices.
 - Keep region navigation readable without creating blockers: forest/grassland/wetland/highland landmarks are visual-only, obstacle placement protects their clear radius, visible main trails and collision clearance share the same winding route points, and level 1/10 release validation must retain at least 97% largest-open-component coverage for a 0.85 m actor radius.
 
 ## Document routing
@@ -53,6 +54,7 @@
 - Ecological habits and resource routes: `docs/13_三十种生态习性设计.md`
 - Gameplay loop audit and anti-snowball rules: `docs/14_玩法逻辑审计与优化.md`
 - Running/exporting: `BUILDING.md`
+- V2 realistic art, rig, biome and VFX production: `docs/17_写实美术与动画生产方案.md`
 
 ## Cross-platform UI rules
 

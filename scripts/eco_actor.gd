@@ -498,7 +498,7 @@ func _bind_external_motion_nodes(root: Node) -> void:
 			continue
 		var visual_node := child as Node3D
 		var node_name := str(visual_node.name)
-		if visual_node is Skeleton3D and node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME, CrocodileRig.RIG_NAME]:
+		if visual_node is Skeleton3D and (node_name in [SkeletonRig.RIG_NAME, FlightRig.RIG_NAME, CrocodileRig.RIG_NAME] or visual_node.has_meta("species_id")):
 			external_skeleton = visual_node as Skeleton3D
 		elif visual_node is BoneAttachment3D:
 			continue
@@ -3258,11 +3258,8 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.ai_state = "wander"
 					other.state_commit_timer = 1.10
 					affected_count += 1
-			SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.4)
 			var moonstep_origin := skill_socket_world_position("SkillSocket_Chest", 1.10)
-			SkillVFX.radial_burst(effect_parent, moonstep_origin, effect_color, 2.2, 10, 0.13, 0.38)
-			SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Mouth", 1.26), effect_color.lightened(0.18), 0.82, 5, 0.08, 0.22)
-			SkillVFX.ring(effect_parent, moonstep_origin, effect_color, 0.42, 2.25, 0.34)
+			SkillVFX.moonstep(effect_parent, moonstep_origin, dash_direction, effect_color)
 			used = true
 		"fox":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.5:
@@ -3296,14 +3293,9 @@ func use_skill(target: EcoActor = null) -> bool:
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.2:
 				dash_direction = (target.global_position - global_position).normalized()
 				dash_timer = 0.32
-				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.5)
 				target.take_damage(_skill_damage(1.40), self)
 				affected_count = _rally_pack(target, 18.0)
-				SkillVFX.fang_strike(effect_parent, skill_socket_world_position("SkillSocket_Mouth", 1.55), dash_direction, effect_color.lightened(0.14), 0.78, 0.0)
-				SkillVFX.radial_burst(effect_parent, skill_socket_world_position("SkillSocket_Chest", 1.35), effect_color.lightened(0.10), 1.15, 6, 0.10, 0.28)
-				SkillVFX.fang_strike(effect_parent, target.global_position, dash_direction, effect_color, 1.28)
-				SkillVFX.ring(effect_parent, global_position, effect_color, 0.72, 4.1, 0.42)
-				SkillVFX.ring(effect_parent, global_position, effect_color, 0.72, 5.5, 0.48, 0.12)
+				SkillVFX.pack_pounce(effect_parent, skill_socket_world_position("SkillSocket_Mouth", 1.55), target.global_position, dash_direction, effect_color)
 				used = true
 		"snake":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 2.2:

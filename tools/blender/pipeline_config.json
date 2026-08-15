@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "godot_version": "4.7.1",
+  "blender_min_version": "5.2.0",
+  "style": "mobile_stylized_realism",
+  "coordinates": {
+    "units": "meters",
+    "forward": "-Z",
+    "up": "+Y",
+    "locomotion": "in_place"
+  },
+  "budgets": {
+    "hero": {
+      "triangles_min": 18000,
+      "triangles_max": 35000,
+      "texture_size": 1024,
+      "bones_max": 48,
+      "material_slots_max": 4
+    },
+    "mobile": {
+      "triangles_min": 3000,
+      "triangles_max": 8000,
+      "texture_size": 512,
+      "bones_max": 32,
+      "material_slots_max": 3
+    },
+    "vfx": {
+      "particles_high_max": 48,
+      "particles_low_max": 18,
+      "simultaneous_groups_soft_max": 16
+    }
+  },
+  "rig_families": {
+    "lagomorph": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death"]
+    },
+    "canid_small": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "swim"]
+    },
+    "canid_pack": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death"]
+    },
+    "felid": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "stalk"]
+    },
+    "ungulate": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death"]
+    },
+    "heavy_quadruped": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "swim"]
+    },
+    "primate": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "climb"]
+    },
+    "avian": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "glide", "flap", "dive", "land"]
+    },
+    "long_body": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "swim"]
+    },
+    "chelonians": {
+      "actions": ["idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death", "shell"]
+    }
+  },
+  "species": [
+    {"id": "rabbit", "rig": "lagomorph", "silhouette": "long ears, deep hindquarters, compact chest, round tail"},
+    {"id": "fox", "rig": "canid_small", "silhouette": "narrow muzzle, tall ears, very full white-tipped tail"},
+    {"id": "deer", "rig": "ungulate", "silhouette": "long legs, light chest, antlers and upright neck"},
+    {"id": "wolf", "rig": "canid_pack", "silhouette": "deep chest, long muzzle, sloped tail and strong paws"},
+    {"id": "snake", "rig": "long_body", "silhouette": "continuous low body, raised neck and narrow head"},
+    {"id": "bear", "rig": "heavy_quadruped", "silhouette": "heavy shoulder hump, short muzzle and plantigrade paws"},
+    {"id": "boar", "rig": "heavy_quadruped", "silhouette": "low wedge body, shoulder shield, tusks and ridge mane"},
+    {"id": "raccoon", "rig": "canid_small", "silhouette": "black eye mask, dexterous forepaws and ringed tail"},
+    {"id": "porcupine", "rig": "heavy_quadruped", "silhouette": "low head, rounded back and rear-facing quill crown"},
+    {"id": "crocodile", "rig": "long_body", "silhouette": "broad armored torso, low limbs and powerful segmented tail"},
+    {"id": "capybara", "rig": "heavy_quadruped", "silhouette": "barrel torso, square muzzle, small ears and nearly absent tail"},
+    {"id": "otter", "rig": "canid_small", "silhouette": "streamlined torso, low legs and broad rudder tail"},
+    {"id": "lynx", "rig": "felid", "silhouette": "ear tufts, cheek ruff, long legs and short tail"},
+    {"id": "goat", "rig": "ungulate", "silhouette": "arched horns, beard, narrow chest and split hooves"},
+    {"id": "wolverine", "rig": "canid_small", "silhouette": "broad shoulders, low body, large paws and bushy tail"},
+    {"id": "bison", "rig": "ungulate", "silhouette": "massive shoulder hump, low head, short horns and beard"},
+    {"id": "zebra", "rig": "ungulate", "silhouette": "horse proportions, upright mane and striped body"},
+    {"id": "elephant", "rig": "heavy_quadruped", "silhouette": "pillar legs, huge ears, tusks and articulated trunk"},
+    {"id": "tiger", "rig": "felid", "silhouette": "long muscular torso, large paws and banded tail"},
+    {"id": "monkey", "rig": "primate", "silhouette": "long balancing tail, grasping hands and agile crouch"},
+    {"id": "owl", "rig": "avian", "silhouette": "round facial disc, broad wings, short tail and feathered legs"},
+    {"id": "moose", "rig": "ungulate", "silhouette": "very long legs, shoulder hump and wide palmate antlers"},
+    {"id": "turtle", "rig": "chelonians", "silhouette": "domed segmented shell, low limbs and extending neck"},
+    {"id": "cheetah", "rig": "felid", "silhouette": "small head, deep chest, narrow waist and long balancing tail"},
+    {"id": "rhino", "rig": "heavy_quadruped", "silhouette": "armored folds, massive neck and two nasal horns"},
+    {"id": "gorilla", "rig": "primate", "silhouette": "long arms, high shoulders, short legs and silver back"},
+    {"id": "eagle", "rig": "avian", "silhouette": "long primary feathers, hooked beak, fan tail and extended talons"},
+    {"id": "hippo", "rig": "heavy_quadruped", "silhouette": "barrel body, very wide muzzle, short legs and high-set eyes"},
+    {"id": "hyena", "rig": "canid_pack", "silhouette": "high shoulders, sloping back, large ears and coarse mane"},
+    {"id": "lion", "rig": "felid", "silhouette": "deep chest, mane crown and long tufted tail"}
+  ]
+}
