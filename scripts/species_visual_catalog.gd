@@ -10,10 +10,13 @@ const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_a
 const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
 const MODEL_ROOT := "res://assets/models/animals"
 const EXTERNAL_SPECIES := [
-	"rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar",
-	"lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla",
+	"rabbit", "fox", "deer", "wolf", "snake", "bear",
+	"boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine",
+	"bison", "zebra", "elephant", "tiger", "monkey", "owl", "moose", "turtle", "cheetah",
+	"rhino", "gorilla", "eagle", "hippo", "hyena", "lion",
 ]
 const THIRD_BATCH_SPECIES := ["lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla"]
+const FOURTH_BATCH_SPECIES := ["raccoon", "porcupine", "capybara", "otter", "wolverine", "zebra", "owl", "turtle", "cheetah", "hyena"]
 const SKELETAL_SPECIES := ["rabbit", "wolf", "deer", "bear"]
 const FLIGHT_RIG_SPECIES := ["eagle"]
 const LONG_BODY_RIG_SPECIES := ["crocodile"]
@@ -27,6 +30,16 @@ const VISUAL_SCALE_CONTRACT := {
 	"fox": 0.88,
 	"snake": 0.98,
 	"boar": 1.06,
+	"raccoon": 0.88,
+	"porcupine": 0.96,
+	"capybara": 1.04,
+	"otter": 0.92,
+	"wolverine": 0.94,
+	"zebra": 1.08,
+	"owl": 0.96,
+	"turtle": 0.96,
+	"cheetah": 1.02,
+	"hyena": 1.02,
 	"lion": 1.08,
 	"tiger": 1.12,
 	"lynx": 0.92,
@@ -45,7 +58,7 @@ const FUR_ATLAS_REGIONS := {
 	"deer": Vector2(0.0, 0.5),
 	"bear": Vector2(0.5, 0.5),
 }
-const DETAIL_LOD_TOKENS := ["iris", "pupil", "catchlight", "innerear", "whisker", "antlerbranch", "tooth", "claw"]
+const DETAIL_LOD_TOKENS := ["detail", "iris", "pupil", "catchlight", "innerear", "whisker", "stripe", "spot", "quill", "mane", "plate", "antlerbranch", "tooth", "claw"]
 const HERO_DETAIL_RANGE := 28.0
 const MOBILE_DETAIL_RANGE := 20.0
 const HERO_BODY_RANGE := 82.0

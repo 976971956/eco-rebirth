@@ -5,8 +5,10 @@ const Catalog = preload("res://scripts/species_catalog.gd")
 
 const OUTPUT_ROOT := "res://assets/models/animals"
 const REPRESENTATIVE_SPECIES := [
-	"rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar",
-	"lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla",
+	"rabbit", "fox", "deer", "wolf", "snake", "bear",
+	"boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine",
+	"bison", "zebra", "elephant", "tiger", "monkey", "owl", "moose", "turtle", "cheetah",
+	"rhino", "gorilla", "eagle", "hippo", "hyena", "lion",
 ]
 
 var failures: Array[String] = []
@@ -180,6 +182,16 @@ func _build_species(species_id: String, hero: bool) -> Node3D:
 		"fox": _build_fox(root, hero)
 		"snake": _build_snake(root, hero)
 		"boar": _build_boar(root, hero)
+		"raccoon": _build_raccoon(root, hero)
+		"porcupine": _build_porcupine(root, hero)
+		"capybara": _build_capybara(root, hero)
+		"otter": _build_otter(root, hero)
+		"wolverine": _build_wolverine(root, hero)
+		"zebra": _build_zebra(root, hero)
+		"owl": _build_owl(root, hero)
+		"turtle": _build_turtle(root, hero)
+		"cheetah": _build_cheetah(root, hero)
+		"hyena": _build_hyena(root, hero)
 		"lion", "tiger", "lynx": _build_feline(root, hero, species_id)
 		"elephant", "rhino", "hippo": _build_heavy_herbivore(root, hero, species_id)
 		"bison", "moose", "goat": _build_ungulate(root, hero, species_id)
@@ -242,6 +254,17 @@ func _add_ear(parent: Node3D, side: float, base_position: Vector3, length: float
 	_add_loft(pivot, "Ear", color, [Vector3.ZERO, Vector3(side * width * 0.10, length * 0.56, 0.02), tip], [Vector2(width, width * 0.48), Vector2(width * 0.82, width * 0.34), Vector2(0.025, 0.025)], hero)
 	if hero:
 		_add_loft(pivot, "InnerEar", inner, [Vector3(0.0, 0.05, -0.025), Vector3(side * width * 0.08, length * 0.54, -0.02), tip * 0.88 + Vector3(0.0, 0.02, -0.02)], [Vector2(width * 0.40, width * 0.12), Vector2(width * 0.35, width * 0.10), Vector2(0.014, 0.014)], true)
+	return pivot
+
+
+func _add_round_ear(parent: Node3D, side: float, base_position: Vector3, scale_value: Vector3, color: Color, inner: Color, hero: bool) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = "EarPivot_L" if side < 0.0 else "EarPivot_R"
+	pivot.position = base_position
+	parent.add_child(pivot)
+	_add_sphere(pivot, "RoundEar", color, scale_value, Vector3.ZERO, hero)
+	if hero:
+		_add_sphere(pivot, "InnerEar", inner, scale_value * Vector3(0.56, 0.58, 0.46), Vector3(0.0, 0.0, -scale_value.z * 0.72), true)
 	return pivot
 
 
@@ -790,3 +813,325 @@ func _add_external_primate_limbs(root: Node3D, coat: Color, skin: Color, heavy: 
 		var foot := Vector3(side * 0.03, -0.70 if heavy else -0.60, -0.14)
 		_add_loft(leg, "Leg_%s" % side_name, coat, [Vector3.ZERO, knee, foot], [Vector2(0.28 if heavy else 0.18, 0.26 if heavy else 0.17), Vector2(0.22 if heavy else 0.15, 0.20 if heavy else 0.14), Vector2(0.12, 0.11)], hero)
 		_add_sphere(leg, "PawFoot_%s" % side_name, skin, Vector3(0.25 if heavy else 0.18, 0.13, 0.34), foot + Vector3(0.0, -0.03, -0.10), hero)
+
+
+func _build_raccoon(root: Node3D, hero: bool) -> void:
+	var coat := Color("#747a77")
+	var dark := Color("#252b2d")
+	var cream := Color("#d5d0bc")
+	root.scale = Vector3.ONE * 0.88
+	_add_loft(root, "RaccoonOrganicBody", coat, [
+		Vector3(0.0, 0.88, 1.12), Vector3(0.0, 0.96, 0.54), Vector3(0.0, 1.02, -0.12),
+		Vector3(0.0, 1.20, -0.68), Vector3(0.0, 1.44, -1.08), Vector3(0.0, 1.48, -1.48), Vector3(0.0, 1.32, -1.92),
+	], [
+		Vector2(0.34, 0.33), Vector2(0.57, 0.46), Vector2(0.59, 0.48), Vector2(0.52, 0.53),
+		Vector2(0.39, 0.38), Vector2(0.35, 0.29), Vector2(0.16, 0.12),
+	], hero)
+	_add_sphere(root, "CheekRuff", cream.darkened(0.10), Vector3(0.47, 0.35, 0.28), Vector3(0.0, 1.42, -1.55), hero)
+	for side in [-1.0, 1.0]:
+		_add_sphere(root, "FaceMaskDetail_%s" % ("L" if side < 0.0 else "R"), dark, Vector3(0.31, 0.18, 0.10), Vector3(side * 0.22, 1.54, -1.82), hero)
+		_add_round_ear(root, side, Vector3(side * 0.34, 1.88, -1.33), Vector3(0.22, 0.24, 0.14), coat.darkened(0.12), cream.darkened(0.18), hero)
+	_add_sphere(root, "Muzzle", cream, Vector3(0.39, 0.25, 0.31), Vector3(0.0, 1.30, -1.98), hero)
+	_add_sphere(root, "Nose", Color("#1d2221"), Vector3(0.17, 0.11, 0.12), Vector3(0.0, 1.31, -2.29), hero)
+	_add_eye_pair(root, 1.56, -1.88, 0.22, 0.070, Color("#9b7748"), hero)
+	_add_quadruped_legs(root, coat.darkened(0.22), dark, 0.83, 0.70, 0.46, 0.68, 0.31, hero)
+	var tail := Node3D.new()
+	tail.name = "TailPivot"
+	tail.position = Vector3(0.0, 1.02, 0.98)
+	root.add_child(tail)
+	var ring_count := 7 if hero else 5
+	for ring_index in range(ring_count):
+		var ratio := float(ring_index) / float(maxi(ring_count - 1, 1))
+		var center := Vector3(0.12 + ratio * 0.24, ratio * 0.72, ratio * 1.82)
+		var radius := lerpf(0.31, 0.09, ratio)
+		_add_sphere(tail, "TailRingDetail_%02d" % ring_index, cream.darkened(0.10) if ring_index % 2 == 0 else dark, Vector3(radius, radius * 0.94, 0.34), center, hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			for whisker_index in range(2):
+				var whisker := Factory.tapered_cylinder("Whisker_%s_%d" % ["L" if side < 0.0 else "R", whisker_index], cream.lightened(0.12), 0.007, 0.002, 0.46, Vector3(side * 0.31, 1.31 + whisker_index * 0.06, -2.05), 5)
+				whisker.rotation.z = side * (PI * 0.5 - 0.14 - whisker_index * 0.06)
+				root.add_child(whisker)
+
+
+func _build_porcupine(root: Node3D, hero: bool) -> void:
+	var coat := Color("#5a4a3e")
+	var dark := Color("#292621")
+	var quill_light := Color("#dfcfaa")
+	root.scale = Vector3.ONE * 0.96
+	_add_loft(root, "PorcupineOrganicBody", coat, [
+		Vector3(0.0, 0.83, 1.18), Vector3(0.0, 1.00, 0.62), Vector3(0.0, 1.16, -0.04),
+		Vector3(0.0, 1.28, -0.68), Vector3(0.0, 1.20, -1.22), Vector3(0.0, 1.03, -1.72), Vector3(0.0, 0.94, -2.08),
+	], [
+		Vector2(0.38, 0.34), Vector2(0.66, 0.58), Vector2(0.72, 0.64), Vector2(0.66, 0.63),
+		Vector2(0.50, 0.45), Vector2(0.30, 0.23), Vector2(0.14, 0.10),
+	], hero)
+	var column_count := 8 if hero else 5
+	for row_index in range(3):
+		var side := float(row_index - 1)
+		for quill_index in range(column_count):
+			var ratio := float(quill_index) / float(maxi(column_count - 1, 1))
+			var quill := Factory.cone("BackQuillDetail_%d_%02d" % [row_index, quill_index], quill_light if (quill_index + row_index) % 2 == 0 else dark, 0.075, 0.62 + sin(ratio * PI) * 0.34, Vector3(side * 0.34, 1.52 + (1.0 - absf(side)) * 0.18, lerpf(0.88, -1.30, ratio)), 6)
+			quill.rotation.z = -side * 0.20
+			quill.rotation.x = lerpf(-0.18, 0.16, ratio)
+			root.add_child(quill)
+	_add_sphere(root, "SmallFace", coat.darkened(0.14), Vector3(0.43, 0.35, 0.47), Vector3(0.0, 1.02, -1.74), hero)
+	for side in [-1.0, 1.0]:
+		_add_round_ear(root, side, Vector3(side * 0.25, 1.40, -1.48), Vector3(0.18, 0.20, 0.12), coat.lightened(0.05), dark, hero)
+	_add_eye_pair(root, 1.14, -1.98, 0.19, 0.068, Color("#85633b"), hero)
+	_add_sphere(root, "Nose", Color("#201d1b"), Vector3(0.14, 0.10, 0.10), Vector3(0.0, 0.95, -2.22), hero)
+	_add_quadruped_legs(root, coat.darkened(0.20), dark, 0.76, 0.58, 0.49, 0.66, 0.32, hero)
+	var tail := _add_tail(root, Vector3(0.0, 0.92, 1.08), [Vector3.ZERO, Vector3(0.02, -0.02, 0.34), Vector3(0.04, -0.10, 0.58)], [Vector2(0.17, 0.16), Vector2(0.13, 0.12), Vector2(0.03, 0.03)], coat.darkened(0.10), hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			var tail_quill := Factory.cone("TailQuillDetail", quill_light, 0.045, 0.38, Vector3(side * 0.07, 0.08, 0.42), 5)
+			tail_quill.rotation.z = side * 0.38
+			tail.add_child(tail_quill)
+
+
+func _build_capybara(root: Node3D, hero: bool) -> void:
+	var coat := Color("#9a6f49")
+	var dark := Color("#4b3528")
+	var muzzle := Color("#c39b6d")
+	root.scale = Vector3.ONE * 1.04
+	_add_loft(root, "CapybaraOrganicBody", coat, [
+		Vector3(0.0, 0.94, 1.24), Vector3(0.0, 1.04, 0.58), Vector3(0.0, 1.10, -0.14),
+		Vector3(0.0, 1.22, -0.78), Vector3(0.0, 1.36, -1.26), Vector3(0.0, 1.30, -1.78), Vector3(0.0, 1.18, -2.22),
+	], [
+		Vector2(0.42, 0.40), Vector2(0.75, 0.62), Vector2(0.78, 0.64), Vector2(0.71, 0.66),
+		Vector2(0.58, 0.50), Vector2(0.49, 0.36), Vector2(0.27, 0.19),
+	], hero)
+	_add_sphere(root, "SquareMuzzle", muzzle, Vector3(0.51, 0.31, 0.45), Vector3(0.0, 1.20, -2.02), hero)
+	for side in [-1.0, 1.0]:
+		_add_round_ear(root, side, Vector3(side * 0.31, 1.70, -1.44), Vector3(0.18, 0.18, 0.12), coat.darkened(0.14), dark, hero)
+		_add_sphere(root, "NostrilDetail_%s" % ("L" if side < 0.0 else "R"), dark, Vector3(0.065, 0.045, 0.052), Vector3(side * 0.15, 1.31, -2.39), hero)
+	_add_eye_pair(root, 1.50, -1.91, 0.27, 0.070, Color("#6d4b30"), hero)
+	_add_quadruped_legs(root, coat.darkened(0.15), dark, 0.87, 0.73, 0.61, 0.78, 0.40, hero)
+	_add_sphere(root, "TailPivot", coat.darkened(0.18), Vector3(0.08, 0.07, 0.09), Vector3(0.0, 1.02, 1.36), hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			for whisker_index in range(2):
+				var whisker := Factory.tapered_cylinder("Whisker_%s_%d" % ["L" if side < 0.0 else "R", whisker_index], muzzle.lightened(0.24), 0.007, 0.002, 0.42, Vector3(side * 0.34, 1.22 + whisker_index * 0.06, -2.10), 5)
+				whisker.rotation.z = side * (PI * 0.5 - 0.16)
+				root.add_child(whisker)
+
+
+func _build_otter(root: Node3D, hero: bool) -> void:
+	var coat := Color("#624733")
+	var dark := Color("#28231f")
+	var cream := Color("#e2c79b")
+	root.scale = Vector3.ONE * 0.92
+	_add_loft(root, "OtterOrganicBody", coat, [
+		Vector3(0.0, 0.58, 1.34), Vector3(0.0, 0.66, 0.76), Vector3(0.0, 0.72, 0.08),
+		Vector3(0.0, 0.81, -0.60), Vector3(0.0, 1.02, -1.06), Vector3(0.0, 1.27, -1.42), Vector3(0.0, 1.18, -1.86), Vector3(0.0, 1.09, -2.14),
+	], [
+		Vector2(0.25, 0.22), Vector2(0.50, 0.35), Vector2(0.55, 0.39), Vector2(0.47, 0.45),
+		Vector2(0.34, 0.36), Vector2(0.40, 0.34), Vector2(0.28, 0.21), Vector2(0.13, 0.10),
+	], hero)
+	_add_sphere(root, "CreamThroat", cream, Vector3(0.48, 0.52, 0.18), Vector3(0.0, 0.86, -1.16), hero)
+	_add_sphere(root, "Muzzle", cream.lightened(0.05), Vector3(0.43, 0.25, 0.29), Vector3(0.0, 1.11, -1.96), hero)
+	for side in [-1.0, 1.0]:
+		_add_round_ear(root, side, Vector3(side * 0.30, 1.57, -1.37), Vector3(0.18, 0.18, 0.12), coat.darkened(0.08), dark, hero)
+	_add_eye_pair(root, 1.37, -1.75, 0.22, 0.070, Color("#8a673d"), hero)
+	_add_sphere(root, "Nose", dark, Vector3(0.18, 0.12, 0.12), Vector3(0.0, 1.11, -2.28), hero)
+	_add_quadruped_legs(root, coat.darkened(0.12), cream.darkened(0.18), 0.52, 0.48, 0.45, 0.66, 0.30, hero)
+	var tail := _add_tail(root, Vector3(0.0, 0.66, 1.22), [Vector3.ZERO, Vector3(0.08, -0.04, 0.68), Vector3(0.16, -0.10, 1.42), Vector3(0.12, -0.18, 2.12)], [Vector2(0.25, 0.18), Vector2(0.23, 0.16), Vector2(0.15, 0.10), Vector2(0.035, 0.025)], coat.darkened(0.10), hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			for whisker_index in range(3):
+				var whisker := Factory.tapered_cylinder("Whisker_%s_%d" % ["L" if side < 0.0 else "R", whisker_index], cream.lightened(0.20), 0.007, 0.002, 0.54, Vector3(side * 0.35, 1.12 + whisker_index * 0.055, -2.04), 5)
+				whisker.rotation.z = side * (PI * 0.5 - 0.12 + whisker_index * 0.06)
+				root.add_child(whisker)
+		for side in [-1.0, 1.0]:
+			_add_sphere(tail, "TailWebDetail_%s" % ("L" if side < 0.0 else "R"), coat.darkened(0.14), Vector3(0.05, 0.08, 0.48), Vector3(side * 0.10, -0.12, 1.40), true)
+
+
+func _build_wolverine(root: Node3D, hero: bool) -> void:
+	var coat := Color("#40352d")
+	var dark := Color("#1f1c1a")
+	var band := Color("#b28b58")
+	root.scale = Vector3.ONE * 0.94
+	_add_loft(root, "WolverineOrganicBody", coat, [
+		Vector3(0.0, 0.82, 1.40), Vector3(0.0, 0.92, 0.74), Vector3(0.0, 1.00, -0.06),
+		Vector3(0.0, 1.12, -0.76), Vector3(0.0, 1.30, -1.22), Vector3(0.0, 1.40, -1.62), Vector3(0.0, 1.28, -2.04),
+	], [
+		Vector2(0.35, 0.34), Vector2(0.65, 0.52), Vector2(0.68, 0.55), Vector2(0.61, 0.59),
+		Vector2(0.45, 0.43), Vector2(0.43, 0.35), Vector2(0.19, 0.14),
+	], hero)
+	for side in [-1.0, 1.0]:
+		_add_sphere(root, "SideBandDetail_%s" % ("L" if side < 0.0 else "R"), band, Vector3(0.14, 0.40, 1.16), Vector3(side * 0.61, 1.11, 0.05), hero)
+		_add_round_ear(root, side, Vector3(side * 0.31, 1.76, -1.46), Vector3(0.20, 0.20, 0.14), coat.lightened(0.10), band.darkened(0.34), hero)
+	_add_sphere(root, "Muzzle", band.darkened(0.16), Vector3(0.43, 0.28, 0.33), Vector3(0.0, 1.33, -2.00), hero)
+	_add_eye_pair(root, 1.52, -1.86, 0.22, 0.070, Color("#8b6b3f"), hero)
+	_add_sphere(root, "Nose", dark, Vector3(0.18, 0.12, 0.13), Vector3(0.0, 1.29, -2.32), hero)
+	_add_quadruped_legs(root, coat.darkened(0.15), dark, 0.75, 0.63, 0.55, 0.82, 0.38, hero)
+	_add_tail(root, Vector3(0.0, 0.92, 1.20), [Vector3.ZERO, Vector3(0.12, 0.18, 0.52), Vector3(0.18, 0.42, 0.98)], [Vector2(0.24, 0.23), Vector2(0.32, 0.30), Vector2(0.09, 0.08)], coat.darkened(0.18), hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			for claw_index in range(3):
+				var claw := Factory.cone("ClawDetail_%s_%d" % ["L" if side < 0.0 else "R", claw_index], Color("#d6c5a1"), 0.025, 0.20, Vector3(side * (0.45 + claw_index * 0.055), 0.10, -0.85), 5)
+				claw.rotation.x = -PI * 0.5
+				root.add_child(claw)
+
+
+func _build_zebra(root: Node3D, hero: bool) -> void:
+	var coat := Color("#e1ded2")
+	var dark := Color("#25282a")
+	root.scale = Vector3.ONE * 1.08
+	var height := 1.52
+	var length := 1.35
+	var width := 0.61
+	_add_loft(root, "ZebraOrganicBody", coat, [
+		Vector3(0.0, 1.40, 1.18), Vector3(0.0, 1.46, 0.60), Vector3(0.0, 1.49, -0.12),
+		Vector3(0.0, 1.60, -0.76), Vector3(0.0, 1.94, -1.06), Vector3(0.0, 2.38, -1.28), Vector3(0.0, 2.68, -1.64), Vector3(0.0, 2.56, -2.12),
+	], [
+		Vector2(0.34, 0.35), Vector2(width, 0.49), Vector2(width * 1.03, 0.51), Vector2(width * 0.91, 0.56),
+		Vector2(0.38, 0.40), Vector2(0.30, 0.34), Vector2(0.36, 0.31), Vector2(0.15, 0.11),
+	], hero)
+	var stripe_count := 10 if hero else 6
+	for stripe_index in range(stripe_count):
+		var ratio := float(stripe_index) / float(maxi(stripe_count - 1, 1))
+		var stripe_z := lerpf(0.94, -1.18, ratio)
+		_add_sphere(root, "CoatStripeDetail_%02d" % stripe_index, dark, Vector3(width * (0.98 - absf(ratio - 0.46) * 0.25), 0.055, 0.10), Vector3(0.0, 1.72 + sin(ratio * PI) * 0.10, stripe_z), hero)
+	var mane_count := 8 if hero else 5
+	for mane_index in range(mane_count):
+		var mane := Factory.cone("ManeDetail_%02d" % mane_index, dark, 0.085, 0.34, Vector3(0.0, 2.18 + float(mane_index) * 0.105, -0.82 - float(mane_index) * 0.18), 6)
+		mane.rotation.x = -0.12
+		root.add_child(mane)
+	for side in [-1.0, 1.0]:
+		_add_ear(root, side, Vector3(side * 0.28, 3.10, -1.56), 0.54, 0.17, coat, Color("#a58a7d"), hero)
+	_add_eye_pair(root, 2.76, -1.96, 0.19, 0.070, Color("#6e5035"), hero)
+	_add_sphere(root, "Muzzle", dark, Vector3(0.33, 0.20, 0.41), Vector3(0.0, 2.50, -2.25), hero)
+	_add_sphere(root, "Nose", Color("#161818"), Vector3(0.19, 0.10, 0.11), Vector3(0.0, 2.52, -2.63), hero)
+	_add_quadruped_legs(root, coat.darkened(0.05), dark, height * 0.76, 1.39, 0.51, 0.90, 0.23, hero, true)
+	var tail := _add_tail(root, Vector3(0.0, 1.54, 1.28), [Vector3.ZERO, Vector3(0.04, -0.30, 0.42), Vector3(0.10, -0.62, 0.74)], [Vector2(0.11, 0.11), Vector2(0.12, 0.11), Vector2(0.05, 0.05)], dark, hero)
+	_add_sphere(tail, "TailTuftDetail", dark, Vector3(0.22, 0.24, 0.30), Vector3(0.10, -0.64, 0.76), hero)
+
+
+func _build_owl(root: Node3D, hero: bool) -> void:
+	var feather := Color("#6d5842")
+	var dark := Color("#302a24")
+	var chest := Color("#d5c292")
+	root.scale = Vector3.ONE * 0.96
+	_add_loft(root, "OwlOrganicBody", feather, [
+		Vector3(0.0, 0.72, 0.70), Vector3(0.0, 1.05, 0.34), Vector3(0.0, 1.42, -0.02), Vector3(0.0, 1.78, -0.38), Vector3(0.0, 1.98, -0.66),
+	], [Vector2(0.30, 0.34), Vector2(0.58, 0.66), Vector2(0.72, 0.76), Vector2(0.62, 0.60), Vector2(0.34, 0.29)], hero)
+	_add_sphere(root, "ChestRuff", chest.darkened(0.08), Vector3(0.55, 0.74, 0.18), Vector3(0.0, 1.26, -0.58), hero)
+	_add_sphere(root, "FacialDisc", chest, Vector3(0.66, 0.62, 0.23), Vector3(0.0, 2.02, -0.52), hero)
+	for side in [-1.0, 1.0]:
+		var tuft := Factory.cone("EarTuftDetail_%s" % ("L" if side < 0.0 else "R"), dark, 0.15, 0.55, Vector3(side * 0.38, 2.56, -0.40), 7 if hero else 5)
+		tuft.rotation.z = side * 0.16
+		root.add_child(tuft)
+		_add_sphere(root, "EyeSocket_%s" % ("L" if side < 0.0 else "R"), dark, Vector3(0.18, 0.19, 0.09), Vector3(side * 0.23, 2.08, -0.70), hero)
+		_add_sphere(root, "Iris_%s" % ("L" if side < 0.0 else "R"), Color("#efb33f"), Vector3(0.105, 0.12, 0.045), Vector3(side * 0.23, 2.08, -0.785), hero)
+		_add_sphere(root, "Pupil_%s" % ("L" if side < 0.0 else "R"), Color("#11110f"), Vector3(0.045, 0.075, 0.025), Vector3(side * 0.23, 2.08, -0.825), hero)
+		if hero:
+			_add_sphere(root, "EyeCatchlight_%s" % ("L" if side < 0.0 else "R"), Color("#fff3d5"), Vector3.ONE * 0.018, Vector3(side * 0.25, 2.12, -0.85), true)
+	var beak := Factory.cone("HookedBeak", Color("#d8a747"), 0.16, 0.53, Vector3(0.0, 1.89, -0.98), int(_detail(hero)["radial"]))
+	beak.rotation.x = -PI * 0.5
+	root.add_child(beak)
+	for side in [-1.0, 1.0]:
+		var wing := Node3D.new()
+		wing.name = "WingPivot_L" if side < 0.0 else "WingPivot_R"
+		wing.position = Vector3(side * 0.46, 1.48, -0.02)
+		root.add_child(wing)
+		_add_loft(wing, "Wing", feather.darkened(0.06), [Vector3.ZERO, Vector3(side * 0.72, 0.02, 0.22), Vector3(side * 1.34, -0.06, 0.56), Vector3(side * 1.86, -0.14, 0.88)], [Vector2(0.34, 0.18), Vector2(0.42, 0.16), Vector2(0.30, 0.11), Vector2(0.06, 0.035)], hero)
+		var feather_count := 5 if hero else 3
+		for feather_index in range(feather_count):
+			_add_loft(wing, "PrimaryFeatherDetail_%02d" % feather_index, dark.lightened(float(feather_index) * 0.025), [Vector3(side * (0.76 + feather_index * 0.20), -0.02, 0.40 + feather_index * 0.10), Vector3(side * (1.40 + feather_index * 0.18), -0.10, 0.92 + feather_index * 0.12)], [Vector2(0.10, 0.05), Vector2(0.016, 0.010)], hero)
+	var tail := Node3D.new()
+	tail.name = "TailPivot"
+	tail.position = Vector3(0.0, 0.88, 0.60)
+	root.add_child(tail)
+	for feather_index in range(-2 if hero else -1, 3 if hero else 2):
+		_add_loft(tail, "TailFeatherDetail_%d" % feather_index, chest.darkened(0.18), [Vector3(feather_index * 0.10, 0.0, 0.0), Vector3(feather_index * 0.17, -0.08, 0.88)], [Vector2(0.12, 0.06), Vector2(0.018, 0.012)], hero)
+	for side in [-1.0, 1.0]:
+		_add_sphere(root, "Talon_%s" % ("L" if side < 0.0 else "R"), Color("#caa34d"), Vector3(0.15, 0.10, 0.23), Vector3(side * 0.23, 0.50, -0.18), hero)
+
+
+func _build_turtle(root: Node3D, hero: bool) -> void:
+	var skin := Color("#667052")
+	var shell := Color("#96895a")
+	var dark := Color("#454732")
+	root.scale = Vector3.ONE * 0.96
+	_add_sphere(root, "TurtleBody", skin.darkened(0.08), Vector3(1.06, 0.44, 1.38), Vector3(0.0, 0.68, 0.04), hero)
+	_add_sphere(root, "StoneShell", shell.darkened(0.16), Vector3(1.40, 0.65, 1.72), Vector3(0.0, 0.82, 0.06), hero)
+	_add_sphere(root, "ShellCrown", shell, Vector3(1.17, 0.53, 1.45), Vector3(0.0, 1.05, 0.00), hero)
+	var plate_count := 9 if hero else 5
+	for plate_index in range(plate_count):
+		var angle := TAU * float(plate_index) / float(plate_count)
+		_add_sphere(root, "ShellPlateDetail_%02d" % plate_index, shell.darkened(0.08 if plate_index % 2 == 0 else 0.20), Vector3(0.27, 0.075, 0.34), Vector3(cos(angle) * 0.68, 1.29 - absf(sin(angle)) * 0.10, sin(angle) * 0.91), hero)
+	_add_loft(root, "TurtleNeck", skin, [Vector3(0.0, 0.72, -0.82), Vector3(0.0, 0.74, -1.24), Vector3(0.0, 0.84, -1.58), Vector3(0.0, 0.84, -1.90)], [Vector2(0.28, 0.24), Vector2(0.25, 0.22), Vector2(0.33, 0.28), Vector2(0.18, 0.13)], hero)
+	_add_eye_pair(root, 0.98, -1.76, 0.19, 0.067, Color("#9a763f"), hero)
+	_add_sphere(root, "Beak", shell.lightened(0.12), Vector3(0.19, 0.11, 0.15), Vector3(0.0, 0.83, -2.05), hero)
+	_add_quadruped_legs(root, skin.darkened(0.08), dark, 0.52, 0.43, 0.88, 0.88, 0.38, hero)
+	var tail := Node3D.new()
+	tail.name = "TailPivot"
+	tail.position = Vector3(0.0, 0.64, 1.60)
+	root.add_child(tail)
+	var tail_mesh := Factory.cone("ShortTail", skin.darkened(0.12), 0.17, 0.50, Vector3(0.0, 0.0, 0.20), int(_detail(hero)["radial"]))
+	tail_mesh.rotation.x = PI * 0.5
+	tail.add_child(tail_mesh)
+
+
+func _build_cheetah(root: Node3D, hero: bool) -> void:
+	var coat := Color("#d7ad5e")
+	var dark := Color("#352820")
+	var cream := Color("#ead39c")
+	root.scale = Vector3.ONE * 1.02
+	_add_loft(root, "CheetahOrganicBody", coat, [
+		Vector3(0.0, 1.08, 1.42), Vector3(0.0, 1.13, 0.72), Vector3(0.0, 1.16, -0.05),
+		Vector3(0.0, 1.26, -0.76), Vector3(0.0, 1.53, -1.22), Vector3(0.0, 1.63, -1.64), Vector3(0.0, 1.50, -2.08),
+	], [
+		Vector2(0.28, 0.27), Vector2(0.48, 0.35), Vector2(0.49, 0.36), Vector2(0.41, 0.39),
+		Vector2(0.30, 0.29), Vector2(0.35, 0.29), Vector2(0.14, 0.10),
+	], hero)
+	_add_sphere(root, "HindQuarter", coat.darkened(0.025), Vector3(0.49, 0.40, 0.56), Vector3(0.0, 1.10, 0.78), hero)
+	_add_sphere(root, "Muzzle", cream, Vector3(0.38, 0.23, 0.27), Vector3(0.0, 1.50, -2.15), hero)
+	for side in [-1.0, 1.0]:
+		_add_round_ear(root, side, Vector3(side * 0.29, 2.00, -1.52), Vector3(0.18, 0.21, 0.12), dark, Color("#8f6758"), hero)
+		var tear_mark := _add_sphere(root, "TearMarkDetail_%s" % ("L" if side < 0.0 else "R"), dark, Vector3(0.045, 0.22, 0.035), Vector3(side * 0.17, 1.59, -2.29), hero)
+		tear_mark.rotation.z = side * 0.18
+	_add_eye_pair(root, 1.74, -2.04, 0.18, 0.068, Color("#b47d36"), hero)
+	_add_sphere(root, "Nose", Color("#201b18"), Vector3(0.15, 0.10, 0.10), Vector3(0.0, 1.48, -2.42), hero)
+	var spot_count := 22 if hero else 12
+	for spot_index in range(spot_count):
+		var row := spot_index / (6 if hero else 4)
+		var column := spot_index % (6 if hero else 4)
+		var side := -1.0 if column < (3 if hero else 2) else 1.0
+		var column_local := column % (3 if hero else 2)
+		_add_sphere(root, "CoatSpotDetail_%02d" % spot_index, dark, Vector3(0.055 + column_local * 0.008, 0.035, 0.072), Vector3(side * (0.38 + column_local * 0.045), 1.20 + float(row) * 0.10, 0.82 - float(row) * 0.48), hero)
+	_add_quadruped_legs(root, coat.darkened(0.07), dark, 0.98, 1.02, 0.43, 0.80, 0.29, hero)
+	var tail := _add_tail(root, Vector3(0.0, 1.10, 1.31), [Vector3.ZERO, Vector3(0.16, 0.08, 0.66), Vector3(0.42, 0.28, 1.32), Vector3(0.48, 0.48, 1.96)], [Vector2(0.13, 0.13), Vector2(0.14, 0.13), Vector2(0.11, 0.10), Vector2(0.055, 0.055)], coat.darkened(0.08), hero)
+	_add_sphere(tail, "TailTipDetail", dark, Vector3(0.15, 0.14, 0.30), Vector3(0.48, 0.49, 2.04), hero)
+
+
+func _build_hyena(root: Node3D, hero: bool) -> void:
+	var coat := Color("#a98b56")
+	var dark := Color("#3f3328")
+	var light := Color("#cbb889")
+	root.scale = Vector3.ONE * 1.02
+	_add_loft(root, "HyenaOrganicBody", coat, [
+		Vector3(0.0, 0.92, 1.24), Vector3(0.0, 1.05, 0.62), Vector3(0.0, 1.22, -0.10),
+		Vector3(0.0, 1.48, -0.72), Vector3(0.0, 1.68, -1.16), Vector3(0.0, 1.73, -1.58), Vector3(0.0, 1.54, -2.04), Vector3(0.0, 1.40, -2.34),
+	], [
+		Vector2(0.34, 0.33), Vector2(0.57, 0.44), Vector2(0.60, 0.48), Vector2(0.56, 0.58),
+		Vector2(0.41, 0.42), Vector2(0.44, 0.36), Vector2(0.28, 0.20), Vector2(0.15, 0.11),
+	], hero)
+	_add_sphere(root, "ShoulderMass", coat.darkened(0.06), Vector3(0.60, 0.62, 0.53), Vector3(0.0, 1.53, -0.66), hero)
+	var mane_count := 9 if hero else 5
+	for mane_index in range(mane_count):
+		var ratio := float(mane_index) / float(maxi(mane_count - 1, 1))
+		var mane := Factory.cone("BackManeDetail_%02d" % mane_index, dark, 0.095, 0.36 + sin(ratio * PI) * 0.16, Vector3(0.0, 1.93, lerpf(0.52, -1.34, ratio)), 6)
+		root.add_child(mane)
+	for side in [-1.0, 1.0]:
+		_add_round_ear(root, side, Vector3(side * 0.35, 2.16, -1.47), Vector3(0.28, 0.35, 0.17), dark, Color("#9a7568"), hero)
+	_add_sphere(root, "Muzzle", light.darkened(0.18), Vector3(0.39, 0.25, 0.42), Vector3(0.0, 1.45, -2.20), hero)
+	_add_eye_pair(root, 1.76, -2.00, 0.23, 0.070, Color("#b8863e"), hero)
+	_add_sphere(root, "Nose", Color("#1d1b18"), Vector3(0.18, 0.12, 0.13), Vector3(0.0, 1.41, -2.56), hero)
+	var spot_count := 14 if hero else 8
+	for spot_index in range(spot_count):
+		var side := -1.0 if spot_index % 2 == 0 else 1.0
+		var row := spot_index / 2
+		_add_sphere(root, "CoatSpotDetail_%02d" % spot_index, dark, Vector3(0.075, 0.045, 0.10), Vector3(side * (0.47 + float(row % 2) * 0.04), 1.38 + float(row % 3) * 0.09, 0.86 - float(row) * 0.30), hero)
+	_add_quadruped_legs(root, coat.darkened(0.15), dark, 0.90, 0.92, 0.52, 0.76, 0.34, hero)
+	_add_tail(root, Vector3(0.0, 0.99, 1.15), [Vector3.ZERO, Vector3(0.10, 0.10, 0.48), Vector3(0.15, 0.20, 0.88)], [Vector2(0.19, 0.18), Vector2(0.25, 0.23), Vector2(0.08, 0.07)], dark, hero)
