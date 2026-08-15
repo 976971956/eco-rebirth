@@ -42,17 +42,20 @@ func _initialize() -> void:
 func _render_gallery() -> void:
 	var all_ok := true
 	for group_index in range(GALLERY_GROUPS.size()):
-		var output_path := "res://docs/images/v47-v2-species-gallery-%s.png" % char(97 + group_index)
-		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, output_path) and all_ok
+		var group_suffix := char(97 + group_index)
+		var idle_output := "res://docs/images/v50-v3-species-gallery-%s-idle.png" % group_suffix
+		var move_output := "res://docs/images/v50-v3-species-gallery-%s-move.png" % group_suffix
+		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, idle_output, "idle") and all_ok
+		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, move_output, "locomotion") and all_ok
 	if all_ok:
-		print("V2_SPECIES_GALLERY_OK: 30 species / 6 screenshots")
+		print("V3_SPECIES_GALLERY_OK: 30 species / 12 screenshots / idle + locomotion")
 		quit(0)
 	else:
-		push_error("无法保存 V2 三十物种验收图")
+		push_error("无法保存 V3 三十物种验收图")
 		quit(1)
 
 
-func _render_group(species_group: Array, group_index: int, output_path: String) -> bool:
+func _render_group(species_group: Array, group_index: int, output_path: String, animation_name: String) -> bool:
 	var scene := Node3D.new()
 	root.add_child(scene)
 	var game_stub := ShowcaseGame.new()
@@ -69,8 +72,12 @@ func _render_group(species_group: Array, group_index: int, output_path: String) 
 		actor.scale = Vector3.ONE * float(GALLERY_SCALE.get(species_id, 0.55))
 		actor.rotation.y = 0.38
 		_hide_actor_ui(actor)
+		if is_instance_valid(actor.external_animation_player) and actor.external_animation_player.has_animation(animation_name):
+			actor.external_animation_player.play(animation_name)
+			actor.external_animation_player.seek(0.38 if animation_name == "locomotion" else 0.16, true)
 		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.05, 0.0), 26)
-	_add_label(scene, "Blender V2 · 三十物种 Hero 连续蒙皮模型 · 第 %d/6 组" % (group_index + 1), Vector3(0.0, 4.62, 2.0), 36)
+	var pose_title := "移动动作定格" if animation_name == "locomotion" else "静止轮廓"
+	_add_label(scene, "Blender V3 · 三十物种 Hero · %s · 第 %d/6 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 36)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL

@@ -1,4 +1,4 @@
-# 《生态轮回》V1.42 RC1 运行与导出
+# 《生态轮回》V1.43 RC1 运行与导出
 
 ## 直接运行
 
@@ -49,6 +49,8 @@ V1.40 开始 Blender V2 重制：雪兔和灰狼已使用连续毛皮主网格�
 V1.41 完成其余 28 种动物的 Blender V2 重制。现在 30 种动物均有 Hero/Mobile 骨骼模型与 8 个核心动作；地面、飞行、长体三套运行时控制器统一驱动实际移动、攻击、技能、进食、受击和死亡。30 种 Mobile 模型总顶点为 63,262，仍低于 140,000 发布预算。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v141-rc`。
 
 V1.42 将林鹿升级为第一个 AI 原创 V3 质量基线：先生成原创五视图与步态参考，再用 Blender 构建物种专属 Hero/Mobile GLB、16 骨架和 8 个烘焙动作。当前 30 种 Mobile 模型总顶点为 118,212 / 140,000。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v142-rc`。
+
+V1.43 完成剩余 29 种 V3 重制：六组 AI 原创设定图转换为物种级解剖参数、标志轮廓与专属步态，共更新 58 份 Hero/Mobile GLB。当前 30 种 Mobile 模型总顶点为 121,647 / 140,000。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v143-rc`。
 
 本地有 Blender 5.2 LTS 时，可以重新生成并校验竖向切片资产：
 

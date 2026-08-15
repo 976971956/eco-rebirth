@@ -59,6 +59,43 @@ SPECIES = {
 }
 
 
+V3_FAMILY_PROFILE = {
+    "canid": dict(gait="walk", sprint_gait="gallop", stride=0.42, flex=0.48, stance=0.76, fore_scale=1.0, rear_scale=1.0, front_knee_z=-0.08, hind_knee_z=0.16, front_paw_z=-0.18, hind_paw_z=-0.05, upper_thickness=1.00, lower_thickness=0.66, chest_mass=1.00, rump_mass=0.94, body_bob=0.038, head_bob=0.024, attack="pounce"),
+    "felid": dict(gait="stalk", sprint_gait="gallop", stride=0.50, flex=0.55, stance=0.74, fore_scale=1.0, rear_scale=1.02, front_knee_z=-0.10, hind_knee_z=0.22, front_paw_z=-0.20, hind_paw_z=-0.02, upper_thickness=1.06, lower_thickness=0.70, chest_mass=1.00, rump_mass=1.02, body_bob=0.032, head_bob=0.016, attack="pounce"),
+    "ungulate": dict(gait="four_beat", sprint_gait="gallop", stride=0.38, flex=0.44, stance=0.74, fore_scale=1.0, rear_scale=1.0, front_knee_z=0.10, hind_knee_z=0.22, front_paw_z=-0.16, hind_paw_z=-0.08, upper_thickness=0.92, lower_thickness=0.52, chest_mass=1.02, rump_mass=0.98, body_bob=0.026, head_bob=0.020, attack="charge"),
+    "heavy": dict(gait="lumber", sprint_gait="charge", stride=0.28, flex=0.30, stance=0.76, fore_scale=1.0, rear_scale=1.0, front_knee_z=-0.02, hind_knee_z=0.10, front_paw_z=-0.10, hind_paw_z=-0.02, upper_thickness=1.20, lower_thickness=0.92, chest_mass=1.10, rump_mass=1.05, body_bob=0.046, head_bob=0.030, attack="bash"),
+    "primate": dict(gait="knuckle", sprint_gait="knuckle_run", stride=0.34, flex=0.42, stance=0.74, fore_scale=1.20, rear_scale=0.92, front_knee_z=-0.18, hind_knee_z=0.18, front_paw_z=-0.24, hind_paw_z=-0.04, upper_thickness=1.18, lower_thickness=0.92, chest_mass=1.12, rump_mass=0.96, body_bob=0.055, head_bob=0.025, attack="swipe"),
+    "chelonian": dict(gait="crawl", sprint_gait="crawl", stride=0.18, flex=0.20, stance=0.96, fore_scale=0.82, rear_scale=0.82, front_knee_z=-0.16, hind_knee_z=0.16, front_paw_z=-0.30, hind_paw_z=0.20, upper_thickness=1.20, lower_thickness=1.05, chest_mass=1.04, rump_mass=1.04, body_bob=0.012, head_bob=0.012, attack="bash"),
+}
+
+
+V3_SPECIES_PROFILE = {
+    "fox": dict(gait="trot", stride=0.44, flex=0.52, stance=0.72, chest_mass=0.94, rump_mass=0.88, attack="pounce"),
+    "bear": dict(gait="lumber", stride=0.27, flex=0.28, stance=0.80, upper_thickness=1.34, lower_thickness=1.08, chest_mass=1.22, rump_mass=1.10, attack="swipe"),
+    "boar": dict(gait="scuttle", sprint_gait="charge", stride=0.31, flex=0.32, stance=0.82, fore_scale=0.92, rear_scale=0.88, chest_mass=1.20, rump_mass=0.92, attack="charge"),
+    "raccoon": dict(gait="amble", sprint_gait="lope", stride=0.32, flex=0.46, stance=0.82, upper_thickness=1.08, lower_thickness=0.86, chest_mass=0.94, rump_mass=1.04, attack="swipe"),
+    "porcupine": dict(gait="shuffle", sprint_gait="scuttle", stride=0.22, flex=0.25, stance=0.86, upper_thickness=1.12, lower_thickness=0.92, chest_mass=1.06, rump_mass=1.12, attack="bash"),
+    "capybara": dict(gait="amble", sprint_gait="lope", stride=0.25, flex=0.28, stance=0.82, upper_thickness=1.18, lower_thickness=0.98, chest_mass=1.08, rump_mass=1.08, attack="bash"),
+    "otter": dict(gait="lope", sprint_gait="bound", stride=0.36, flex=0.52, stance=0.70, fore_scale=0.88, rear_scale=0.92, chest_mass=0.86, rump_mass=0.96, body_bob=0.055, attack="pounce"),
+    "lynx": dict(gait="stalk", sprint_gait="bound", stride=0.42, flex=0.58, stance=0.76, rear_scale=1.08, chest_mass=0.94, rump_mass=1.06, attack="pounce"),
+    "goat": dict(gait="prance", sprint_gait="bound", stride=0.39, flex=0.56, stance=0.72, upper_thickness=0.90, lower_thickness=0.52, chest_mass=0.98, rump_mass=0.94, attack="charge"),
+    "wolverine": dict(gait="lope", sprint_gait="bound", stride=0.34, flex=0.44, stance=0.86, upper_thickness=1.28, lower_thickness=1.00, chest_mass=1.10, rump_mass=1.02, attack="swipe"),
+    "bison": dict(gait="lumber", sprint_gait="charge", stride=0.31, flex=0.32, stance=0.80, upper_thickness=1.26, lower_thickness=0.92, chest_mass=1.34, rump_mass=0.92, body_bob=0.052, attack="charge"),
+    "zebra": dict(gait="four_beat", sprint_gait="gallop", stride=0.43, flex=0.48, stance=0.72, upper_thickness=0.90, lower_thickness=0.50, chest_mass=1.00, rump_mass=0.98, attack="kick"),
+    "elephant": dict(gait="amble", sprint_gait="charge", stride=0.24, flex=0.20, stance=0.78, fore_scale=1.02, rear_scale=1.00, upper_thickness=1.48, lower_thickness=1.28, chest_mass=1.18, rump_mass=1.14, body_bob=0.035, attack="stomp"),
+    "tiger": dict(gait="stalk", sprint_gait="gallop", stride=0.50, flex=0.58, stance=0.76, upper_thickness=1.12, lower_thickness=0.76, chest_mass=1.08, rump_mass=1.08, attack="pounce"),
+    "monkey": dict(gait="primate_walk", sprint_gait="primate_run", stride=0.40, flex=0.54, stance=0.74, fore_scale=1.62, rear_scale=1.16, upper_thickness=0.92, lower_thickness=0.72, chest_mass=0.98, rump_mass=0.86, attack="swipe"),
+    "moose": dict(gait="four_beat", sprint_gait="long_trot", stride=0.42, flex=0.46, stance=0.72, fore_scale=1.04, rear_scale=1.00, upper_thickness=0.96, lower_thickness=0.48, chest_mass=1.10, rump_mass=0.94, attack="charge"),
+    "turtle": dict(gait="crawl", sprint_gait="crawl", stride=0.15, flex=0.18, stance=1.06, fore_scale=0.76, rear_scale=0.76, upper_thickness=1.32, lower_thickness=1.20, chest_mass=1.08, rump_mass=1.08, attack="bash"),
+    "cheetah": dict(gait="stalk", sprint_gait="gallop", stride=0.62, flex=0.68, stance=0.70, rear_scale=1.12, upper_thickness=0.86, lower_thickness=0.58, chest_mass=0.92, rump_mass=0.98, body_bob=0.060, attack="pounce"),
+    "rhino": dict(gait="lumber", sprint_gait="charge", stride=0.30, flex=0.26, stance=0.82, upper_thickness=1.38, lower_thickness=1.06, chest_mass=1.26, rump_mass=1.08, attack="charge"),
+    "gorilla": dict(gait="knuckle", sprint_gait="knuckle_run", stride=0.38, flex=0.40, stance=0.90, fore_scale=2.00, rear_scale=1.10, front_knee_z=-0.20, upper_thickness=1.44, lower_thickness=1.18, chest_mass=1.46, rump_mass=0.88, body_bob=0.068, attack="swipe"),
+    "hippo": dict(gait="lumber", sprint_gait="charge", stride=0.24, flex=0.22, stance=0.84, fore_scale=0.78, rear_scale=0.76, upper_thickness=1.50, lower_thickness=1.28, chest_mass=1.18, rump_mass=1.18, attack="bash"),
+    "hyena": dict(gait="lope", sprint_gait="gallop", stride=0.41, flex=0.49, stance=0.76, fore_scale=1.10, rear_scale=0.94, upper_thickness=1.06, lower_thickness=0.72, chest_mass=1.14, rump_mass=0.90, attack="pounce"),
+    "lion": dict(gait="stalk", sprint_gait="gallop", stride=0.48, flex=0.54, stance=0.78, upper_thickness=1.14, lower_thickness=0.78, chest_mass=1.14, rump_mass=1.04, attack="pounce"),
+}
+
+
 def parse_args() -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description="Build the remaining Eco Rebirth V2 species")
@@ -216,6 +253,48 @@ def tapered_segment_between(
     return obj
 
 
+def tapered_flat_blade(
+    name: str,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    start_width: float,
+    end_width: float,
+    thickness: float,
+    material: bpy.types.Material,
+    hero: bool,
+) -> bpy.types.Object:
+    """Create a tapered, flattened feather blade in the horizontal flight plane."""
+    start_b = Vector(g2b(start))
+    end_b = Vector(g2b(end))
+    direction = (end_b - start_b).normalized()
+    vertical = Vector((0.0, 0.0, 1.0))
+    transverse = direction.cross(vertical).normalized()
+    vertices = []
+    for centre, width in ((start_b, start_width), (end_b, end_width)):
+        for side in (-1.0, 1.0):
+            for height in (-1.0, 1.0):
+                vertices.append(tuple(centre + transverse * width * side + vertical * thickness * height))
+    faces = [
+        (0, 1, 3, 2), (4, 6, 7, 5),
+        (0, 4, 5, 1), (2, 3, 7, 6),
+        (0, 2, 6, 4), (1, 5, 7, 3),
+    ]
+    mesh = bpy.data.meshes.new(f"{name}Mesh")
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bevel = obj.modifiers.new("FeatherEdge", "BEVEL")
+    bevel.width = min(start_width, max(end_width, 0.025)) * 0.28
+    bevel.segments = 2 if hero else 1
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=bevel.name)
+    obj.data.materials.append(material)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    return obj
+
+
 def add_bone(edit_bones, name: str, head: tuple[float, float, float], tail: tuple[float, float, float], parent=None):
     result = edit_bones.new(name)
     result.head = g2b(head)
@@ -265,12 +344,30 @@ def config_for(species: str) -> dict:
     result.update(specific)
     result["species"] = species
     result["features"] = set(result.get("features", ()))
+    profile = dict(V3_FAMILY_PROFILE[result["family"]])
+    profile.update(V3_SPECIES_PROFILE.get(species, {}))
+    result["v3"] = profile
     return result
 
 
 def ground_layout(cfg: dict) -> dict:
+    if cfg["family"] == "primate":
+        # Primates carry a short, steep torso over the hips.  A conventional
+        # quadruped layout made the macaque and gorilla read like canids even
+        # though their arm lengths differed, so give them a raised shoulder
+        # girdle and compressed fore-aft body here.
+        body_y = cfg["leg"] + cfg["height"] * 0.66
+        shoulder_y = body_y + cfg["height"] * (0.62 if cfg["species"] == "gorilla" else 0.54)
+        front_z = -cfg["length"] * 0.18
+        rear_z = cfg["length"] * 0.20
+        neck_z = -cfg["length"] * 0.34
+        head_z = neck_z - cfg["neck"] * 0.42
+        head_y = shoulder_y + cfg["neck"] * 0.70
+        muzzle_z = head_z - cfg["muzzle"]
+        return dict(body_y=body_y, shoulder_y=shoulder_y, front_z=front_z, rear_z=rear_z, neck_z=neck_z, head_z=head_z, head_y=head_y, muzzle_z=muzzle_z)
     body_y = cfg["leg"] + cfg["height"] * 0.72
-    shoulder_y = body_y + (0.18 if "high_shoulders" in cfg["features"] or "shoulder_hump" in cfg["features"] else 0.04)
+    mass_pitch = (float(cfg["v3"]["chest_mass"]) - float(cfg["v3"]["rump_mass"])) * cfg["height"] * 0.28
+    shoulder_y = body_y + mass_pitch + (0.14 if "high_shoulders" in cfg["features"] or "shoulder_hump" in cfg["features"] else 0.03)
     front_z = -cfg["length"] * 0.36
     rear_z = cfg["length"] * 0.36
     neck_z = -cfg["length"] * 0.78
@@ -278,6 +375,22 @@ def ground_layout(cfg: dict) -> dict:
     head_y = shoulder_y + cfg["neck"] * (0.68 if cfg["family"] != "chelonian" else 0.18)
     muzzle_z = head_z - cfg["muzzle"]
     return dict(body_y=body_y, shoulder_y=shoulder_y, front_z=front_z, rear_z=rear_z, neck_z=neck_z, head_z=head_z, head_y=head_y, muzzle_z=muzzle_z)
+
+
+def ground_limb_points(cfg: dict, layout: dict, suffix: str) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
+    profile = cfg["v3"]
+    side = -1.0 if suffix.startswith("L") else 1.0
+    front = suffix.endswith("F")
+    z = layout["front_z"] if front else layout["rear_z"]
+    leg_scale = float(profile["fore_scale"] if front else profile["rear_scale"])
+    leg_length = cfg["leg"] * leg_scale
+    hip_y = layout["shoulder_y"] if front else layout["body_y"]
+    hip = (side * cfg["width"] * float(profile["stance"]), hip_y, z)
+    joint_z = z + float(profile["front_knee_z"] if front else profile["hind_knee_z"])
+    paw_z = z + float(profile["front_paw_z"] if front else profile["hind_paw_z"])
+    joint = (side * cfg["width"] * (float(profile["stance"]) + 0.05), max(0.31, hip_y - leg_length * 0.56), joint_z)
+    paw = (side * cfg["width"] * (float(profile["stance"]) + 0.07), 0.13, paw_z)
+    return hip, joint, paw
 
 
 def deer_limb_points(suffix: str) -> tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]:
@@ -500,16 +613,9 @@ def build_ground_rig(species: str, cfg: dict, layout: dict) -> tuple[bpy.types.O
     neck = add_bone(edit, "Neck", (0.0, layout["shoulder_y"], layout["front_z"]), (0.0, layout["head_y"], layout["neck_z"]), chest)
     head = add_bone(edit, "Head", (0.0, layout["head_y"], layout["neck_z"]), (0.0, layout["head_y"], layout["muzzle_z"] - 0.12), neck)
     anchors.update(Spine=(0.0, layout["body_y"], layout["rear_z"]), Chest=(0.0, layout["shoulder_y"], layout["front_z"]), Neck=(0.0, layout["head_y"], layout["neck_z"]), Head=(0.0, layout["head_y"], layout["head_z"] - cfg["muzzle"] * 0.30))
-    arm_scale = 1.25 if "long_arms" in cfg["features"] else 1.0
     for suffix in LIMBS:
-        side = -1.0 if suffix.startswith("L") else 1.0
         front = suffix.endswith("F")
-        z = layout["front_z"] if front else layout["rear_z"]
-        leg_length = cfg["leg"] * (arm_scale if front else 1.0)
-        hip_y = layout["shoulder_y"] if front else layout["body_y"]
-        hip = (side * cfg["width"] * 0.72, hip_y, z)
-        joint = (side * cfg["width"] * 0.78, max(0.38, hip_y - leg_length * 0.56), z + (-0.05 if front else 0.10))
-        paw = (side * cfg["width"] * 0.80, 0.14, z - cfg["paw"] * (1.25 if front else 0.50))
+        hip, joint, paw = ground_limb_points(cfg, layout, suffix)
         upper = add_bone(edit, f"Leg_{suffix}", hip, joint, chest if front else spine)
         add_bone(edit, f"Paw_{suffix}", joint, paw, upper)
         anchors[f"Leg_{suffix}"] = tuple((Vector(hip) + Vector(joint)) * 0.5)
@@ -560,6 +666,33 @@ def skin_ground_body(body: bpy.types.Object, rig: bpy.types.Object, anchors: dic
     add_armature_weights(body, rig, weights)
 
 
+def skin_v3_torso(body: bpy.types.Object, rig: bpy.types.Object, anchors: dict[str, tuple[float, float, float]], cfg: dict) -> None:
+    """Keep the torso smooth while articulated silhouette parts use rigid bone attachments."""
+    bone_names = ("Spine", "Chest", "Neck", "Head")
+    scales = {
+        "Spine": Vector((cfg["width"] * 1.22, cfg["height"] * 1.20, cfg["length"] * 0.58)),
+        "Chest": Vector((cfg["width"] * 1.18, cfg["height"] * 1.22, cfg["length"] * 0.54)),
+        "Neck": Vector((cfg["head"] * 1.10, max(cfg["neck"], 0.26) * 1.05, max(cfg["neck"], 0.26) * 0.84)),
+        "Head": Vector((cfg["head"] * 1.12, cfg["head"] * 1.12, max(cfg["muzzle"], cfg["head"]) * 1.10)),
+    }
+    weights = {name: [] for name in bone_names}
+    for vertex in body.data.vertices:
+        point = Vector((vertex.co.x, vertex.co.z, vertex.co.y))
+        raw = {}
+        for name in bone_names:
+            delta = point - Vector(anchors[name])
+            distance = math.sqrt(sum((delta[index] / max(scales[name][index], 0.08)) ** 2 for index in range(3)))
+            raw[name] = max(0.0, 1.0 - distance) ** 2
+        total = sum(raw.values())
+        if total < 0.0001:
+            nearest = min(bone_names, key=lambda name: (point - Vector(anchors[name])).length)
+            raw[nearest] = 1.0
+            total = 1.0
+        for name in bone_names:
+            weights[name].append(raw[name] / total)
+    add_armature_weights(body, rig, weights)
+
+
 def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict, layout: dict) -> list[bpy.types.Object]:
     if species == "deer":
         return build_deer_parts(hero, rig, anchors)
@@ -568,41 +701,50 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
     dark = pbr_material(f"{species}_detail_pbr", cfg["dark"], 0.47)
     eye = pbr_material(f"{species}_eye_pbr", cfg["eye"], 0.15)
     horn = pbr_material(f"{species}_keratin_pbr", "#b9aa87", 0.62)
-    elements = [
-        ((0.0, layout["body_y"], layout["rear_z"]), (cfg["width"], cfg["height"], cfg["length"] * 0.58), 2.25),
-        ((0.0, layout["shoulder_y"], layout["front_z"]), (cfg["width"] * 1.03, cfg["height"] * 1.02, cfg["length"] * 0.48), 2.25),
-        ((0.0, (layout["shoulder_y"] + layout["head_y"]) * 0.5, layout["neck_z"]), (cfg["head"] * 0.70, cfg["neck"] * 0.72, cfg["neck"] * 0.68), 2.05),
-        ((0.0, layout["head_y"], layout["head_z"]), (cfg["head"], cfg["head"] * 0.92, cfg["head"] * 0.98), 2.15),
-        ((0.0, layout["head_y"] - cfg["head"] * 0.08, layout["muzzle_z"]), (cfg["head"] * 0.68, cfg["head"] * 0.55, cfg["muzzle"] * 0.72), 2.05),
-    ]
+    profile = cfg["v3"]
+    if cfg["family"] == "primate":
+        elements = [
+            ((0.0, layout["body_y"], layout["rear_z"] * 0.62), (cfg["width"] * float(profile["rump_mass"]) * 0.88, cfg["height"] * 0.68, cfg["length"] * 0.32), 2.30),
+            ((0.0, (layout["body_y"] * 0.56 + layout["shoulder_y"] * 0.44), 0.02), (cfg["width"] * 0.86, cfg["height"] * 0.78, cfg["length"] * 0.34), 2.34),
+            ((0.0, layout["shoulder_y"] * 0.96, layout["front_z"] * 0.74), (cfg["width"] * float(profile["chest_mass"]), cfg["height"] * 0.72, cfg["length"] * 0.34), 2.34),
+        ]
+    else:
+        elements = [
+            ((0.0, layout["body_y"], layout["rear_z"] * 0.82), (cfg["width"] * float(profile["rump_mass"]), cfg["height"] * 0.94, cfg["length"] * 0.49), 2.28),
+            ((0.0, (layout["body_y"] + layout["shoulder_y"]) * 0.5, 0.08), (cfg["width"] * 0.98, cfg["height"] * 1.00, cfg["length"] * 0.56), 2.32),
+            ((0.0, layout["shoulder_y"], layout["front_z"] * 0.88), (cfg["width"] * float(profile["chest_mass"]), cfg["height"] * 1.04, cfg["length"] * 0.46), 2.30),
+        ]
+    elements.extend([
+        ((0.0, (layout["shoulder_y"] * 0.72 + layout["head_y"] * 0.28), (layout["front_z"] * 0.68 + layout["neck_z"] * 0.32)), (cfg["head"] * 0.78, max(cfg["neck"] * 0.48, cfg["head"] * 0.55), max(cfg["neck"] * 0.46, 0.24)), 2.16),
+        ((0.0, (layout["shoulder_y"] + layout["head_y"]) * 0.5, layout["neck_z"]), (cfg["head"] * 0.68, max(cfg["neck"] * 0.62, cfg["head"] * 0.62), max(cfg["neck"] * 0.54, 0.24)), 2.14),
+        ((0.0, layout["head_y"], layout["head_z"]), (cfg["head"], cfg["head"] * 0.90, cfg["head"] * 1.00), 2.20),
+        ((0.0, layout["head_y"] - cfg["head"] * 0.08, layout["muzzle_z"]), (cfg["head"] * 0.68, cfg["head"] * 0.54, cfg["muzzle"] * 0.74), 2.12),
+    ])
+    # A short, heavy animal can place its head far enough in front of its chest
+    # that two broad metaballs still resolve as separate islands.  Build a
+    # continuous cervical chain for every ground species instead of relying on
+    # a fortunate overlap.  This is also the Web-safe guarantee that the body
+    # remains a single visible skinned surface rather than looking like an
+    # exposed moving rig when one mesh island is culled or deformed.
+    neck_start = Vector((0.0, layout["shoulder_y"], layout["front_z"] * 1.04))
+    neck_end = Vector((0.0, layout["head_y"], layout["head_z"]))
+    neck_delta = neck_end - neck_start
+    for index, amount in enumerate((0.18, 0.36, 0.54, 0.72, 0.88)):
+        position = neck_start.lerp(neck_end, amount)
+        taper = 1.0 - amount * 0.18
+        elements.append((
+            tuple(position),
+            (
+                max(cfg["head"] * 0.58, cfg["width"] * 0.34) * taper,
+                max(cfg["head"] * 0.62, abs(neck_delta.y) * 0.54),
+                max(cfg["head"] * 0.68, abs(neck_delta.z) * 0.31),
+            ),
+            2.42,
+        ))
     if "shoulder_hump" in cfg["features"]:
         elements.append(((0.0, layout["shoulder_y"] + cfg["height"] * 0.46, layout["front_z"] + 0.18), (cfg["width"] * 0.84, cfg["height"] * 0.56, cfg["length"] * 0.34), 2.2))
-    for suffix in LIMBS:
-        side = -1.0 if suffix.startswith("L") else 1.0
-        front = suffix.endswith("F")
-        z = layout["front_z"] if front else layout["rear_z"]
-        leg_length = cfg["leg"] * (1.25 if front and "long_arms" in cfg["features"] else 1.0)
-        hip_y = layout["shoulder_y"] if front else layout["body_y"]
-        elements.extend([
-            ((side * cfg["width"] * 0.74, hip_y - leg_length * 0.28, z), (cfg["paw"] * 1.20, leg_length * 0.42, cfg["paw"] * 1.12), 2.1),
-            ((side * cfg["width"] * 0.79, max(0.32, hip_y - leg_length * 0.70), z - (0.05 if front else -0.08)), (cfg["paw"] * 1.00, leg_length * 0.43, cfg["paw"] * 1.00), 2.0),
-            # An ankle bridge and a taller paw overlap the lower leg.  Without
-            # these elements every foot became a floating mesh island.
-            ((side * cfg["width"] * 0.80, 0.50, z - cfg["paw"] * 0.62), (cfg["paw"] * 1.35, 0.62, cfg["paw"] * 1.45), 2.0),
-            ((side * cfg["width"] * 0.80, 0.13, z - cfg["paw"]), (cfg["paw"] * 1.28, 0.20, cfg["paw"] * 1.72), 2.0),
-        ])
-    if cfg["ear"] > 0.02:
-        for side in (-1.0, 1.0):
-            elements.append(((side * cfg["head"] * 0.42, layout["head_y"] + cfg["head"] * 0.40, layout["head_z"] + 0.03), (cfg["head"] * 0.34, max(cfg["ear"] * 0.42, 0.15), cfg["head"] * 0.30), 2.05))
-            elements.append(((side * cfg["head"] * 0.55, layout["head_y"] + cfg["head"] * 0.60 + cfg["ear"] * 0.28, layout["head_z"] + 0.04), (cfg["head"] * 0.25, cfg["ear"] * 0.66, cfg["head"] * 0.20), 2.0))
-    if cfg["tail"] > 0.12:
-        tail_base_z = cfg["length"] * 0.68
-        elements.append(((0.0, layout["body_y"] - cfg["tail"] * 0.03, tail_base_z + cfg["tail"] * 0.08), (max(cfg["paw"] * 1.55, 0.16), max(cfg["paw"] * 1.65, 0.16), max(cfg["tail"] * 0.34, 0.24)), 2.1))
-        for index in range(3):
-            progress = (index + 1) / 3.0
-            elements.append(((0.04 * math.sin(progress * 1.7), layout["body_y"] - cfg["tail"] * 0.30 * progress, tail_base_z + cfg["tail"] * progress), (max(cfg["paw"] * (1.55 - progress * 0.42), 0.14), max(cfg["paw"] * (1.65 - progress * 0.35), 0.14), max(cfg["tail"] * 0.38, 0.24)), 2.0))
     body = metaball_mesh(f"{species.title()}OrganicBodyV2", elements, coat, hero)
-    skin_ground_body(body, rig, anchors, cfg)
+    skin_v3_torso(body, rig, anchors, cfg)
     parts = [body]
 
     def sphere(name: str, pos, scale, material=accent, bone_name="Head"):
@@ -616,6 +758,72 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         rigid_skin(obj, rig, bone_name)
         parts.append(obj)
         return obj
+
+    def limb(name: str, start, end, start_radius, end_radius, material, bone_name):
+        obj = tapered_segment_between(name, start, end, start_radius, end_radius, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    taper_ratio = 0.84 if cfg["family"] in ("heavy", "primate", "chelonian") else 0.52 if cfg["family"] == "ungulate" else 0.68
+    for suffix in LIMBS:
+        hip, joint, paw = ground_limb_points(cfg, layout, suffix)
+        front = suffix.endswith("F")
+        parent_bone = "Chest" if front else "Spine"
+        upper_radius = cfg["paw"] * 0.92 * float(profile["upper_thickness"])
+        lower_radius = cfg["paw"] * 0.78 * float(profile["lower_thickness"])
+        muscle_scale = (
+            upper_radius * (0.94 if front else 1.04),
+            max((hip[1] - joint[1]) * 0.22, upper_radius * 1.12),
+            upper_radius * (0.88 if front else 0.98),
+        )
+        sphere(f"V3Muscle_{suffix}", tuple(Vector(hip).lerp(Vector(joint), 0.18)), muscle_scale, coat, parent_bone)
+        limb(
+            f"V3UpperLimb_{suffix}", hip, tuple(Vector(joint).lerp(Vector(hip), -0.06)),
+            upper_radius, max(upper_radius * taper_ratio, lower_radius * 1.05), coat, f"Leg_{suffix}",
+        )
+        limb(
+            f"V3LowerLimb_{suffix}", tuple(Vector(joint).lerp(Vector(paw), -0.06)), paw,
+            max(lower_radius * 1.14, cfg["paw"] * 0.10), max(lower_radius * 0.66, cfg["paw"] * 0.08), coat, f"Paw_{suffix}",
+        )
+        sphere(f"V3Joint_{suffix}", joint, (lower_radius * 0.92, lower_radius * 0.96, lower_radius * 0.94), coat, f"Paw_{suffix}")
+        foot_material = dark if cfg["features"] & {"hoof", "hands", "webbed_paws", "claws"} or cfg["family"] in ("canid", "felid") else coat
+        foot_length = cfg["paw"] * (1.64 if cfg["family"] not in ("heavy", "primate") else 1.36)
+        sphere(
+            f"FootDetail_{suffix}",
+            (paw[0], 0.105, paw[2] - foot_length * 0.22),
+            (max(lower_radius * 0.88, 0.07), max(lower_radius * 0.58, 0.06), max(foot_length, 0.12)),
+            foot_material,
+            f"Paw_{suffix}",
+        )
+
+    if cfg["ear"] > 0.02:
+        for suffix, side in (("L", -1.0), ("R", 1.0)):
+            ear_position = (
+                side * cfg["head"] * 0.56,
+                layout["head_y"] + cfg["head"] * 0.46 + cfg["ear"] * 0.26,
+                layout["head_z"] + cfg["head"] * 0.08,
+            )
+            sphere(
+                f"V3Ear_{suffix}", ear_position,
+                (cfg["head"] * (0.30 if "elephant_ears" not in cfg["features"] else 0.18), max(cfg["ear"] * 0.62, 0.11), cfg["head"] * 0.18),
+                coat, f"Ear_{suffix}",
+            )
+            if hero and "elephant_ears" not in cfg["features"]:
+                sphere(
+                    f"InnerEarDetail_{suffix}",
+                    (ear_position[0] * 1.015, ear_position[1], ear_position[2] - 0.01),
+                    (cfg["head"] * 0.17, max(cfg["ear"] * 0.43, 0.08), cfg["head"] * 0.09),
+                    accent, f"Ear_{suffix}",
+                )
+
+    if cfg["tail"] > 0.12:
+        tail_base = (0.0, layout["body_y"], cfg["length"] * 0.67)
+        tail_tip = (0.0, max(0.24, layout["body_y"] - cfg["tail"] * 0.32), tail_base[2] + max(cfg["tail"], 0.15))
+        tail_radius = max(cfg["paw"] * (1.22 if cfg["family"] in ("canid", "felid") else 0.82), 0.10)
+        tail = ellipsoid_between("V3TailSilhouette", tail_base, tail_tip, tail_radius, coat, hero, 0.78)
+        rigid_skin(tail, rig, "Tail")
+        parts.append(tail)
 
     for side in (-1.0, 1.0):
         sphere(f"EyeDetail_{'L' if side < 0 else 'R'}", (side * cfg["head"] * 0.72, layout["head_y"] + cfg["head"] * 0.12, layout["head_z"] - cfg["head"] * 0.38), (cfg["head"] * 0.105, cfg["head"] * 0.115, cfg["head"] * 0.075), eye)
@@ -635,13 +843,18 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         for side in (-1.0, 1.0):
             sphere(f"FaceMaskDetail_{side:+.0f}", (side * cfg["head"] * 0.61, layout["head_y"] + 0.02, layout["head_z"] - cfg["head"] * 0.42), (cfg["head"] * (0.34 if "mask" in features else 0.12), cfg["head"] * 0.24, cfg["head"] * 0.10), dark)
     if features & {"mane", "ridge_mane", "cheek_ruff"}:
-        count = 7 if hero else 4
+        if "mane" in features:
+            sphere(
+                "ManeSilhouette",
+                (0.0, (layout["head_y"] + layout["shoulder_y"]) * 0.50, layout["head_z"] + cfg["head"] * 0.22),
+                (cfg["head"] * 1.08, cfg["head"] * 1.02, cfg["head"] * 0.62),
+                dark,
+                "Neck",
+            )
+        count = (0 if "mane" in features else 7) if hero else (0 if "mane" in features else 4)
         for index in range(count):
             angle = -1.1 + 2.2 * index / max(count - 1, 1)
-            if "mane" in features:
-                pos = (math.sin(angle) * cfg["head"] * 0.82, layout["head_y"] + math.cos(angle) * cfg["head"] * 0.72, layout["head_z"] + cfg["head"] * 0.12)
-                sphere(f"ManeDetail_{index}", pos, (cfg["head"] * 0.38, cfg["head"] * 0.46, cfg["head"] * 0.28), dark, "Neck")
-            elif "cheek_ruff" in features:
+            if "cheek_ruff" in features:
                 side = -1.0 if index % 2 == 0 else 1.0
                 sphere(f"CheekRuffDetail_{index}", (side * cfg["head"] * 0.72, layout["head_y"] - 0.02 + index * 0.015, layout["head_z"] + 0.02), (0.18, 0.25, 0.17), accent)
             else:
@@ -810,87 +1023,142 @@ def create_ground_actions(rig: bpy.types.Object, cfg: dict) -> None:
         create_deer_actions(rig)
         return
     rig.animation_data_create()
-    gait = "pace" if cfg["family"] in ("heavy", "primate", "chelonian") else "bound" if cfg["family"] == "felid" else "trot"
-    rate = 0.76 if cfg["family"] in ("heavy", "chelonian") else 1.18 if cfg["family"] in ("felid", "canid") else 1.0
+    profile = cfg["v3"]
+
+    def insert_rotation(bone_name: str, frame: int, xyz: tuple[float, float, float]) -> None:
+        bone = rig.pose.bones[bone_name]
+        bone.rotation_mode = "XYZ"
+        bone.rotation_euler = xyz
+        bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone_name)
+
+    def gait_phases(gait: str) -> dict[str, float]:
+        if gait in ("trot", "long_trot"):
+            return {"LF": 0.0, "RH": 0.0, "RF": math.pi, "LH": math.pi}
+        if gait in ("bound", "gallop"):
+            return {"LF": math.pi * 0.92, "RF": math.pi * 1.08, "LH": 0.0, "RH": math.pi * 0.16}
+        if gait in ("amble", "lumber", "shuffle"):
+            return {"LF": 0.0, "LH": math.pi * 0.35, "RF": math.pi, "RH": math.pi * 1.35}
+        if gait in ("knuckle", "knuckle_run", "primate_walk", "primate_run"):
+            return {"LF": 0.0, "RH": math.pi * 0.65, "RF": math.pi, "LH": math.pi * 1.65}
+        if gait == "crawl":
+            return {"LF": 0.0, "RH": math.pi * 0.50, "RF": math.pi, "LH": math.pi * 1.50}
+        return {"LF": 0.0, "RH": math.pi * 0.50, "RF": math.pi, "LH": math.pi * 1.50}
+
     for action_name in ACTIONS:
         action = bpy.data.actions.new(action_name)
         rig.animation_data.action = action
         for pose_bone in rig.pose.bones:
-            pose_bone.rotation_mode = "XYZ"
-            pose_bone.rotation_euler = (0.0, 0.0, 0.0)
-            pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
+            insert_rotation(pose_bone.name, 1, (0.0, 0.0, 0.0))
         if action_name in ("locomotion", "sprint"):
-            amount = (0.46 if action_name == "locomotion" else 0.76) * rate
-            phases = (1.0, -1.0, -1.0, 1.0) if gait != "pace" else (1.0, -1.0, 1.0, -1.0)
-            for suffix, phase in zip(LIMBS, phases):
-                upper, lower = rig.pose.bones[f"Leg_{suffix}"], rig.pose.bones[f"Paw_{suffix}"]
-                for frame, curve in zip((1, 16, 31), (phase, -phase, phase)):
-                    upper.rotation_euler[0] = amount * curve
-                    lower.rotation_euler[0] = -max(0.0, amount * curve) * 0.62
-                    upper.keyframe_insert(data_path="rotation_euler", frame=frame, group=upper.name)
-                    lower.keyframe_insert(data_path="rotation_euler", frame=frame, group=lower.name)
+            gait = str(profile["gait"] if action_name == "locomotion" else profile["sprint_gait"])
+            phases = gait_phases(gait)
+            stride = float(profile["stride"]) * (1.0 if action_name == "locomotion" else 1.48)
+            flex = float(profile["flex"]) * (1.0 if action_name == "locomotion" else 1.30)
+            frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
+            for frame in frames:
+                cycle = math.tau * (frame - 1) / 32.0
+                for suffix in LIMBS:
+                    phase = phases[suffix]
+                    swing = math.sin(cycle + phase)
+                    lift = max(0.0, math.sin(cycle + phase - 0.34))
+                    rear_power = 1.10 if suffix.endswith("H") and gait in ("bound", "gallop", "long_trot") else 1.0
+                    upper = stride * swing * rear_power
+                    lower = (-flex * lift + 0.06 * math.sin(cycle + phase + 0.55)) * rear_power
+                    if gait == "crawl":
+                        upper *= 0.56
+                        lower *= 0.52
+                    insert_rotation(f"Leg_{suffix}", frame, (upper, 0.0, 0.0))
+                    insert_rotation(f"Paw_{suffix}", frame, (lower, 0.0, 0.0))
+                double_wave = 2.0 if action_name == "sprint" and gait in ("gallop", "bound", "knuckle_run", "primate_run") else 1.0
+                body_wave = math.sin(cycle * double_wave)
+                side_wave = math.sin(cycle)
+                bob = float(profile["body_bob"]) * (1.35 if action_name == "sprint" else 1.0)
+                head_bob = float(profile["head_bob"])
+                insert_rotation("Spine", frame, (bob * body_wave, 0.0, bob * 0.55 * side_wave))
+                insert_rotation("Chest", frame, (-bob * 0.72 * body_wave, 0.0, -bob * 0.45 * side_wave))
+                insert_rotation("Neck", frame, (head_bob * body_wave, 0.0, 0.0))
+                insert_rotation("Head", frame, (-head_bob * 0.70 * body_wave, 0.0, 0.0))
+                insert_rotation("Tail", frame, (0.02 * body_wave, 0.0, -0.06 * side_wave))
         elif action_name in ("attack", "skill"):
-            multiplier = 1.0 if action_name == "attack" else 1.28
-            for frame, curve in zip((1, 9, 21), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Spine"].rotation_euler[0] = -0.18 * curve * multiplier
-                rig.pose.bones["Chest"].rotation_euler[0] = -0.12 * curve
-                rig.pose.bones["Head"].rotation_euler[0] = 0.16 * curve
-                for suffix in ("LF", "RF"):
-                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = -0.48 * curve * multiplier
-                for name in ("Spine", "Chest", "Head", "Leg_LF", "Leg_RF"):
-                    rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+            strength = 1.0 if action_name == "attack" else 1.28
+            attack_style = str(profile["attack"])
+            for frame, windup, strike in ((1, 0.0, 0.0), (7, 1.0, -0.22), (12, 0.40, 1.0), (23, 0.0, 0.0)):
+                spine_x = -0.18 * windup * strength
+                neck_x = 0.18 * strike * strength
+                head_x = 0.20 * strike * strength
+                insert_rotation("Spine", frame, (spine_x, 0.0, 0.0))
+                insert_rotation("Chest", frame, (-0.12 * windup * strength, 0.0, 0.0))
+                insert_rotation("Neck", frame, (neck_x, 0.0, 0.0))
+                insert_rotation("Head", frame, (head_x, 0.0, 0.0))
+                if attack_style == "kick":
+                    insert_rotation("Leg_LH", frame, (-0.68 * strike * strength, 0.0, 0.0))
+                    insert_rotation("Leg_RH", frame, (-0.68 * strike * strength, 0.0, 0.0))
+                elif attack_style == "swipe":
+                    insert_rotation("Leg_LF", frame, (-0.72 * strike * strength, 0.0, -0.16 * strike))
+                    insert_rotation("Leg_RF", frame, (-0.18 * windup, 0.0, 0.0))
+                elif attack_style == "stomp":
+                    insert_rotation("Leg_LF", frame, (-0.48 * windup + 0.26 * strike, 0.0, 0.0))
+                    insert_rotation("Leg_RF", frame, (-0.48 * windup + 0.26 * strike, 0.0, 0.0))
+                elif attack_style == "charge":
+                    insert_rotation("Neck", frame, (0.38 * strike * strength, 0.0, 0.0))
+                    insert_rotation("Head", frame, (0.32 * strike * strength, 0.0, 0.0))
+                else:
+                    insert_rotation("Leg_LF", frame, (-0.44 * strike * strength, 0.0, 0.0))
+                    insert_rotation("Leg_RF", frame, (-0.44 * strike * strength, 0.0, 0.0))
         elif action_name == "hit":
-            for frame, curve in zip((1, 6, 15), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Spine"].rotation_euler[2] = 0.28 * curve
-                rig.pose.bones["Head"].rotation_euler[2] = -0.18 * curve
-                rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
-                rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+            for frame, curve in ((1, 0.0), (6, 1.0), (15, 0.0)):
+                insert_rotation("Spine", frame, (-0.10 * curve, 0.0, 0.28 * curve))
+                insert_rotation("Neck", frame, (0.12 * curve, 0.0, -0.12 * curve))
+                insert_rotation("Head", frame, (0.08 * curve, 0.0, -0.18 * curve))
         elif action_name == "eat":
-            for frame, curve in zip((1, 16, 31), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Neck"].rotation_euler[0] = 0.52 * curve
-                rig.pose.bones["Head"].rotation_euler[0] = 0.30 * curve
-                rig.pose.bones["Neck"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Neck")
-                rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+            for frame, lower, nibble in ((1, 0.0, 0.0), (10, 0.72, 0.0), (18, 1.0, 1.0), (25, 1.0, -1.0), (34, 0.0, 0.0)):
+                insert_rotation("Neck", frame, (0.54 * lower, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.34 * lower + 0.045 * nibble, 0.0, 0.0))
         elif action_name == "death":
-            for frame, curve in zip((1, 18, 32), (0.0, 0.78, 1.0)):
-                rig.pose.bones["Spine"].rotation_euler[2] = 1.20 * curve
-                rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
+            for frame, curve in ((1, 0.0), (12, 0.28), (23, 0.82), (34, 1.0)):
+                insert_rotation("Spine", frame, (0.05 * curve, 0.0, 1.22 * curve))
+                insert_rotation("Chest", frame, (-0.10 * curve, 0.0, 0.22 * curve))
+                insert_rotation("Neck", frame, (0.18 * curve, 0.0, -0.14 * curve))
         elif action_name == "idle":
-            for frame, curve in zip((1, 16, 31), (-1.0, 1.0, -1.0)):
-                rig.pose.bones["Chest"].rotation_euler[0] = 0.020 * curve
-                rig.pose.bones["Ear_L"].rotation_euler[1] = 0.035 * curve
-                rig.pose.bones["Chest"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Chest")
-                rig.pose.bones["Ear_L"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Ear_L")
+            for frame, breath, flick in ((1, -1.0, 0.0), (11, 0.1, 1.0), (21, 1.0, -0.35), (31, -1.0, 0.0)):
+                insert_rotation("Chest", frame, (0.020 * breath, 0.0, 0.0))
+                insert_rotation("Neck", frame, (-0.012 * breath, 0.0, 0.0))
+                insert_rotation("Ear_L", frame, (0.0, 0.08 * flick, 0.04 * flick))
+                insert_rotation("Ear_R", frame, (0.0, -0.03 * flick, -0.02 * flick))
+                insert_rotation("Tail", frame, (0.015 * breath, 0.0, 0.045 * flick))
         action.use_fake_user = True
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
 def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.types.Object]]:
     owl = species == "owl"
-    coat = pbr_material(f"{species}_feather_pbr", "#d8d6ce" if owl else "#493729", 0.76)
-    accent = pbr_material(f"{species}_accent_pbr", "#8e8173" if owl else "#d0a743", 0.66)
+    coat = pbr_material(f"{species}_feather_pbr", "#665a4d" if owl else "#493729", 0.76)
+    accent = pbr_material(f"{species}_accent_pbr", "#d8ceb8" if owl else "#b88a42", 0.66)
     dark = pbr_material(f"{species}_detail_pbr", "#34383d" if owl else "#211c18", 0.43)
     eye = pbr_material(f"{species}_eye_pbr", "#e0bc42", 0.14)
     bpy.ops.object.armature_add(enter_editmode=True)
     rig = bpy.context.active_object
     rig.name = "SpeciesFlightSkeleton3D"
-    rig.data.name = f"{species.title()}V2FlightRig"
+    rig.data.name = f"{species.title()}V3FlightRig"
     edit = rig.data.edit_bones
     root = edit[0]
     root.name = "Root"
     root.head, root.tail = g2b((0.0, 0.40, 0.10)), g2b((0.0, 0.90, 0.10))
     body = add_bone(edit, "Body", (0.0, 1.05, 0.40), (0.0, 1.30, -0.38), root)
     head = add_bone(edit, "Head", (0.0, 1.30, -0.38), (0.0, 1.42, -1.05), body)
+    wing_joint = 1.36 if owl else 1.58
+    wing_tip = 2.44 if owl else 3.02
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        wing = add_bone(edit, f"Wing_{suffix}", (side * 0.34, 1.18, -0.10), (side * 1.48, 1.16, 0.20), body)
-        add_bone(edit, f"WingTip_{suffix}", (side * 1.48, 1.16, 0.20), (side * 2.70, 1.02, 0.68), wing)
+        wing = add_bone(edit, f"Wing_{suffix}", (side * 0.34, 1.18, -0.10), (side * wing_joint, 1.16, 0.20), body)
+        add_bone(edit, f"WingTip_{suffix}", (side * wing_joint, 1.16, 0.20), (side * wing_tip, 1.02, 0.68), wing)
         add_bone(edit, f"Talon_{suffix}", (side * 0.25, 0.92, -0.15), (side * 0.28, 0.46, -0.35), body)
     add_bone(edit, "Tail", (0.0, 1.04, 0.58), (0.0, 0.98, 1.50), body)
     bpy.ops.object.mode_set(mode="OBJECT")
     body_elements = [
-        ((0.0, 1.10, 0.25), (0.62 if owl else 0.56, 0.75, 0.82), 2.2),
-        ((0.0, 1.38, -0.48), (0.53 if owl else 0.43, 0.52, 0.54), 2.1),
-        ((0.0, 1.42, -0.91), (0.38 if owl else 0.28, 0.35, 0.35), 2.0),
+        ((0.0, 1.10, 0.24), (0.70 if owl else 0.54, 0.82 if owl else 0.72, 0.76 if owl else 0.92), 2.28),
+        ((0.0, 1.31, -0.34), (0.62 if owl else 0.45, 0.62 if owl else 0.50, 0.56), 2.22),
+        ((0.0, 1.43, -0.78), (0.57 if owl else 0.37, 0.58 if owl else 0.42, 0.45), 2.20),
+        ((0.0, 1.40, -1.03), (0.40 if owl else 0.27, 0.34 if owl else 0.29, 0.32), 2.12),
     ]
     organic = metaball_mesh(f"{species.title()}OrganicBodyV2", body_elements, coat, hero)
     weights = {"Body": [], "Head": []}
@@ -902,34 +1170,93 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
     add_armature_weights(organic, rig, weights)
     parts = [organic]
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        wing_base = uv_sphere(f"WingBodyDetail_{suffix}", (side * 1.02, 1.16, 0.18), (1.18, 0.12, 0.52), coat, hero)
+        wing_base = tapered_flat_blade(
+            f"WingBodyDetail_{suffix}",
+            (side * 0.30, 1.16, -0.08),
+            (side * wing_joint, 1.15, 0.22),
+            0.46 if owl else 0.38,
+            0.32 if owl else 0.24,
+            0.075 if owl else 0.060,
+            coat,
+            hero,
+        )
         rigid_skin(wing_base, rig, f"Wing_{suffix}")
         parts.append(wing_base)
-        wing_tip = uv_sphere(f"WingFeatherDetail_{suffix}", (side * 2.08, 1.06, 0.55), (1.28, 0.08, 0.46), dark if owl else coat, hero)
-        rigid_skin(wing_tip, rig, f"WingTip_{suffix}")
-        parts.append(wing_tip)
+        wing_feather = tapered_flat_blade(
+            f"WingFeatherDetail_{suffix}",
+            (side * (wing_joint - 0.06), 1.14, 0.20),
+            (side * wing_tip, 1.02, 0.72),
+            0.38 if owl else 0.30,
+            0.11 if owl else 0.075,
+            0.052 if owl else 0.042,
+            dark if owl else coat,
+            hero,
+        )
+        rigid_skin(wing_feather, rig, f"WingTip_{suffix}")
+        parts.append(wing_feather)
+        feather_count = 5 if hero else 3
+        for feather_index in range(feather_count):
+            amount = feather_index / max(feather_count - 1, 1)
+            base_x = wing_joint + (wing_tip - wing_joint) * (0.28 + amount * 0.43)
+            feather = tapered_flat_blade(
+                f"PrimaryFeatherDetail_{suffix}_{feather_index}",
+                (side * base_x, 1.02 - amount * 0.04, 0.46 + amount * 0.08),
+                (side * (wing_tip + (0.14 if not owl else 0.05) - amount * 0.10), 0.98, 0.82 + amount * (0.34 if owl else 0.52)),
+                0.080 if owl else 0.064,
+                0.020,
+                0.026 if owl else 0.021,
+                dark if owl else coat,
+                hero,
+            )
+            rigid_skin(feather, rig, f"WingTip_{suffix}")
+            parts.append(feather)
         talon = cone_between(f"TalonDetail_{suffix}", (side * 0.27, 0.62, -0.28), (side * 0.31, 0.35, -0.56), 0.07, accent, hero)
         rigid_skin(talon, rig, f"Talon_{suffix}")
         parts.append(talon)
-        attach_socket(f"SkillSocket_Wing_{suffix}", (side * 2.45, 1.06, 0.66), rig, f"WingTip_{suffix}")
-    tail = uv_sphere("TailFeatherDetail", (0.0, 1.00, 1.18), (0.52, 0.10, 0.76), coat, hero)
-    rigid_skin(tail, rig, "Tail")
-    parts.append(tail)
-    beak = cone_between("BeakDetail", (0.0, 1.38, -1.08), (0.0, 1.28, -1.48), 0.16 if owl else 0.13, accent, hero)
+        attach_socket(f"SkillSocket_Wing_{suffix}", (side * (wing_tip - 0.15), 1.06, 0.66), rig, f"WingTip_{suffix}")
+    for tail_index, side in enumerate((-1.0, 0.0, 1.0)):
+        tail = tapered_flat_blade(
+            f"TailFeatherDetail_{tail_index}",
+            (side * 0.10, 1.02, 0.58),
+            (side * (0.42 if owl else 0.30), 0.98, 1.58 if owl else 1.76),
+            0.22 if owl else 0.17,
+            0.07 if owl else 0.045,
+            0.035,
+            coat,
+            hero,
+        )
+        rigid_skin(tail, rig, "Tail")
+        parts.append(tail)
+    if owl:
+        for side in (-1.0, 1.0):
+            disk = uv_sphere(
+                f"FacialDiskDetail_{side:+.0f}",
+                (side * 0.25, 1.46, -0.96),
+                (0.34, 0.34, 0.10),
+                accent,
+                hero,
+            )
+            rigid_skin(disk, rig, "Head")
+            parts.append(disk)
+    else:
+        nape = uv_sphere("GoldenNapeDetail", (0.0, 1.48, -0.72), (0.38, 0.34, 0.30), accent, hero)
+        rigid_skin(nape, rig, "Head")
+        parts.append(nape)
+    beak = cone_between("BeakDetail", (0.0, 1.40, -1.08), (0.0, 1.25, -1.52 if owl else -1.60), 0.15 if owl else 0.14, accent, hero)
     rigid_skin(beak, rig, "Head")
     parts.append(beak)
     for side in (-1.0, 1.0):
-        eyeball = uv_sphere(f"EyeDetail_{side:+.0f}", (side * (0.31 if owl else 0.23), 1.51, -0.98), (0.105, 0.11, 0.07), eye, hero)
+        eyeball = uv_sphere(f"EyeDetail_{side:+.0f}", (side * (0.30 if owl else 0.24), 1.52, -1.03), (0.112 if owl else 0.092, 0.115, 0.068), eye, hero)
         rigid_skin(eyeball, rig, "Head")
         parts.append(eyeball)
     attach_socket("SkillSocket_Beak", (0.0, 1.32, -1.48), rig, "Head")
     rig["eco_species"] = species
     rig["eco_rig_family"] = "avian"
-    create_bird_actions(rig)
+    create_bird_actions(rig, species)
     return rig, parts
 
 
-def create_bird_actions(rig: bpy.types.Object) -> None:
+def create_bird_actions(rig: bpy.types.Object, species: str) -> None:
     names = ACTIONS + ("glide", "flap", "dive", "land")
     rig.animation_data_create()
     for action_name in names:
@@ -940,13 +1267,31 @@ def create_bird_actions(rig: bpy.types.Object) -> None:
             pose_bone.rotation_euler = (0.0, 0.0, 0.0)
             pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
         if action_name in ("locomotion", "sprint", "flap"):
-            amount = 0.68 if action_name == "locomotion" else 0.92
-            for frame, curve in zip((1, 10, 20), (-1.0, 1.0, -1.0)):
+            owl = species == "owl"
+            amount = (0.78 if action_name == "locomotion" else 1.02) if owl else (0.62 if action_name == "locomotion" else 0.88)
+            frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
+            for frame_index, frame in enumerate(frames):
+                phase = math.tau * frame_index / (len(frames) - 1)
+                curve = math.cos(phase)
+                elbow_curve = math.sin(phase - 0.48)
                 for suffix, side in (("L", -1.0), ("R", 1.0)):
                     rig.pose.bones[f"Wing_{suffix}"].rotation_euler[1] = side * amount * curve
-                    rig.pose.bones[f"WingTip_{suffix}"].rotation_euler[1] = side * amount * 0.42 * curve
+                    rig.pose.bones[f"WingTip_{suffix}"].rotation_euler[1] = side * (amount * 0.46 * curve + 0.20 * elbow_curve)
                     rig.pose.bones[f"Wing_{suffix}"].keyframe_insert(data_path="rotation_euler", frame=frame, group=f"Wing_{suffix}")
                     rig.pose.bones[f"WingTip_{suffix}"].keyframe_insert(data_path="rotation_euler", frame=frame, group=f"WingTip_{suffix}")
+                rig.pose.bones["Body"].rotation_euler[0] = (0.045 if owl else 0.032) * math.sin(phase)
+                rig.pose.bones["Head"].rotation_euler[0] = -(0.040 if owl else 0.022) * math.sin(phase)
+                rig.pose.bones["Body"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Body")
+                rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+        elif action_name == "glide":
+            for frame, settle in ((1, 0.0), (12, 1.0), (24, 0.35), (36, 0.0)):
+                for suffix, side in (("L", -1.0), ("R", 1.0)):
+                    rig.pose.bones[f"Wing_{suffix}"].rotation_euler[1] = side * (0.10 + 0.05 * settle)
+                    rig.pose.bones[f"WingTip_{suffix}"].rotation_euler[1] = side * (-0.08 + 0.03 * settle)
+                    rig.pose.bones[f"Wing_{suffix}"].keyframe_insert(data_path="rotation_euler", frame=frame, group=f"Wing_{suffix}")
+                    rig.pose.bones[f"WingTip_{suffix}"].keyframe_insert(data_path="rotation_euler", frame=frame, group=f"WingTip_{suffix}")
+                rig.pose.bones["Head"].rotation_euler[2] = 0.035 * settle * (-1.0 if species == "owl" else 1.0)
+                rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
         elif action_name in ("attack", "skill", "dive"):
             for frame, curve in zip((1, 9, 20), (0.0, 1.0, 0.0)):
                 rig.pose.bones["Body"].rotation_euler[0] = -0.34 * curve
@@ -984,7 +1329,7 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
     bpy.ops.object.armature_add(enter_editmode=True)
     rig = bpy.context.active_object
     rig.name = "SpeciesCrocodileSkeleton3D"
-    rig.data.name = f"{species.title()}V2LongRig"
+    rig.data.name = f"{species.title()}V3LongRig"
     edit = rig.data.edit_bones
     root = edit[0]
     root.name = "Root"
@@ -1038,6 +1383,17 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
         rigid_skin(eyeball, rig, "Head")
         parts.append(eyeball)
     if crocodile:
+        jaw_shell = ellipsoid_between(
+            "LowerJawSilhouette",
+            (0.0, 0.48, -1.08),
+            (0.0, 0.43, -1.84),
+            0.34,
+            accent,
+            hero,
+            0.48,
+        )
+        rigid_skin(jaw_shell, rig, "Jaw")
+        parts.append(jaw_shell)
         scute_count = 13 if hero else 7
         for index in range(scute_count):
             z = -0.90 + index * (2.55 / max(scute_count - 1, 1))
@@ -1050,6 +1406,17 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
             rigid_skin(tooth, rig, "Jaw")
             parts.append(tooth)
     else:
+        jaw_shell = ellipsoid_between(
+            "SnakeJawSilhouette",
+            (0.0, 0.43, -1.55),
+            (0.0, 0.39, -1.92),
+            0.22,
+            accent,
+            hero,
+            0.62,
+        )
+        rigid_skin(jaw_shell, rig, "Jaw")
+        parts.append(jaw_shell)
         ring_count = 14 if hero else 8
         for index in range(ring_count):
             z = -1.20 + index * 0.27
@@ -1057,6 +1424,17 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
             target = min(chain_anchors, key=lambda name: abs(z - chain_anchors[name]))
             rigid_skin(ring, rig, target)
             parts.append(ring)
+        for side in (-1.0, 1.0):
+            tongue = cone_between(
+                f"ForkedTongueDetail_{side:+.0f}",
+                (0.0, 0.42, -1.90),
+                (side * 0.08, 0.40, -2.18),
+                0.018,
+                dark,
+                hero,
+            )
+            rigid_skin(tongue, rig, "Jaw")
+            parts.append(tongue)
     attach_socket("SkillSocket_Jaw", (0.0, 0.48, -1.92), rig, "Jaw")
     attach_socket("SkillSocket_TailTip", (0.0, 0.42, 2.75), rig, "Tail_Tip")
     rig["eco_species"] = species
@@ -1076,14 +1454,20 @@ def create_long_actions(rig: bpy.types.Object, crocodile: bool) -> None:
             pose_bone.rotation_euler = (0.0, 0.0, 0.0)
             pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
         if action_name in ("locomotion", "sprint", "swim"):
-            amount = 0.20 if action_name == "locomotion" else 0.38
-            for frame, curve in zip((1, 10, 20), (-1.0, 1.0, -1.0)):
-                for index, name in enumerate(("Body", "Neck", "Tail_Base", "Tail_Mid", "Tail_Tip")):
-                    rig.pose.bones[name].rotation_euler[1] = amount * math.sin(curve + index * 0.62)
+            amount = (0.17 if action_name == "locomotion" else 0.30) if crocodile else (0.32 if action_name == "locomotion" else 0.52)
+            frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
+            chain = ("Body", "Neck", "Head", "Tail_Base", "Tail_Mid", "Tail_Tip")
+            for frame_index, frame in enumerate(frames):
+                phase = math.tau * frame_index / (len(frames) - 1)
+                for index, name in enumerate(chain):
+                    direction = -1.0 if name in ("Neck", "Head") else 1.0
+                    rig.pose.bones[name].rotation_euler[1] = direction * amount * math.sin(phase - index * (0.44 if crocodile else 0.72))
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
                 if crocodile:
                     for limb_index, suffix in enumerate(LIMBS):
-                        rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = amount * (1.0 if limb_index in (0, 3) else -1.0) * curve
+                        limb_phase = phase + (0.0 if limb_index in (0, 3) else math.pi)
+                        rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = 0.32 * math.sin(limb_phase)
+                        rig.pose.bones[f"Leg_{suffix}"].rotation_euler[2] = 0.16 * math.cos(limb_phase)
                         rig.pose.bones[f"Leg_{suffix}"].keyframe_insert(data_path="rotation_euler", frame=frame, group=f"Leg_{suffix}")
         elif action_name in ("attack", "skill"):
             for frame, curve in zip((1, 9, 21), (0.0, 1.0, 0.0)):
@@ -1106,6 +1490,12 @@ def create_long_actions(rig: bpy.types.Object, crocodile: bool) -> None:
             for frame, curve in zip((1, 18, 32), (0.0, 0.76, 1.0)):
                 rig.pose.bones["Body"].rotation_euler[2] = 0.82 * curve
                 rig.pose.bones["Body"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Body")
+        elif action_name == "idle":
+            for frame, curve in ((1, 0.0), (12, 1.0), (24, 0.0), (36, -1.0), (48, 0.0)):
+                rig.pose.bones["Head"].rotation_euler[1] = 0.055 * curve
+                rig.pose.bones["Tail_Tip"].rotation_euler[1] = -0.10 * curve
+                rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+                rig.pose.bones["Tail_Tip"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Tail_Tip")
         action.use_fake_user = True
     rig.animation_data.action = bpy.data.actions["idle"]
 

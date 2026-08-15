@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.42 发布候选校验通过：30 种 Blender V2 双档骨骼模型、林鹿 V3 质量基线、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.43 发布候选校验通过：30 种 V3 Hero/Mobile 模型、物种专属轮廓与步态、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.42.0\"") and presets.contains("application/short_version=\"1.42.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=520") and presets.contains("application/version=\"520\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.42.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.43.0\"") and presets.contains("application/short_version=\"1.43.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=530") and presets.contains("application/version=\"530\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.43.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")

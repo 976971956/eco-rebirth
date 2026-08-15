@@ -117,7 +117,7 @@ def build_rig(species: str) -> bpy.types.Object:
     bpy.ops.object.armature_add(enter_editmode=True, location=(0.0, 0.0, 0.0))
     rig = bpy.context.active_object
     rig.name = "SpeciesSkeleton3D"
-    rig.data.name = f"{species.title()}Rig"
+    rig.data.name = f"{species.title()}V3Rig"
     edit = rig.data.edit_bones
     root = edit[0]
     root.name = "Root"
@@ -164,6 +164,8 @@ def build_rig(species: str) -> bpy.types.Object:
         bone(edit, f"Ear_{suffix}", points[0], points[1], head)
     bone(edit, "Tail", tail_points[0], tail_points[1], spine)
     bpy.ops.object.mode_set(mode="OBJECT")
+    rig["eco_species"] = species
+    rig["eco_rig_family"] = "lagomorph_v3" if species == "rabbit" else "canid_v3"
     return rig
 
 
@@ -396,32 +398,45 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
             pose_bone.rotation_mode = "XYZ"
             pose_bone.rotation_euler = (0.0, 0.0, 0.0)
             pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
-        frames = (1, 16, 31)
+        frames = (1, 9, 17, 25, 33)
         if action_name in ("locomotion", "sprint"):
-            amount = 0.48 if action_name == "locomotion" else 0.78
-            for index, suffix in enumerate(LIMBS):
-                phase = 1.0 if index in (0, 3) else -1.0
-                upper = rig.pose.bones[f"Leg_{suffix}"]
-                lower = rig.pose.bones[f"Paw_{suffix}"]
-                for frame, curve in zip(frames, (phase, -phase, phase)):
-                    upper.rotation_euler[0] = amount * curve
-                    lower.rotation_euler[0] = max(0.0, amount * curve) * -0.72
+            cycle_frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
+            amount = (0.62 if action_name == "locomotion" else 0.92) if species == "rabbit" else (0.42 if action_name == "locomotion" else 0.70)
+            for frame_index, frame in enumerate(cycle_frames):
+                phase = math.tau * frame_index / (len(cycle_frames) - 1)
+                for index, suffix in enumerate(LIMBS):
+                    upper = rig.pose.bones[f"Leg_{suffix}"]
+                    lower = rig.pose.bones[f"Paw_{suffix}"]
+                    if species == "rabbit":
+                        is_hind = suffix.endswith("H")
+                        curve = math.sin(phase + (0.0 if is_hind else math.pi * 0.78))
+                        upper.rotation_euler[0] = amount * curve * (1.0 if is_hind else 0.66)
+                        lower.rotation_euler[0] = -amount * (0.62 if is_hind else 0.38) * max(curve, -0.18)
+                    else:
+                        diagonal_phase = 0.0 if index in (0, 3) else math.pi
+                        curve = math.sin(phase + diagonal_phase)
+                        upper.rotation_euler[0] = amount * curve
+                        lower.rotation_euler[0] = -amount * 0.52 * max(curve, -0.22)
                     upper.keyframe_insert(data_path="rotation_euler", frame=frame, group=upper.name)
                     lower.keyframe_insert(data_path="rotation_euler", frame=frame, group=lower.name)
+                rig.pose.bones["Spine"].rotation_euler[0] = (0.10 if species == "rabbit" else 0.045) * math.cos(phase)
+                rig.pose.bones["Chest"].rotation_euler[0] = -(0.07 if species == "rabbit" else 0.028) * math.cos(phase)
+                rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
+                rig.pose.bones["Chest"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Chest")
         elif action_name == "attack":
             for frame, curve in zip((1, 8, 18), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Chest"].rotation_euler[0] = -0.20 * curve
-                rig.pose.bones["Head"].rotation_euler[0] = 0.18 * curve
+                rig.pose.bones["Chest"].rotation_euler[0] = (-0.12 if species == "rabbit" else -0.24) * curve
+                rig.pose.bones["Head"].rotation_euler[0] = (0.12 if species == "rabbit" else 0.24) * curve
                 for suffix in ("LF", "RF"):
-                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = -0.62 * curve
+                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = (-0.38 if species == "rabbit" else -0.68) * curve
                 for name in ("Chest", "Head", "Leg_LF", "Leg_RF"):
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         elif action_name == "skill":
             for frame, curve in zip((1, 10, 22), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Spine"].rotation_euler[0] = -0.24 * curve
+                rig.pose.bones["Spine"].rotation_euler[0] = (-0.44 if species == "rabbit" else -0.28) * curve
                 for suffix in ("LH", "RH"):
-                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = 0.76 * curve
-                    rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = -0.48 * curve
+                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = (1.02 if species == "rabbit" else 0.78) * curve
+                    rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = (-0.72 if species == "rabbit" else -0.50) * curve
                 for name in ("Spine", "Leg_LH", "Leg_RH", "Paw_LH", "Paw_RH"):
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         elif action_name == "hit":
@@ -439,9 +454,15 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                 rig.pose.bones["Spine"].rotation_euler[2] = 1.22 * curve
                 rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
         elif action_name == "idle":
-            for frame, curve in zip(frames, (-1.0, 1.0, -1.0)):
+            for frame, curve in zip(frames, (-1.0, 0.25, 1.0, -0.20, -1.0)):
                 rig.pose.bones["Chest"].rotation_euler[0] = 0.018 * curve
                 rig.pose.bones["Chest"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Chest")
+                ear_amount = (0.13 if species == "rabbit" else 0.07) * curve
+                rig.pose.bones["Ear_L"].rotation_euler[1] = ear_amount
+                rig.pose.bones["Ear_R"].rotation_euler[1] = -ear_amount * 0.55
+                rig.pose.bones["Tail"].rotation_euler[1] = (0.035 if species == "rabbit" else 0.11) * curve
+                for name in ("Ear_L", "Ear_R", "Tail"):
+                    rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         action.use_fake_user = True
     rig.animation_data.action = bpy.data.actions["idle"]
 
