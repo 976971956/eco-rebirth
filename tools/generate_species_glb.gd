@@ -4,7 +4,7 @@ const Factory = preload("res://scripts/low_poly_factory.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 
 const OUTPUT_ROOT := "res://assets/models/animals"
-const REPRESENTATIVE_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile"]
+const REPRESENTATIVE_SPECIES := ["rabbit", "wolf", "deer", "bear", "eagle", "crocodile", "fox", "snake", "boar"]
 
 var failures: Array[String] = []
 
@@ -174,6 +174,9 @@ func _build_species(species_id: String, hero: bool) -> Node3D:
 		"bear": _build_bear(root, hero)
 		"eagle": _build_eagle(root, hero)
 		"crocodile": _build_crocodile(root, hero)
+		"fox": _build_fox(root, hero)
+		"snake": _build_snake(root, hero)
+		"boar": _build_boar(root, hero)
 	if species_id in ["rabbit", "wolf", "deer", "bear"]:
 		_group_skeletal_body(root)
 	return root
@@ -314,6 +317,100 @@ func _build_wolf(root: Node3D, hero: bool) -> void:
 	_add_ear(root, 1.0, Vector3(0.29, 2.00, -1.30), 0.72, 0.24, dark, Color("#8f6f70"), hero)
 	_add_quadruped_legs(root, dark, Color("#242a2c"), 1.02, 0.93, 0.50, 0.78, 0.38, hero)
 	_add_tail(root, Vector3(0.0, 1.32, 1.27), [Vector3.ZERO, Vector3(0.12, -0.05, 0.64), Vector3(0.20, -0.18, 1.22), Vector3(0.16, -0.38, 1.72)], [Vector2(0.31, 0.30), Vector2(0.34, 0.32), Vector2(0.23, 0.22), Vector2(0.06, 0.06)], dark, hero)
+
+
+func _build_fox(root: Node3D, hero: bool) -> void:
+	var coat := Color("#d9632f")
+	var dark := Color("#64331f")
+	var cream := Color("#f2e0c2")
+	root.scale = Vector3.ONE * 0.88
+	_add_loft(root, "FoxOrganicBody", coat, [
+		Vector3(0.0, 0.96, 1.14), Vector3(0.0, 1.03, 0.57), Vector3(0.0, 1.10, -0.10),
+		Vector3(0.0, 1.29, -0.70), Vector3(0.0, 1.56, -1.16), Vector3(0.0, 1.57, -1.66), Vector3(0.0, 1.40, -2.20),
+	], [
+		Vector2(0.34, 0.35), Vector2(0.57, 0.47), Vector2(0.58, 0.48), Vector2(0.50, 0.54),
+		Vector2(0.38, 0.40), Vector2(0.32, 0.27), Vector2(0.13, 0.11),
+	], hero)
+	_add_sphere(root, "ChestRuff", cream, Vector3(0.48, 0.58, 0.19), Vector3(0.0, 1.18, -1.02), hero)
+	_add_sphere(root, "CheekRuff", cream.darkened(0.04), Vector3(0.45, 0.33, 0.27), Vector3(0.0, 1.52, -1.70), hero)
+	_add_sphere(root, "Muzzle", cream, Vector3(0.27, 0.18, 0.36), Vector3(0.0, 1.42, -2.16), hero)
+	_add_sphere(root, "Nose", Color("#202522"), Vector3(0.14, 0.10, 0.12), Vector3(0.0, 1.44, -2.53), hero)
+	_add_eye_pair(root, 1.75, -1.72, 0.24, 0.068, Color("#d6a04a"), hero)
+	_add_ear(root, -1.0, Vector3(-0.27, 1.91, -1.36), 0.79, 0.23, dark, Color("#a66b65"), hero)
+	_add_ear(root, 1.0, Vector3(0.27, 1.91, -1.36), 0.79, 0.23, dark, Color("#a66b65"), hero)
+	_add_quadruped_legs(root, dark, Color("#302c29"), 0.92, 0.79, 0.43, 0.68, 0.31, hero)
+	var tail_pivot := _add_tail(root, Vector3(0.0, 1.10, 1.02), [Vector3.ZERO, Vector3(0.10, 0.18, 0.62), Vector3(0.18, 0.54, 1.18), Vector3(0.13, 0.76, 1.77), Vector3(0.05, 0.65, 2.16)], [Vector2(0.26, 0.25), Vector2(0.39, 0.36), Vector2(0.40, 0.37), Vector2(0.27, 0.25), Vector2(0.06, 0.06)], dark, hero)
+	_add_loft(tail_pivot, "TailTip", cream, [Vector3(0.13, 0.76, 1.77), Vector3(0.05, 0.65, 2.16), Vector3(0.02, 0.53, 2.38)], [Vector2(0.27, 0.25), Vector2(0.12, 0.11), Vector2(0.02, 0.02)], hero)
+	if hero:
+		for side in [-1.0, 1.0]:
+			for whisker_index in range(3):
+				var whisker := Factory.tapered_cylinder("Whisker_%s_%d" % ["L" if side < 0.0 else "R", whisker_index], Color("#d9d0bd"), 0.007, 0.002, 0.46, Vector3(side * 0.27, 1.43 + whisker_index * 0.05, -2.18), 5)
+				whisker.rotation.z = side * (PI * 0.5 - 0.16 - whisker_index * 0.05)
+				root.add_child(whisker)
+
+
+func _build_snake(root: Node3D, hero: bool) -> void:
+	var hide := Color("#5c9651")
+	var dark := Color("#315b36")
+	var accent := Color("#d6d254")
+	root.scale = Vector3.ONE * 0.98
+	var centers: Array = []
+	var radii: Array = []
+	var segments := 18 if hero else 13
+	for index in range(segments):
+		var ratio := float(index) / float(segments - 1)
+		centers.append(Vector3(sin(float(index) * 0.72) * (0.34 + ratio * 0.10), 0.27 + ratio * 0.16, 3.15 - ratio * 4.12))
+		var radius := lerpf(0.055, 0.31, ratio)
+		radii.append(Vector2(radius, radius * 0.72))
+	centers.append_array([Vector3(0.0, 0.64, -1.34), Vector3(0.0, 0.66, -1.76), Vector3(0.0, 0.63, -2.08)])
+	radii.append_array([Vector2(0.42, 0.29), Vector2(0.29, 0.19), Vector2(0.14, 0.10)])
+	_add_loft(root, "SnakeOrganicBody", dark, centers, radii, hero)
+	var mark_count := 6 if hero else 3
+	for mark_index in range(mark_count):
+		var sample_index := clampi(3 + mark_index * 2, 0, segments - 2)
+		var center: Vector3 = centers[sample_index]
+		_add_sphere(root, "BackMark_%02d" % mark_index, accent.darkened(0.05), Vector3(0.22, 0.07, 0.25), center + Vector3(0.0, float(radii[sample_index].y) * 0.78, 0.0), hero)
+	_add_eye_pair(root, 0.75, -1.80, 0.18, 0.072, Color("#c7c24d"), hero)
+	_add_loft(root, "ForkedTongue", Color("#d94f69"), [Vector3(0.0, 0.63, -2.04), Vector3(0.0, 0.63, -2.37)], [Vector2(0.025, 0.025), Vector2(0.014, 0.014)], hero)
+	for side in [-1.0, 1.0]:
+		_add_loft(root, "TongueFork_%s" % ("L" if side < 0.0 else "R"), Color("#d94f69"), [Vector3(0.0, 0.63, -2.34), Vector3(side * 0.10, 0.63, -2.55)], [Vector2(0.014, 0.014), Vector2(0.004, 0.004)], hero)
+		if hero:
+			var fang := Factory.cone("VenomFang_%s" % ("L" if side < 0.0 else "R"), Color("#e8e0c5"), 0.028, 0.16, Vector3(side * 0.12, 0.55, -2.03), 5)
+			fang.rotation.x = PI
+			root.add_child(fang)
+
+
+func _build_boar(root: Node3D, hero: bool) -> void:
+	var coat := Color("#594338")
+	var dark := Color("#302821")
+	var muzzle := Color("#a18a71")
+	root.scale = Vector3.ONE * 1.06
+	_add_loft(root, "BoarOrganicBody", coat, [
+		Vector3(0.0, 1.02, 1.28), Vector3(0.0, 1.09, 0.62), Vector3(0.0, 1.18, -0.10),
+		Vector3(0.0, 1.42, -0.74), Vector3(0.0, 1.55, -1.30), Vector3(0.0, 1.38, -1.83), Vector3(0.0, 1.23, -2.30),
+	], [
+		Vector2(0.38, 0.38), Vector2(0.72, 0.61), Vector2(0.76, 0.64), Vector2(0.72, 0.73),
+		Vector2(0.52, 0.48), Vector2(0.41, 0.32), Vector2(0.20, 0.15),
+	], hero)
+	_add_sphere(root, "ShoulderMass", coat.darkened(0.08), Vector3(0.76, 0.72, 0.58), Vector3(0.0, 1.36, -0.66), hero)
+	_add_sphere(root, "Snout", muzzle, Vector3(0.44, 0.29, 0.43), Vector3(0.0, 1.22, -2.22), hero)
+	_add_sphere(root, "Nose", Color("#2d2725"), Vector3(0.30, 0.16, 0.12), Vector3(0.0, 1.22, -2.63), hero)
+	_add_eye_pair(root, 1.60, -1.70, 0.29, 0.068, Color("#86663d"), hero)
+	_add_ear(root, -1.0, Vector3(-0.38, 1.81, -1.34), 0.48, 0.20, coat.darkened(0.10), muzzle.darkened(0.22), hero, false)
+	_add_ear(root, 1.0, Vector3(0.38, 1.81, -1.34), 0.48, 0.20, coat.darkened(0.10), muzzle.darkened(0.22), hero, false)
+	_add_quadruped_legs(root, coat.darkened(0.18), dark, 0.94, 0.74, 0.56, 0.74, 0.38, hero)
+	for side in [-1.0, 1.0]:
+		var tusk := Factory.cone("Tusk_%s" % ("L" if side < 0.0 else "R"), Color("#ded4b5"), 0.085, 0.43, Vector3(side * 0.32, 1.12, -2.45), int(_detail(hero)["radial"]))
+		tusk.rotation.x = -PI * 0.56
+		tusk.rotation.z = side * 0.22
+		root.add_child(tusk)
+	var bristle_count := 8 if hero else 4
+	for bristle_index in range(bristle_count):
+		var ratio := float(bristle_index) / float(maxi(bristle_count - 1, 1))
+		var bristle := Factory.cone("BackBristle_%02d" % bristle_index, dark, 0.13, lerpf(0.30, 0.46, sin(ratio * PI)), Vector3(0.0, 1.78, lerpf(0.66, -1.35, ratio)), 6)
+		bristle.rotation.x = -0.10
+		root.add_child(bristle)
+	_add_tail(root, Vector3(0.0, 1.18, 1.18), [Vector3.ZERO, Vector3(0.09, 0.12, 0.24), Vector3(0.18, 0.04, 0.43), Vector3(0.10, -0.09, 0.54)], [Vector2(0.10, 0.10), Vector2(0.09, 0.09), Vector2(0.07, 0.07), Vector2(0.025, 0.025)], dark, hero)
 
 
 func _build_deer(root: Node3D, hero: bool) -> void:

@@ -35,7 +35,7 @@
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.
 - Show the chosen/random species stats, growth, passive, active skill, and victory guide on entry.
 - Keep settings limited to audio, graphics, tutorial reset, and campaign reset. Free mode belongs on the home page.
-- Keep the V1.30 hybrid art path mobile/Web safe: six representative species use versioned Hero/Mobile GLBs, an explicit per-species root-scale contract and automatic body/detail visibility ranges; rabbit/wolf/deer/bear share one quadruped rig, one 256×256 four-region fur PBR atlas and species-tuned weighted body chains. Rabbit additionally exposes forage, moonstep and death poses. Eagle uses a separate eight-bone flight rig. Crocodile uses a separate weighted long-body rig with a jaw and three-bone tail chain. AI always uses Mobile; the other 24 species and missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
+- Keep the V1.31 hybrid art path mobile/Web safe: nine representative species use versioned Hero/Mobile GLBs, an explicit per-species root-scale contract and automatic body/detail visibility ranges. Rabbit/wolf/deer/bear share one quadruped rig, one 256×256 four-region fur PBR atlas and species-tuned weighted body chains; eagle uses a separate flight rig; crocodile uses a weighted long-body rig. Fox and boar retain the shared low-cost leg/ear/tail pivots, while snake deliberately uses whole-body motion without fake legs. AI always uses Mobile; the other 21 species and missing-resource cases retain procedural fallback. Collision, stats, AI and combat-event ownership remain in `EcoActor`.
 
 ## Document routing
 

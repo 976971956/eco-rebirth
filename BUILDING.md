@@ -1,4 +1,4 @@
-# 《生态轮回》V1.30 运行与导出
+# 《生态轮回》V1.31 运行与导出
 
 ## 直接运行
 
@@ -27,6 +27,8 @@ godot --path .
 | 暂停 | Esc | 右上暂停按钮 |
 
 普通攻击只在攻击范围内触发。食草物种吃绿色植物，肉食物种吃尸体，狐狸和熊两者都能吃。
+
+V1.31 为赤狐、青环蛇和獠牙野猪新增 Hero/Mobile 外部 GLB：赤狐的四足/双耳/蓬尾和野猪的四足/双耳/卷尾接入原有步态，青环蛇保留无足整体游走。九种外部动物都有自动 LOD 和固定根比例，AI 只加载 Mobile，资源失败时仍安全回退。九种 Mobile 模型总顶点基线为 60000；碰撞、数值、AI 和存档没有改变。
 
 V1.30 将四种四足代表动物合并到一套 256×256、2×2 分区的 PBR 毛发图集，着色器在分区内独立重复 UV，避免物种间串色。六种外部 GLB 还会自动为眼部、耳内、胡须、鹿角分枝和牙爪设置更近的裁剪距离，主躯干保留更远。六种 Mobile 模型的总顶点发布基线为 42000；碰撞、数值、AI 和存档没有改变。
 
@@ -137,7 +139,7 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 - 小屏触控布局使用更大字号、紧凑信息框、至少 52 像素的普通按钮和 96–150 像素的主要动作按钮；较高平板自动恢复舒展信息密度；
 - Compatibility 渲染器，可运行于 WebGL 2 和移动端 OpenGL；
 - 无线程、无 GDExtension、无桌面专属 API；
-- 六种代表动物使用轻量 Hero/Mobile GLB，其余物种保留程序模型；不依赖运行时第三方插件或桌面专属格式；
+- 九种代表动物使用轻量 Hero/Mobile GLB，其余物种保留程序模型；不依赖运行时第三方插件或桌面专属格式；
 - 触屏设备自动显示虚拟摇杆和动作按钮；
 - `ConfigFile` 存档写入各平台的 `user://` 沙盒；
 - 存档带独立数据版本号，并自动兼容、迁移旧格式数据；
@@ -152,16 +154,17 @@ godot --headless --path . --export-debug iOS build/ios/EcoRebirth
 godot --headless --path . --script res://tools/validate_species.gd
 ```
 
-检查旧存档迁移、画质档位、教学步骤，以及外部 GLB 的 PBR 槽、共享毛发贴图、LOD、四种四足动物、金雕飞行骨架、鳄鱼连续长躯干/尾链、技能挂点与移动端几何预算：
+检查旧存档迁移、画质档位、教学步骤，以及 18 个外部 GLB 的 PBR 槽、共享毛发图集、LOD、四种四足蒙皮动物、金雕飞行骨架、鳄鱼连续长躯干/尾链、赤狐/青环蛇/野猪轻量动作节点与移动端几何预算：
 
 ```bash
 godot --headless --path . --script res://tools/validate_release.gd
 ```
 
-如修改了共享毛发源图、毛发构建脚本或六种代表物种的生成代码，应先重建 PBR 小贴图，再生成并导入 GLB：
+如修改了共享毛发源图、图集构建脚本或九种代表物种的生成代码，应先重建 PBR 源图与四足图集，再生成并导入 GLB：
 
 ```bash
 godot --headless --path . --script res://tools/build_fur_texture_maps.gd
+godot --headless --path . --script res://tools/build_quadruped_fur_atlas.gd
 godot --headless --path . --editor --quit
 godot --headless --path . --script res://tools/generate_species_glb.gd
 godot --headless --path . --editor --quit

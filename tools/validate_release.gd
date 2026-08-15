@@ -57,7 +57,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.30 发布校验通过：四足材质图集、自动细节 LOD 与移动端性能基线正常")
+		print("[release] V1.31 发布校验通过：赤狐/青环蛇/獠牙野猪 Hero/Mobile GLB 与运行时回退正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -229,8 +229,8 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.30.0\"") and presets.contains("application/short_version=\"1.30.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=400") and presets.contains("application/version=\"400\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(presets.contains("version/name=\"1.31.0\"") and presets.contains("application/short_version=\"1.31.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=410") and presets.contains("application/version=\"410\""), "Android/iOS 内部构建号没有同步递增")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -341,6 +341,9 @@ func _validate_external_species_model_contract() -> void:
 		"bear": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
 		"eagle": {"WingPivot_": 2, "TailPivot": 1},
 		"crocodile": {"LegPivot_": 4},
+		"fox": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
+		"snake": {},
+		"boar": {"LegPivot_": 4, "EarPivot_": 2, "TailPivot": 1},
 	}
 	_expect(VisualCatalog.profile_for(true, "high") == "hero", "高画质玩家没有选择 Hero 物种模型")
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
@@ -370,7 +373,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(SkeletonRig.resolve_state(0.0, 0.0, 0.0, 0.8, 0.0, false, "rabbit") == "forage", "雪兔进食没有切换觅食状态")
 	_expect(SkeletonRig.resolve_state(0.8, 0.0, 0.0, 0.0, 0.2, false, "rabbit") == "skill", "雪兔月影折跃没有切换技能状态")
 	_expect(SkeletonRig.resolve_state(0.8, 0.1, 0.1, 0.8, 0.2, true, "rabbit") == "dead", "雪兔倒地状态没有最高优先级")
-	_expect(VisualCatalog.VISUAL_SCALE_CONTRACT.size() == VisualCatalog.EXTERNAL_SPECIES.size(), "六种代表动物没有完整视觉比例契约")
+	_expect(VisualCatalog.EXTERNAL_SPECIES.size() == 9 and VisualCatalog.VISUAL_SCALE_CONTRACT.size() == VisualCatalog.EXTERNAL_SPECIES.size(), "九种外部动物没有完整视觉比例契约")
 	_expect(is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["rabbit"]), 1.02) and is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["bear"]), 1.22), "小型雪兔与大型棕熊比例契约异常")
 	var total_mobile_vertices := 0
 	for species_id in VisualCatalog.EXTERNAL_SPECIES:
@@ -420,13 +423,16 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["blended_vertices"]) > 20, "沼泽鳄的 %s 躯干与尾部没有跨骨平滑权重" % profile)
 				_expect(int(stats["invalid_weight_vertices"]) == 0, "沼泽鳄的 %s 蒙皮权重没有归一化" % profile)
 				_expect(int(stats["skill_sockets"]) == 2, "沼泽鳄的 %s 模型缺少吻部或尾端技能挂点" % profile)
+			elif species_id in ["fox", "snake", "boar"]:
+				_expect(int(stats["skeletons"]) == 0 and int(stats["skinned_meshes"]) == 0, "%s 的 %s 轻量模型被意外接入高成本骨架" % [species_id, profile])
+				_expect((stats["pbr_slots"] as Dictionary).size() >= 3, "%s 的 %s 缺少物种化 PBR 材质槽" % [species_id, profile])
 			for node_prefix in expected_motion_nodes[species_id]:
 				var actual_count := int(stats["named_nodes"].get(node_prefix, 0))
 				_expect(actual_count >= int(expected_motion_nodes[species_id][node_prefix]), "%s 的 %s 模型缺少 %s 动画枢轴" % [species_id, profile, node_prefix])
 			model.free()
 		if profile_vertices.has("hero") and profile_vertices.has("mobile"):
 			_expect(int(profile_vertices["hero"]) > int(profile_vertices["mobile"]), "%s 的 Hero 模型细节没有高于 Mobile LOD" % species_id)
-	_expect(total_mobile_vertices <= 42000, "六种代表动物 Mobile 模型总顶点超出 42000 性能基线")
+	_expect(total_mobile_vertices <= 60000, "九种外部动物 Mobile 模型总顶点超出 60000 性能基线")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("uses_external_model = _build_external_species_visual()"), "角色运行时没有优先加载外部物种模型")
 	_expect(actor_source.contains("_bind_external_motion_nodes(model)"), "外部物种模型没有接入共享步态动画")
@@ -546,6 +552,19 @@ func _validate_external_species_model_contract() -> void:
 	crocodile_actor._play_hit_pulse()
 	crocodile_actor._update_visual_motion(0.016)
 	_expect(crocodile_actor.external_animation_state == "hit", "真实沼泽鳄受击没有以最高优先级切换骨架状态")
+	var expansion_actors: Array[EcoActor] = []
+	for species_id in ["fox", "snake", "boar"]:
+		var expansion_actor: EcoActor = ActorScript.new()
+		expansion_actor.process_mode = Node.PROCESS_MODE_DISABLED
+		game_stub.add_child(expansion_actor)
+		expansion_actor.setup(game_stub, 940 + expansion_actors.size(), species_id, false, Vector3.ZERO, 0)
+		_expect(expansion_actor.uses_external_model and expansion_actor.external_model_profile == "mobile", "%s 没有在真实 AI 流程加载 Mobile GLB" % species_id)
+		_expect(not is_instance_valid(expansion_actor.external_skeleton), "%s 的轻量外部模型不应绑定骨架" % species_id)
+		if species_id in ["fox", "boar"]:
+			_expect(expansion_actor.leg_pivots.size() == 4 and expansion_actor.ear_pivots.size() == 2 and expansion_actor.tail_visuals.size() == 1, "%s 的步态/耳部/尾部动作节点没有接入 EcoActor" % species_id)
+		else:
+			_expect(expansion_actor.leg_pivots.is_empty() and expansion_actor.tail_visuals.is_empty(), "青环蛇外部模型错误伪造了四足/尾部枢轴")
+		expansion_actors.append(expansion_actor)
 	game_stub.batch_mode = true
 	var fallback_actor: EcoActor = ActorScript.new()
 	fallback_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -557,6 +576,8 @@ func _validate_external_species_model_contract() -> void:
 	fallback_actor.free()
 	eagle_actor.free()
 	crocodile_actor.free()
+	for expansion_actor in expansion_actors:
+		expansion_actor.free()
 	game_stub.free()
 
 
