@@ -14,15 +14,15 @@ The check starts Blender in background mode, validates
 `pipeline_config.json`, creates a temporary skinned-pipeline probe scene and
 exports a GLB to `/tmp`. It does not overwrite game assets.
 
-Rebuild the V1.41 thirty-species Hero/Mobile set and the ancient-forest
+Rebuild the current V1.48 thirty-species Hero/Mobile set and the ancient-forest
 vertical slice with:
 
 ```bash
 ./tools/build_realistic_vertical_slice.sh
 ```
 
-The command first builds the procedural rabbit, then the licensed CC0 gray-wolf
-cinematic sample, the other 28 species by skeleton family, and finally the two
+The command first builds the procedural V4 rabbit, then the licensed CC0 gray-wolf
+cinematic sample, the other 28 V4 species by skeleton family, and finally the two
 forest trees. The generated GLBs live under `assets/models_v2/`. The wolf source
 and provenance notice live under `assets/source/animals/wolf/cc0_newdlc/`, which
 Godot ignores at import time. Godot prefers V2 and falls back to the matching

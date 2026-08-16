@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.47 发布候选校验通过：灰狼短腿比例与真实前腕/后膝折叠、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.48 发布候选校验通过：剩余 29 种 V4 三段四肢/三段翼/长体波动、30 种 Hero/Mobile 模型、移动端预算与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.47.0\"") and presets.contains("application/short_version=\"1.47.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=570") and presets.contains("application/version=\"570\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.47.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.48.0\"") and presets.contains("application/short_version=\"1.48.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=580") and presets.contains("application/version=\"580\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.48.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -545,7 +545,7 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["silhouette_lod_meshes"]) > 0, "%s 的 %s 翼、长鼻或主甲壳被错分为短距离细节" % [species_id, profile])
 			if species_id in VisualCatalog.SKELETAL_SPECIES:
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 运行时模型没有唯一 Skeleton3D" % [species_id, profile])
-				_expect(int(stats["bones"]) >= 12, "%s 的 %s 骨骼数量不足，躯干、头颈或两段式四肢可能丢失" % [species_id, profile])
+				_expect(int(stats["bones"]) >= 12, "%s 的 %s 骨骼数量不足，躯干、头颈或三段式四肢可能丢失" % [species_id, profile])
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 3, "%s 的 %s 缺少物种化体表、眼部或细节 PBR 材质槽" % [species_id, profile])
 				if species_id not in VisualCatalog.V2_SPECIES:
 					_expect(int(stats["textured_coat_surfaces"]) > 0 and int(stats["atlas_coat_surfaces"]) == int(stats["textured_coat_surfaces"]), "%s 的 %s 毛皮材质没有绑定共享 PBR 图集" % [species_id, profile])
@@ -554,7 +554,10 @@ func _validate_external_species_model_contract() -> void:
 					_expect(int(stats["bones"]) >= 12, "%s 的 %s 模型缺少 Chest/Neck/Head 连续躯干骨链" % [species_label, profile])
 					if species_id in VisualCatalog.V2_SPECIES:
 						_expect(int(stats["continuous_coat_skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一的 Blender V2 连续毛皮躯干" % [species_label, profile])
-						_expect(int(stats["articulated_paw_bones"]) == 4, "%s 的 %s 模型没有四条两段式腿骨" % [species_label, profile])
+						_expect(int(stats["articulated_paw_bones"]) == 4, "%s 的 %s 模型没有四条独立足部骨骼" % [species_label, profile])
+						if species_id != "wolf":
+							_expect(int(stats["bones"]) == 22, "%s 的 %s 模型不是 V4 22 骨地面动物契约" % [species_label, profile])
+							_expect(int(stats["three_segment_limb_chains"]) == 4, "%s 的 %s 模型缺少上肢、下肢、足部三段式骨链" % [species_label, profile])
 						_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [species_label, profile])
 					else:
 						_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
@@ -565,7 +568,8 @@ func _validate_external_species_model_contract() -> void:
 			elif species_id in VisualCatalog.FLIGHT_RIG_SPECIES:
 				var flight_label := Catalog.display_name(species_id)
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 模型没有唯一飞行 Skeleton3D" % [flight_label, profile])
-				_expect(int(stats["bones"]) >= 10, "%s 的 %s 模型缺少身体、头、双段翼、尾羽或双爪骨骼" % [flight_label, profile])
+				_expect(int(stats["bones"]) == 14, "%s 的 %s 模型不是 V4 14 骨飞行契约" % [flight_label, profile])
+				_expect(int(stats["three_segment_wing_chains"]) == 2, "%s 的 %s 模型缺少左右三段式翼骨" % [flight_label, profile])
 				_expect(int(stats["continuous_coat_skinned_meshes"]) == 1 and int(stats["skinned_meshes"]) >= 1, "%s 的 %s 模型没有连续蒙皮羽体" % [flight_label, profile])
 				_expect(int(stats["weighted_vertices"]) > 100 and int(stats["invalid_weight_vertices"]) == 0, "%s 的 %s 飞行蒙皮权重异常" % [flight_label, profile])
 				_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [flight_label, profile])
@@ -573,9 +577,12 @@ func _validate_external_species_model_contract() -> void:
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 3, "%s 的 %s 缺少羽毛、眼部或喙爪 PBR 材质槽" % [flight_label, profile])
 			elif species_id in VisualCatalog.LONG_BODY_RIG_SPECIES:
 				var long_label := Catalog.display_name(species_id)
-				var minimum_long_bones := 8 if species_id == "snake" else 12
+				var expected_long_bones := 10 if species_id == "snake" else 22
 				_expect(int(stats["skeletons"]) == 1, "%s 的 %s 模型没有唯一长躯干 Skeleton3D" % [long_label, profile])
-				_expect(int(stats["bones"]) >= minimum_long_bones, "%s 的 %s 模型缺少头颈、颌部或多段尾链" % [long_label, profile])
+				_expect(int(stats["bones"]) == expected_long_bones, "%s 的 %s 模型不是 V4 长体骨骼契约" % [long_label, profile])
+				_expect(int(stats["axial_detail_bones"]) == 2, "%s 的 %s 模型缺少后脊与胸段波动骨" % [long_label, profile])
+				if species_id == "crocodile":
+					_expect(int(stats["three_segment_limb_chains"]) == 4, "%s 的 %s 模型缺少四条低伏三段式腿骨" % [long_label, profile])
 				_expect(int(stats["continuous_coat_skinned_meshes"]) == 1 and int(stats["skinned_meshes"]) >= 1, "%s 的 %s 模型没有连续蒙皮主躯干" % [long_label, profile])
 				_expect(int(stats["weighted_vertices"]) > 100, "%s 的 %s 连续蒙皮顶点不足" % [long_label, profile])
 				_expect(int(stats["blended_vertices"]) > 20, "%s 的 %s 躯干与尾部没有跨骨平滑权重" % [long_label, profile])
@@ -616,6 +623,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(hero_actor.external_baked_animation == "idle", "真实雪兔角色没有从完整体表待机动作开始")
 	_expect(hero_actor.external_skill_sockets.size() == 2, "真实雪兔角色流程没有绑定嘴部和胸部技能挂点")
 	_expect(hero_actor.leg_pivots.is_empty() and hero_actor.ear_pivots.is_empty() and hero_actor.tail_visuals.is_empty(), "骨骼物种仍被旧节点枢轴重复驱动")
+	_validate_v4_limb_animation(hero_actor, "rabbit")
 	var run_pose := SkeletonRig.pose_targets("run", 1.2, 0.6, 1.0, 0.0, 0.0, 0.2, "rabbit")
 	var forage_pose := SkeletonRig.pose_targets("forage", 1.2, 0.0, 0.0, 0.0, 0.0, 0.2, "rabbit")
 	var rabbit_skill_pose := SkeletonRig.pose_targets("skill", 1.2, 0.6, 1.0, 0.5, 0.0, 0.2, "rabbit")
@@ -734,6 +742,7 @@ func _validate_external_species_model_contract() -> void:
 		var mouth_offset := quadruped_actor.skill_socket_world_position("SkillSocket_Mouth", 0.70) - quadruped_actor.global_position
 		_expect(mouth_offset.length() > 0.35 and mouth_offset.dot(-quadruped_actor.global_basis.z) > 0.25, "%s 的嘴部挂点没有位于模型前方" % species_id)
 		_expect(quadruped_actor.leg_pivots.is_empty() and quadruped_actor.ear_pivots.is_empty(), "%s 仍被骨骼与旧节点步态重复驱动" % species_id)
+		_validate_v4_limb_animation(quadruped_actor, species_id)
 		quadruped_actor.free()
 	game_stub.quality_preset = "high"
 	var eagle_actor: EcoActor = ActorScript.new()
@@ -746,6 +755,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(eagle_actor.wing_pivots.is_empty() and eagle_actor.tail_visuals.is_empty(), "金雕仍被飞行骨架与旧节点振翅重复驱动")
 	_expect(eagle_actor.external_skill_sockets.size() == 3, "真实金雕角色流程没有绑定喙部和双翼技能挂点")
 	_expect(eagle_actor.skill_socket_world_position("SkillSocket_Beak", 1.65).distance_to(eagle_actor.global_position) > 0.5, "金雕喙部技能挂点退化到了角色原点")
+	_validate_v4_wing_animation(eagle_actor, "eagle")
 	var flap_pose := FlightRig.pose_targets("flap", 1.2, 1.0, 0.0, 0.0, 0.4)
 	var dive_pose := FlightRig.pose_targets("dive", 1.2, 1.0, 0.5, 0.0, 0.4)
 	var flight_hit_pose := FlightRig.pose_targets("hit", 1.2, 1.0, 0.0, 0.5, 0.4)
@@ -768,6 +778,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(is_instance_valid(owl_actor.external_animation_player), "真实雪鸮 AI 没有绑定 Blender 飞行动作")
 	_expect(owl_actor.external_skill_sockets.size() == 3, "真实雪鸮 AI 没有绑定喙部和双翼技能挂点")
 	_expect(owl_actor.skill_socket_world_position("SkillSocket_Beak", 1.65).distance_to(owl_actor.global_position) > 0.5, "雪鸮喙部技能挂点退化到了角色原点")
+	_validate_v4_wing_animation(owl_actor, "owl")
 	var crocodile_actor: EcoActor = ActorScript.new()
 	crocodile_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	game_stub.add_child(crocodile_actor)
@@ -779,6 +790,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(crocodile_actor.external_skill_sockets.size() == 2, "真实沼泽鳄角色流程没有绑定吻部和尾端技能挂点")
 	_expect(crocodile_actor.skill_socket_world_position("SkillSocket_Jaw", 0.66).distance_to(crocodile_actor.global_position) > 1.0, "沼泽鳄吻部技能挂点退化到了角色原点")
 	_expect(crocodile_actor.skill_socket_world_position("SkillSocket_TailTip", 0.58).distance_to(crocodile_actor.global_position) > 0.30, "沼泽鳄尾端技能挂点退化到了角色原点")
+	_validate_v4_limb_animation(crocodile_actor, "crocodile")
+	_validate_v4_axial_animation(crocodile_actor, "crocodile")
 	var crawl_pose := CrocodileRig.pose_targets("crawl", 1.4, 1.0, 0.0, 0.0, 0.0, 0.7)
 	var swim_pose := CrocodileRig.pose_targets("swim", 1.4, 1.0, 0.0, 0.0, 0.0, 0.7)
 	var bite_pose := CrocodileRig.pose_targets("attack", 1.4, 1.0, 0.5, 0.0, 0.0, 0.7)
@@ -807,6 +820,7 @@ func _validate_external_species_model_contract() -> void:
 	_expect(is_instance_valid(snake_actor.external_animation_player), "真实森蚺 AI 没有绑定 Blender 长体动作")
 	_expect(snake_actor.external_skill_sockets.size() == 2, "真实森蚺 AI 没有绑定颌部和尾端技能挂点")
 	_expect(snake_actor.skill_socket_world_position("SkillSocket_Jaw", 0.66).distance_to(snake_actor.global_position) > 0.7, "森蚺颌部技能挂点退化到了角色原点")
+	_validate_v4_axial_animation(snake_actor, "snake")
 	var expansion_actors: Array[EcoActor] = []
 	var lightweight_species: Array = VisualCatalog.EXTERNAL_SPECIES.filter(func(species_id: String) -> bool:
 		return species_id not in VisualCatalog.SKELETAL_SPECIES and species_id not in VisualCatalog.FLIGHT_RIG_SPECIES and species_id not in VisualCatalog.LONG_BODY_RIG_SPECIES
@@ -842,6 +856,135 @@ func _validate_external_species_model_contract() -> void:
 	game_stub.free()
 
 
+func _validate_v4_limb_animation(actor: EcoActor, species_id: String) -> void:
+	var skeleton := actor.external_skeleton
+	var animation_player := actor.external_animation_player
+	if not is_instance_valid(skeleton) or not is_instance_valid(animation_player):
+		failures.append("%s 无法执行 V4 三段式四肢动作校验" % species_id)
+		return
+	var chains := {}
+	for suffix in ["LF", "RH"]:
+		var upper := skeleton.find_bone("Leg_%s" % suffix)
+		var lower := skeleton.find_bone("Lower_%s" % suffix)
+		var paw := skeleton.find_bone("Paw_%s" % suffix)
+		_expect(upper >= 0 and lower >= 0 and paw >= 0, "%s 缺少 %s 上肢/下肢/足部完整骨链" % [species_id, suffix])
+		if upper >= 0 and lower >= 0 and paw >= 0:
+			chains[suffix] = [upper, lower, paw]
+	if chains.size() != 2:
+		return
+	animation_player.play("locomotion")
+	var action_length := maxf(animation_player.current_animation_length, 0.4)
+	var angle_min := {"LF": INF, "RH": INF}
+	var angle_max := {"LF": -INF, "RH": -INF}
+	var paw_start := {}
+	var paw_basis_start := {}
+	var paw_travel_max := {"LF": 0.0, "RH": 0.0}
+	var paw_rotation_max := {"LF": 0.0, "RH": 0.0}
+	for sample_index in range(9):
+		animation_player.seek(action_length * float(sample_index) / 9.0, true)
+		for suffix in chains:
+			var indices: Array = chains[suffix]
+			var upper_origin := skeleton.get_bone_global_pose(int(indices[0])).origin
+			var lower_origin := skeleton.get_bone_global_pose(int(indices[1])).origin
+			var paw_pose := skeleton.get_bone_global_pose(int(indices[2]))
+			var chain_angle := (lower_origin - upper_origin).angle_to(paw_pose.origin - lower_origin)
+			angle_min[suffix] = minf(float(angle_min[suffix]), chain_angle)
+			angle_max[suffix] = maxf(float(angle_max[suffix]), chain_angle)
+			if sample_index == 0:
+				paw_start[suffix] = paw_pose.origin
+				paw_basis_start[suffix] = paw_pose.basis.get_rotation_quaternion()
+			else:
+				paw_travel_max[suffix] = maxf(float(paw_travel_max[suffix]), Vector3(paw_start[suffix]).distance_to(paw_pose.origin))
+				paw_rotation_max[suffix] = maxf(float(paw_rotation_max[suffix]), Quaternion(paw_basis_start[suffix]).angle_to(paw_pose.basis.get_rotation_quaternion()))
+	for suffix in chains:
+		_expect(float(angle_max[suffix]) - float(angle_min[suffix]) > 0.075, "%s 的 %s 膝/腕关节在移动中没有可见弯曲" % [species_id, suffix])
+		_expect(float(paw_travel_max[suffix]) > 0.045, "%s 的 %s 足部在步态中没有实际位移" % [species_id, suffix])
+		_expect(float(paw_rotation_max[suffix]) > 0.045, "%s 的 %s 足部骨没有独立调整着地角" % [species_id, suffix])
+	animation_player.play("idle")
+	animation_player.seek(0.0, true)
+
+
+func _validate_v4_wing_animation(actor: EcoActor, species_id: String) -> void:
+	var skeleton := actor.external_skeleton
+	var animation_player := actor.external_animation_player
+	if not is_instance_valid(skeleton) or not is_instance_valid(animation_player):
+		failures.append("%s 无法执行 V4 三段式翼骨动作校验" % species_id)
+		return
+	var shoulder := skeleton.find_bone("Wing_L")
+	var elbow := skeleton.find_bone("WingTip_L")
+	var primary := skeleton.find_bone("WingPrimary_L")
+	_expect(shoulder >= 0 and elbow >= 0 and primary >= 0, "%s 缺少肩翼、次级翼或初级飞羽骨" % species_id)
+	if shoulder < 0 or elbow < 0 or primary < 0:
+		return
+	animation_player.play("locomotion")
+	var action_length := maxf(animation_player.current_animation_length, 0.4)
+	var angle_min := INF
+	var angle_max := -INF
+	var wrist_start := Vector3.ZERO
+	var primary_basis_start := Quaternion.IDENTITY
+	var wrist_travel_max := 0.0
+	var primary_rotation_max := 0.0
+	for sample_index in range(9):
+		animation_player.seek(action_length * float(sample_index) / 9.0, true)
+		var shoulder_origin := skeleton.get_bone_global_pose(shoulder).origin
+		var elbow_origin := skeleton.get_bone_global_pose(elbow).origin
+		var primary_pose := skeleton.get_bone_global_pose(primary)
+		var chain_angle := (elbow_origin - shoulder_origin).angle_to(primary_pose.origin - elbow_origin)
+		angle_min = minf(angle_min, chain_angle)
+		angle_max = maxf(angle_max, chain_angle)
+		if sample_index == 0:
+			wrist_start = primary_pose.origin
+			primary_basis_start = primary_pose.basis.get_rotation_quaternion()
+		else:
+			wrist_travel_max = maxf(wrist_travel_max, wrist_start.distance_to(primary_pose.origin))
+			primary_rotation_max = maxf(primary_rotation_max, primary_basis_start.angle_to(primary_pose.basis.get_rotation_quaternion()))
+	_expect(angle_max - angle_min > 0.08, "%s 的次级翼关节没有随振翼收展" % species_id)
+	_expect(wrist_travel_max > 0.10, "%s 的翼尖在振翼中没有有效行程" % species_id)
+	_expect(primary_rotation_max > 0.10, "%s 的初级飞羽骨没有延迟翻转" % species_id)
+	animation_player.play("idle")
+	animation_player.seek(0.0, true)
+
+
+func _validate_v4_axial_animation(actor: EcoActor, species_id: String) -> void:
+	var skeleton := actor.external_skeleton
+	var animation_player := actor.external_animation_player
+	if not is_instance_valid(skeleton) or not is_instance_valid(animation_player):
+		failures.append("%s 无法执行 V4 长体波动动作校验" % species_id)
+		return
+	var spine_rear := skeleton.find_bone("Spine_Rear")
+	var chest := skeleton.find_bone("Chest")
+	var tail_tip := skeleton.find_bone("Tail_Tip")
+	_expect(spine_rear >= 0 and chest >= 0 and tail_tip >= 0, "%s 缺少后脊、胸段或尾尖波动骨" % species_id)
+	if spine_rear < 0 or chest < 0 or tail_tip < 0:
+		return
+	animation_player.play("locomotion")
+	var action_length := maxf(animation_player.current_animation_length, 0.4)
+	var rear_basis_start := Quaternion.IDENTITY
+	var chest_basis_start := Quaternion.IDENTITY
+	var tail_start := Vector3.ZERO
+	var rear_rotation_max := 0.0
+	var chest_rotation_max := 0.0
+	var tail_travel_max := 0.0
+	for sample_index in range(9):
+		animation_player.seek(action_length * float(sample_index) / 9.0, true)
+		var rear_basis := skeleton.get_bone_global_pose(spine_rear).basis.get_rotation_quaternion()
+		var chest_basis := skeleton.get_bone_global_pose(chest).basis.get_rotation_quaternion()
+		var tail_origin := skeleton.get_bone_global_pose(tail_tip).origin
+		if sample_index == 0:
+			rear_basis_start = rear_basis
+			chest_basis_start = chest_basis
+			tail_start = tail_origin
+		else:
+			rear_rotation_max = maxf(rear_rotation_max, rear_basis_start.angle_to(rear_basis))
+			chest_rotation_max = maxf(chest_rotation_max, chest_basis_start.angle_to(chest_basis))
+			tail_travel_max = maxf(tail_travel_max, tail_start.distance_to(tail_origin))
+	_expect(rear_rotation_max > 0.06, "%s 的后脊段没有参与波动" % species_id)
+	_expect(chest_rotation_max > 0.08, "%s 的胸段仍和身体像一根硬管同步摆动" % species_id)
+	_expect(tail_travel_max > 0.10, "%s 的尾链在移动中没有向后传递波动" % species_id)
+	animation_player.play("idle")
+	animation_player.seek(0.0, true)
+
+
 func _external_model_stats(root_node: Node) -> Dictionary:
 	var stats := {
 		"meshes": 0,
@@ -863,6 +1006,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"continuous_coat_skinned_meshes": 0,
 		"organic_body_islands": 0,
 		"articulated_paw_bones": 0,
+		"three_segment_limb_chains": 0,
+		"three_segment_wing_chains": 0,
+		"axial_detail_bones": 0,
 		"silhouette_lod_meshes": 0,
 		"required_actions": 0,
 	}
@@ -884,6 +1030,15 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 		for paw_name in ["Paw_LF", "Paw_RF", "Paw_LH", "Paw_RH"]:
 			if skeleton.find_bone(paw_name) >= 0:
 				stats["articulated_paw_bones"] = int(stats["articulated_paw_bones"]) + 1
+		for suffix in ["LF", "RF", "LH", "RH"]:
+			if skeleton.find_bone("Leg_%s" % suffix) >= 0 and skeleton.find_bone("Lower_%s" % suffix) >= 0 and skeleton.find_bone("Paw_%s" % suffix) >= 0:
+				stats["three_segment_limb_chains"] = int(stats["three_segment_limb_chains"]) + 1
+		for suffix in ["L", "R"]:
+			if skeleton.find_bone("Wing_%s" % suffix) >= 0 and skeleton.find_bone("WingTip_%s" % suffix) >= 0 and skeleton.find_bone("WingPrimary_%s" % suffix) >= 0:
+				stats["three_segment_wing_chains"] = int(stats["three_segment_wing_chains"]) + 1
+		for axial_name in ["Spine_Rear", "Chest"]:
+			if skeleton.find_bone(axial_name) >= 0:
+				stats["axial_detail_bones"] = int(stats["axial_detail_bones"]) + 1
 	if node is AnimationPlayer:
 		var imported_actions := {}
 		var animation_player := node as AnimationPlayer

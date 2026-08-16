@@ -343,17 +343,18 @@ def build_rig(species: str) -> bpy.types.Object:
         chest = bone(edit, "Chest", (0.0, 1.10, -0.18), (0.0, 1.24, -0.88), spine)
         neck = bone(edit, "Neck", (0.0, 1.24, -0.88), (0.0, 1.39, -1.30), chest)
         head = bone(edit, "Head", (0.0, 1.39, -1.30), (0.0, 1.35, -1.94), neck)
+        bone(edit, "Jaw", (0.0, 1.31, -1.56), (0.0, 1.25, -2.02), head)
         leg_anchors = {
-            "LF": ((-0.34, 1.02, -0.62), (-0.33, 0.57, -0.70), (-0.34, 0.20, -0.92)),
-            "RF": ((0.34, 1.02, -0.62), (0.33, 0.57, -0.70), (0.34, 0.20, -0.92)),
-            "LH": ((-0.46, 1.00, 0.62), (-0.50, 0.52, 0.42), (-0.50, 0.18, -0.02)),
-            "RH": ((0.46, 1.00, 0.62), (0.50, 0.52, 0.42), (0.50, 0.18, -0.02)),
+            "LF": ((-0.34, 1.02, -0.62), (-0.33, 0.64, -0.54), (-0.34, 0.25, -0.76), (-0.34, 0.10, -1.02)),
+            "RF": ((0.34, 1.02, -0.62), (0.33, 0.64, -0.54), (0.34, 0.25, -0.76), (0.34, 0.10, -1.02)),
+            "LH": ((-0.46, 1.00, 0.62), (-0.50, 0.61, 0.30), (-0.50, 0.24, 0.67), (-0.50, 0.10, -0.10)),
+            "RH": ((0.46, 1.00, 0.62), (0.50, 0.61, 0.30), (0.50, 0.24, 0.67), (0.50, 0.10, -0.10)),
         }
         ear_anchors = {
             "L": ((-0.20, 1.59, -1.28), (-0.24, 2.70, -1.17)),
             "R": ((0.20, 1.59, -1.28), (0.24, 2.65, -1.18)),
         }
-        tail_points = ((0.0, 1.15, 0.88), (0.0, 1.16, 1.42))
+        tail_points = ((0.0, 1.15, 0.88), (0.0, 1.17, 1.16), (0.0, 1.16, 1.42))
     else:
         spine = bone(edit, "Spine", (0.0, 1.30, 1.10), (0.0, 1.39, 0.10), root)
         chest = bone(edit, "Chest", (0.0, 1.39, 0.10), (0.0, 1.55, -0.78), spine)
@@ -372,15 +373,28 @@ def build_rig(species: str) -> bpy.types.Object:
         }
         tail_points = ((0.0, 1.34, 1.02), (0.10, 0.50, 2.48))
 
-    for suffix, (upper, joint, paw) in leg_anchors.items():
+    for suffix, points in leg_anchors.items():
+        upper, joint = points[0], points[1]
         upper_bone = bone(edit, f"Leg_{suffix}", upper, joint, chest if suffix.endswith("F") else spine)
-        bone(edit, f"Paw_{suffix}", joint, paw, upper_bone)
+        if len(points) == 4:
+            ankle, paw = points[2], points[3]
+            lower_bone = bone(edit, f"Lower_{suffix}", joint, ankle, upper_bone)
+            bone(edit, f"Paw_{suffix}", ankle, paw, lower_bone)
+        else:
+            bone(edit, f"Paw_{suffix}", joint, points[2], upper_bone)
     for suffix, points in ear_anchors.items():
         bone(edit, f"Ear_{suffix}", points[0], points[1], head)
-    bone(edit, "Tail", tail_points[0], tail_points[1], spine)
+    if len(tail_points) == 3:
+        tail = bone(edit, "Tail", tail_points[0], tail_points[1], spine)
+        bone(edit, "TailTip", tail_points[1], tail_points[2], tail)
+    else:
+        bone(edit, "Tail", tail_points[0], tail_points[1], spine)
     bpy.ops.object.mode_set(mode="OBJECT")
     rig["eco_species"] = species
     rig["eco_rig_family"] = "lagomorph_v3" if species == "rabbit" else "canid_cinematic_v1"
+    if species == "rabbit":
+        rig["anatomy_profile"] = "v4_lagomorph_three_segment_limbs"
+        rig["limb_segments"] = 3
     return rig
 
 
@@ -420,17 +434,22 @@ def body_skin(obj: bpy.types.Object, rig: bpy.types.Object, species: str) -> Non
     body_names = ["Spine", "Chest", "Neck", "Head"]
     appendage_anchors = {
         "rabbit": {
-            "Leg_LF": (-0.34, 0.79, -0.62, 0.32, 0.50, 0.34),
-            "Leg_RF": (0.34, 0.79, -0.62, 0.32, 0.50, 0.34),
-            "Leg_LH": (-0.45, 0.78, 0.57, 0.40, 0.53, 0.45),
-            "Leg_RH": (0.45, 0.78, 0.57, 0.40, 0.53, 0.45),
-            "Paw_LF": (-0.34, 0.27, -0.84, 0.28, 0.42, 0.40),
-            "Paw_RF": (0.34, 0.27, -0.84, 0.28, 0.42, 0.40),
-            "Paw_LH": (-0.49, 0.27, 0.08, 0.34, 0.43, 0.62),
-            "Paw_RH": (0.49, 0.27, 0.08, 0.34, 0.43, 0.62),
+            "Leg_LF": (-0.34, 0.83, -0.59, 0.31, 0.42, 0.33),
+            "Leg_RF": (0.34, 0.83, -0.59, 0.31, 0.42, 0.33),
+            "Leg_LH": (-0.46, 0.82, 0.48, 0.40, 0.48, 0.43),
+            "Leg_RH": (0.46, 0.82, 0.48, 0.40, 0.48, 0.43),
+            "Lower_LF": (-0.34, 0.44, -0.65, 0.27, 0.38, 0.36),
+            "Lower_RF": (0.34, 0.44, -0.65, 0.27, 0.38, 0.36),
+            "Lower_LH": (-0.50, 0.42, 0.49, 0.33, 0.40, 0.48),
+            "Lower_RH": (0.50, 0.42, 0.49, 0.33, 0.40, 0.48),
+            "Paw_LF": (-0.34, 0.16, -0.93, 0.26, 0.25, 0.40),
+            "Paw_RF": (0.34, 0.16, -0.93, 0.26, 0.25, 0.40),
+            "Paw_LH": (-0.50, 0.16, 0.17, 0.32, 0.28, 0.64),
+            "Paw_RH": (0.50, 0.16, 0.17, 0.32, 0.28, 0.64),
             "Ear_L": (-0.23, 2.15, -1.25, 0.24, 0.75, 0.27),
             "Ear_R": (0.23, 2.15, -1.25, 0.24, 0.75, 0.27),
-            "Tail": (0.0, 1.18, 1.30, 0.42, 0.42, 0.46),
+            "Tail": (0.0, 1.17, 1.10, 0.38, 0.38, 0.32),
+            "TailTip": (0.0, 1.17, 1.34, 0.38, 0.38, 0.34),
         },
         "wolf": {
             "Leg_LF": (-0.47, 0.95, -0.58, 0.34, 0.55, 0.37),
@@ -568,18 +587,20 @@ def build_cinematic_wolf_parts(hero: bool, rig: bpy.types.Object) -> list[bpy.ty
     for suffix, (hip, knee, hock, paw_center) in leg_layout.items():
         front = suffix.endswith("F")
         upper_bone = f"Leg_{suffix}"
-        lower_bone = f"Paw_{suffix}"
+        lower_bone = f"Lower_{suffix}"
+        paw_bone = f"Paw_{suffix}"
         add_limb(f"UpperLeg_{suffix}", hip, knee, 0.175 if front else 0.205, 0.115, coat, upper_bone)
         add_limb(f"LowerLegA_{suffix}", knee, hock, 0.125, 0.084, light if front else coat, lower_bone)
-        add_limb(f"LowerLegB_{suffix}", hock, paw_center, 0.092, 0.065, light, lower_bone)
+        add_limb(f"LowerLegB_{suffix}", hock, paw_center, 0.092, 0.065, light, paw_bone)
         add_sphere(f"KneeJoint_{suffix}", knee, (0.125, 0.14, 0.125), coat, lower_bone)
-        add_sphere(f"HockJoint_{suffix}", hock, (0.092, 0.105, 0.092), light, lower_bone)
+        if hero:
+            add_sphere(f"HockJoint_{suffix}", hock, (0.092, 0.105, 0.092), light, paw_bone)
         paw_z = paw_center[2] - (0.09 if front else 0.13)
-        add_sphere(f"PawBody_{suffix}", (paw_center[0], 0.09, paw_z), (0.165, 0.085, 0.235), light, lower_bone)
+        add_sphere(f"PawBody_{suffix}", (paw_center[0], 0.09, paw_z), (0.165, 0.085, 0.235), light, paw_bone)
         toe_offsets = (-0.075, 0.0, 0.075) if hero else (-0.052, 0.052)
         for toe_index, toe_offset in enumerate(toe_offsets):
             toe_position = (paw_center[0] + toe_offset, 0.075, paw_z - 0.155)
-            add_sphere(f"ToeDetail_{suffix}_{toe_index}", toe_position, (0.050, 0.048, 0.090), light, lower_bone)
+            add_sphere(f"ToeDetail_{suffix}_{toe_index}", toe_position, (0.050, 0.048, 0.090), light, paw_bone)
             if hero:
                 add_limb(
                     f"ClawDetail_{suffix}_{toe_index}",
@@ -588,7 +609,7 @@ def build_cinematic_wolf_parts(hero: bool, rig: bpy.types.Object) -> list[bpy.ty
                     0.017,
                     0.006,
                     skin,
-                    lower_bone,
+                    paw_bone,
                 )
 
     tail_points = [
@@ -689,6 +710,9 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
         nose = uv_sphere("NoseDetail", (0.0, 1.33, -2.13), (0.13, 0.09, 0.10), skin, hero)
         rigid_skin(nose, rig, "Head")
         parts.append(nose)
+        jaw = tapered_limb("RabbitLowerJawDetail", (0.0, 1.28, -1.60), (0.0, 1.23, -2.04), 0.13, 0.075, coat_light, hero)
+        rigid_skin(jaw, rig, "Jaw")
+        parts.append(jaw)
         for side in (-1.0, 1.0):
             eyeball = uv_sphere(f"EyeDetail_{'L' if side < 0 else 'R'}", (side * 0.305, 1.52, -1.67), (0.095, 0.105, 0.075), eye, hero)
             rigid_skin(eyeball, rig, "Head")
@@ -700,8 +724,19 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
     return build_cinematic_wolf_parts(hero, rig)
 
 
+def limb_chain_flex_sign(rig: bpy.types.Object, suffix: str) -> float:
+    upper = rig.data.bones[f"Leg_{suffix}"]
+    lower = rig.data.bones[f"Lower_{suffix}"]
+    upper_vector = (upper.tail_local - upper.head_local).normalized()
+    lower_vector = (lower.tail_local - lower.head_local).normalized()
+    cross_body = Vector((1.0, 0.0, 0.0))
+    signed_angle = math.atan2(cross_body.dot(upper_vector.cross(lower_vector)), upper_vector.dot(lower_vector))
+    return 1.0 if signed_angle >= 0.0 else -1.0
+
+
 def create_actions(rig: bpy.types.Object, species: str) -> None:
     rig.animation_data_create()
+    flex_signs = {suffix: limb_chain_flex_sign(rig, suffix) for suffix in LIMBS} if species == "rabbit" else {}
     for action_name in ACTIONS:
         action = bpy.data.actions.new(action_name)
         rig.animation_data.action = action
@@ -717,12 +752,17 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                 phase = math.tau * frame_index / (len(cycle_frames) - 1)
                 for index, suffix in enumerate(LIMBS):
                     upper = rig.pose.bones[f"Leg_{suffix}"]
-                    lower = rig.pose.bones[f"Paw_{suffix}"]
+                    lower = rig.pose.bones[f"Lower_{suffix}"] if species == "rabbit" else rig.pose.bones[f"Paw_{suffix}"]
+                    paw = rig.pose.bones[f"Paw_{suffix}"]
                     if species == "rabbit":
                         is_hind = suffix.endswith("H")
                         curve = math.sin(phase + (0.0 if is_hind else math.pi * 0.78))
+                        lift = max(0.0, curve)
+                        support = max(0.0, -curve)
                         upper.rotation_euler[0] = amount * curve * (1.0 if is_hind else 0.66)
-                        lower.rotation_euler[0] = -amount * (0.62 if is_hind else 0.38) * max(curve, -0.18)
+                        bend = amount * (0.76 if is_hind else 0.52) * (0.95 * lift + 0.08 * support)
+                        lower.rotation_euler[0] = flex_signs[suffix] * bend
+                        paw.rotation_euler[0] = -flex_signs[suffix] * bend * (0.52 if is_hind else 0.44)
                     else:
                         if action_name == "sprint":
                             gallop_phase = {"LF": math.pi * 0.88, "RF": math.pi * 1.08, "LH": 0.0, "RH": math.pi * 0.18}[suffix]
@@ -736,6 +776,8 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                             lower.rotation_euler[0] = -amount * 0.56 * max(curve, -0.24)
                     upper.keyframe_insert(data_path="rotation_euler", frame=frame, group=upper.name)
                     lower.keyframe_insert(data_path="rotation_euler", frame=frame, group=lower.name)
+                    if species == "rabbit":
+                        paw.keyframe_insert(data_path="rotation_euler", frame=frame, group=paw.name)
                 flex = (0.10 if species == "rabbit" else 0.055 if action_name == "locomotion" else 0.15) * math.cos(phase)
                 rig.pose.bones["Spine"].rotation_euler[0] = flex
                 rig.pose.bones["Chest"].rotation_euler[0] = -flex * (0.70 if species == "rabbit" else 0.56)
@@ -767,8 +809,15 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                 rig.pose.bones["Spine"].rotation_euler[0] = (-0.44 if species == "rabbit" else -0.28) * curve
                 for suffix in ("LH", "RH"):
                     rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = (1.02 if species == "rabbit" else 0.78) * curve
-                    rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = (-0.72 if species == "rabbit" else -0.50) * curve
-                for name in ("Spine", "Leg_LH", "Leg_RH", "Paw_LH", "Paw_RH"):
+                    if species == "rabbit":
+                        rig.pose.bones[f"Lower_{suffix}"].rotation_euler[0] = flex_signs[suffix] * 0.82 * curve
+                        rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = -flex_signs[suffix] * 0.42 * curve
+                    else:
+                        rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = -0.50 * curve
+                keyed_skill_bones = ["Spine", "Leg_LH", "Leg_RH", "Paw_LH", "Paw_RH"]
+                if species == "rabbit":
+                    keyed_skill_bones.extend(["Lower_LH", "Lower_RH"])
+                for name in keyed_skill_bones:
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
                 if species == "wolf":
                     rig.pose.bones["Neck"].rotation_euler[0] = -0.22 * curve
@@ -786,6 +835,9 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                 rig.pose.bones["Head"].rotation_euler[0] = 0.30 * curve
                 rig.pose.bones["Neck"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Neck")
                 rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+                if species == "rabbit":
+                    rig.pose.bones["Jaw"].rotation_euler[0] = -0.055 * curve * (1.0 - abs(math.sin(frame * 0.42)))
+                    rig.pose.bones["Jaw"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Jaw")
                 if species == "wolf":
                     rig.pose.bones["Jaw"].rotation_euler[0] = -0.16 * (1.0 - abs(math.sin(frame * 0.42))) * curve
                     rig.pose.bones["Jaw"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Jaw")
@@ -803,6 +855,9 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                 rig.pose.bones["Tail"].rotation_euler[1] = (0.035 if species == "rabbit" else 0.11) * curve
                 for name in ("Ear_L", "Ear_R", "Tail"):
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+                if species == "rabbit":
+                    rig.pose.bones["TailTip"].rotation_euler[1] = 0.065 * curve
+                    rig.pose.bones["TailTip"].keyframe_insert(data_path="rotation_euler", frame=frame, group="TailTip")
         action.use_fake_user = True
     rig.animation_data.action = bpy.data.actions["idle"]
 

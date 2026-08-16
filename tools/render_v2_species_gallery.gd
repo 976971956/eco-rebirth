@@ -43,15 +43,15 @@ func _render_gallery() -> void:
 	var all_ok := true
 	for group_index in range(GALLERY_GROUPS.size()):
 		var group_suffix := char(97 + group_index)
-		var idle_output := "res://docs/images/v50-v3-species-gallery-%s-idle.png" % group_suffix
-		var move_output := "res://docs/images/v50-v3-species-gallery-%s-move.png" % group_suffix
+		var idle_output := "res://docs/images/v53-v4-species-gallery-%s-idle.png" % group_suffix
+		var move_output := "res://docs/images/v53-v4-species-gallery-%s-move.png" % group_suffix
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, idle_output, "idle") and all_ok
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, move_output, "locomotion") and all_ok
 	if all_ok:
-		print("V3_SPECIES_GALLERY_OK: 30 species / 12 screenshots / idle + locomotion")
+		print("V4_SPECIES_GALLERY_OK: 30 species / 12 screenshots / idle + locomotion")
 		quit(0)
 	else:
-		push_error("无法保存 V3 三十物种验收图")
+		push_error("无法保存 V4 三十物种验收图")
 		quit(1)
 
 
@@ -61,7 +61,7 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 	var game_stub := ShowcaseGame.new()
 	scene.add_child(game_stub)
 	_build_environment(scene, group_index)
-	var x_positions := [7.2, 3.6, 0.0, -3.6, -7.2]
+	var x_positions := [6.6, 3.3, 0.0, -3.3, -6.6]
 	for index in range(species_group.size()):
 		var species_id := str(species_group[index])
 		var actor: EcoActor = ActorScript.new()
@@ -77,11 +77,11 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 			actor.external_animation_player.seek(0.38 if animation_name == "locomotion" else 0.16, true)
 		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.05, 0.0), 26)
 	var pose_title := "移动动作定格" if animation_name == "locomotion" else "静止轮廓"
-	_add_label(scene, "Blender V3 · 三十物种 Hero · %s · 第 %d/6 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 36)
+	_add_label(scene, "Blender V4 · 三段四肢 / 三段翼 / 长体波动 · %s · 第 %d/6 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 34)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 10.2
+	camera.size = 9.35
 	camera.position = Vector3(0.0, 11.8, -22.2)
 	scene.add_child(camera)
 	camera.look_at(Vector3(0.0, 1.45, 0.0), Vector3.UP)
