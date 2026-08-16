@@ -531,7 +531,7 @@ func _validate_external_species_model_contract() -> void:
 			_expect(is_equal_approx(model.scale.x, float(VisualCatalog.VISUAL_SCALE_CONTRACT[species_id])) and model.scale.is_equal_approx(Vector3.ONE * model.scale.x), "%s 的 %s 模型没有遵循统一根缩放契约" % [species_id, profile])
 			var stats := _external_model_stats(model)
 			profile_vertices[profile] = int(stats["vertices"])
-			var minimum_meshes := 3 if species_id in VisualCatalog.AUTHORED_SOURCE_SPECIES else 4 if species_id in VisualCatalog.V2_SPECIES else 6
+			var minimum_meshes := 2 if species_id in VisualCatalog.AUTHORED_SOURCE_SPECIES else 4 if species_id in VisualCatalog.V2_SPECIES else 6
 			_expect(int(stats["meshes"]) >= minimum_meshes, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
 			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])

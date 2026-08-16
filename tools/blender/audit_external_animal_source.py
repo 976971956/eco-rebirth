@@ -15,7 +15,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit and preview an already-open Blender animal source")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument("--import-path", help="Import a generated glTF/GLB into an empty scene before auditing")
     return parser.parse_args(argv)
+
+
+def import_generated_asset(import_path: str) -> None:
+    source = Path(import_path).resolve()
+    if not source.is_file():
+        raise RuntimeError(f"generated asset does not exist: {source}")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=str(source))
 
 
 def triangulated_count(mesh: bpy.types.Mesh) -> int:
@@ -59,6 +68,15 @@ def audit() -> dict[str, object]:
                 "vertex_groups": len(obj.vertex_groups),
                 "vertex_group_names": [group.name for group in obj.vertex_groups],
                 "armature_modifiers": [modifier.object.name if modifier.object else "" for modifier in obj.modifiers if modifier.type == "ARMATURE"],
+                "modifiers": [
+                    {
+                        "name": modifier.name,
+                        "type": modifier.type,
+                        "show_viewport": modifier.show_viewport,
+                        "show_render": modifier.show_render,
+                    }
+                    for modifier in obj.modifiers
+                ],
                 "dimensions": [round(value, 5) for value in obj.dimensions],
                 "location": [round(value, 5) for value in obj.location],
                 "rotation_euler": [round(value, 5) for value in obj.rotation_euler],
@@ -215,6 +233,8 @@ def render_previews(output_dir: Path, asset_name: str) -> list[str]:
 
 def main() -> None:
     args = parse_args()
+    if args.import_path:
+        import_generated_asset(args.import_path)
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     report = audit()

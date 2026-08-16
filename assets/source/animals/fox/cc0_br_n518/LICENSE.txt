@@ -1,0 +1,33 @@
+Rigged red fox source asset
+===========================
+
+Title: Fox
+Author: br-n518
+Source page: https://opengameart.org/content/fox-0
+Original download: https://opengameart.org/sites/default/files/fox_source_v3.zip
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-16
+Original archive SHA-256: 9faa5b363e003363d7cb4ad32c8ceae70ed3bb4b4e73afc249e0acd9be2787a3
+
+Checked-in source SHA-256
+------------------------
+
+- fox.blend: 88bd013a69da6125337f0a7ca6f74a9c5b445e9ff387c0c7c8c05b0ea4ad4374
+- fox_diffuse.png: c400f07c58d1fec5725e5870a83ba60f076196fd9581b619e6b085b330f51a6c
+- fox_normal.png: 86762291f34ce0c626286a95bca321a58dc539e384c6a5514888d0bd1eb1d7dd
+
+Eco Rebirth modifications
+-------------------------
+
+- Applied the source mirror safely and rebuilt its legacy material as a
+  Godot-compatible PBR coat from the original UV diffuse and normal maps.
+- Corrected head/tail length, rib-cage mass, waist, haunches and brush-tail
+  volume while preserving the authored connected topology.
+- Retargeted the source weights to the project's 22-bone runtime contract.
+- Added eight original gameplay animation clips and two Godot skill sockets.
+- Added separate Hero and Mobile subdivision and texture profiles.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.
