@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.48 发布候选校验通过：剩余 29 种 V4 三段四肢/三段翼/长体波动、30 种 Hero/Mobile 模型、移动端预算与三端发布契约正常")
+		print("[release] V1.49 发布候选校验通过：剩余 29 种 V5 近写实解剖/面部/耳足/贴体纹理、八态动作、移动端预算与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.48.0\"") and presets.contains("application/short_version=\"1.48.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=580") and presets.contains("application/version=\"580\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.48.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.49.0\"") and presets.contains("application/short_version=\"1.49.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=590") and presets.contains("application/version=\"590\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.49.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -541,6 +541,10 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["lod_meshes"]) == int(stats["meshes"]), "%s 的 %s 网格没有完整配置自动可见距离 LOD" % [species_id, profile])
 			_expect(int(stats["detail_lod_meshes"]) > 0, "%s 的 %s 没有可独立裁剪的远景细节层" % [species_id, profile])
 			_expect(int(stats["organic_body_islands"]) == 1, "%s 的 %s OrganicBodyV2 不是单一连通体，足、耳或尾可能脱离躯干" % [species_id, profile])
+			if species_id != "wolf":
+				_expect(int(stats["near_realistic_face_details"]) >= 2, "%s 的 %s 没有 V5 缩小眼部、鼻口或眼睑结构" % [species_id, profile])
+			if species_id in ["zebra", "tiger", "lynx", "cheetah", "hyena", "owl", "snake", "crocodile"]:
+				_expect(int(stats["flush_pattern_bodies"]) == 1, "%s 的 %s 条纹、斑点或鳞区没有作为贴体材质区域输出" % [species_id, profile])
 			if species_id in ["owl", "eagle", "elephant", "turtle"]:
 				_expect(int(stats["silhouette_lod_meshes"]) > 0, "%s 的 %s 翼、长鼻或主甲壳被错分为短距离细节" % [species_id, profile])
 			if species_id in VisualCatalog.SKELETAL_SPECIES:
@@ -558,6 +562,9 @@ func _validate_external_species_model_contract() -> void:
 						if species_id != "wolf":
 							_expect(int(stats["bones"]) == 22, "%s 的 %s 模型不是 V4 22 骨地面动物契约" % [species_label, profile])
 							_expect(int(stats["three_segment_limb_chains"]) == 4, "%s 的 %s 模型缺少上肢、下肢、足部三段式骨链" % [species_label, profile])
+							_expect(int(stats["realistic_foot_details"]) >= 4, "%s 的 %s 模型缺少四足或分蹄轮廓" % [species_label, profile])
+							if species_id != "turtle":
+								_expect(int(stats["authored_ear_meshes"]) >= 2, "%s 的 %s 仍使用球体耳朵，未导入 V5 渐薄耳廓" % [species_label, profile])
 						_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [species_label, profile])
 					else:
 						_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
@@ -575,6 +582,7 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [flight_label, profile])
 				_expect(int(stats["skill_sockets"]) == 3, "%s 的 %s 模型缺少喙部或双翼技能挂点" % [flight_label, profile])
 				_expect((stats["pbr_slots"] as Dictionary).size() >= 3, "%s 的 %s 缺少羽毛、眼部或喙爪 PBR 材质槽" % [flight_label, profile])
+				_expect(int(stats["realistic_foot_details"]) >= 4, "%s %s lacks independently modelled talon toes" % [flight_label, profile])
 			elif species_id in VisualCatalog.LONG_BODY_RIG_SPECIES:
 				var long_label := Catalog.display_name(species_id)
 				var expected_long_bones := 10 if species_id == "snake" else 22
@@ -582,6 +590,7 @@ func _validate_external_species_model_contract() -> void:
 				_expect(int(stats["bones"]) == expected_long_bones, "%s 的 %s 模型不是 V4 长体骨骼契约" % [long_label, profile])
 				_expect(int(stats["axial_detail_bones"]) == 2, "%s 的 %s 模型缺少后脊与胸段波动骨" % [long_label, profile])
 				if species_id == "crocodile":
+					_expect(int(stats["realistic_foot_details"]) >= 4, "%s %s lacks four grounded foot silhouettes" % [long_label, profile])
 					_expect(int(stats["three_segment_limb_chains"]) == 4, "%s 的 %s 模型缺少四条低伏三段式腿骨" % [long_label, profile])
 				_expect(int(stats["continuous_coat_skinned_meshes"]) == 1 and int(stats["skinned_meshes"]) >= 1, "%s 的 %s 模型没有连续蒙皮主躯干" % [long_label, profile])
 				_expect(int(stats["weighted_vertices"]) > 100, "%s 的 %s 连续蒙皮顶点不足" % [long_label, profile])
@@ -1011,6 +1020,10 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"axial_detail_bones": 0,
 		"silhouette_lod_meshes": 0,
 		"required_actions": 0,
+		"near_realistic_face_details": 0,
+		"authored_ear_meshes": 0,
+		"realistic_foot_details": 0,
+		"flush_pattern_bodies": 0,
 	}
 	_accumulate_external_model_stats(root_node, stats)
 	return stats
@@ -1018,6 +1031,12 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 
 func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 	var node_name := str(node.name)
+	if "V5Eye" in node_name or "V5Nose" in node_name or "V5Nostril" in node_name or "V5UpperEyelid" in node_name or "V5RabbitEye" in node_name or "V5RabbitNose" in node_name or "V5RabbitUpperEyelid" in node_name or "V5DeerEye" in node_name or "V5DeerNose" in node_name or "V5DeerUpperEyelid" in node_name or "V5LowerBeak" in node_name or "V5EyeBrow" in node_name:
+		stats["near_realistic_face_details"] = int(stats["near_realistic_face_details"]) + 1
+	if "V5EarSilhouette" in node_name or "V5RabbitEarSilhouette" in node_name or "V5DeerEarSilhouette" in node_name or "V5EarFanSilhouette" in node_name:
+		stats["authored_ear_meshes"] = int(stats["authored_ear_meshes"]) + 1
+	if "V5FootDetail" in node_name or "V5RabbitSnowshoeDetail" in node_name or "DeerHoofDetail" in node_name or "CrocodileWebbedFoot" in node_name or "TalonToeDetail" in node_name:
+		stats["realistic_foot_details"] = int(stats["realistic_foot_details"]) + 1
 	if node_name in SkeletonRig.SKILL_SOCKET_NAMES or node_name in FlightRig.SKILL_SOCKET_NAMES or node_name in CrocodileRig.SKILL_SOCKET_NAMES:
 		stats["skill_sockets"] = int(stats["skill_sockets"]) + 1
 	for prefix in ["LegPivot_", "EarPivot_", "WingPivot_", "TailPivot"]:
@@ -1059,6 +1078,8 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 				stats["silhouette_lod_meshes"] = int(stats["silhouette_lod_meshes"]) + 1
 		var mesh := mesh_instance.mesh
 		if mesh != null:
+			if "OrganicBodyV2" in node_name and mesh.get_surface_count() >= 2:
+				stats["flush_pattern_bodies"] = int(stats["flush_pattern_bodies"]) + 1
 			var source_connected := "SourceConnected" in node_name
 			if "OrganicBodyV2" in node_name and source_connected:
 				# Real UV-mapped GLBs duplicate vertices along UV/tangent seams. The

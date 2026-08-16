@@ -524,6 +524,11 @@ func _bind_external_motion_nodes(root: Node) -> void:
 func _configure_external_baked_animations() -> void:
 	if not is_instance_valid(external_animation_player):
 		return
+	# Imported skeleton clips are the dominant visual CPU cost in the 100-actor
+	# final level. Drive them from the existing distance-based visual LOD tick so
+	# distant AI advance by their accumulated interval instead of evaluating every
+	# idle frame. Gameplay movement and collision remain on the physics tick.
+	external_animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	for action_name in ["idle", "locomotion", "sprint", "eat", "glide", "flap", "swim"]:
 		if not external_animation_player.has_animation(action_name):
 			continue
@@ -531,6 +536,7 @@ func _configure_external_baked_animations() -> void:
 		if animation != null:
 			animation.loop_mode = Animation.LOOP_LINEAR
 	_play_external_baked_animation("idle", 0.0)
+	external_animation_player.advance(0.0)
 
 
 static func baked_action_for_state(state: String, speed_ratio: float) -> String:
@@ -4322,6 +4328,9 @@ func die(killer: EcoActor) -> void:
 	died.emit(self, killer)
 	if is_instance_valid(external_animation_player):
 		external_animation_state = "dead"
+		# Dead actors leave the visual LOD tick, so let the short non-looping death
+		# clip finish automatically before the existing hide/free tween completes.
+		external_animation_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
 		_play_external_baked_animation("dead", 0.0)
 	elif SkeletonRig.supports(species_id) and is_instance_valid(external_skeleton):
 		external_animation_state = "dead"
@@ -4366,25 +4375,25 @@ func _update_visual_lod(delta: float) -> void:
 		var player_distance := global_position.distance_to(game_player.global_position)
 		var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
 		if quality == "low":
-			if player_distance > 42.0:
+			if player_distance > 36.0:
 				update_interval = 0.32
-			elif player_distance > 28.0:
+			elif player_distance > 22.0:
 				update_interval = 0.18
-			elif player_distance > 18.0:
+			elif player_distance > 12.0:
 				update_interval = 0.09
 		elif quality == "high":
-			if player_distance > 68.0:
+			if player_distance > 54.0:
 				update_interval = 0.18
-			elif player_distance > 48.0:
+			elif player_distance > 36.0:
 				update_interval = 0.10
-			elif player_distance > 32.0:
+			elif player_distance > 20.0:
 				update_interval = 0.05
 		else:
-			if player_distance > 56.0:
+			if player_distance > 44.0:
 				update_interval = 0.24
-			elif player_distance > 36.0:
+			elif player_distance > 28.0:
 				update_interval = 0.12
-			elif player_distance > 24.0:
+			elif player_distance > 16.0:
 				update_interval = 0.06
 	if update_interval > 0.0 and visual_lod_elapsed < update_interval:
 		return
@@ -4468,9 +4477,11 @@ func _update_visual_motion(delta: float) -> void:
 		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * 0.065 * gait_blend
 		tail_visual.rotation.y = lerp_angle(tail_visual.rotation.y, tail_swing, 1.0 - exp(-delta * 8.0))
 	if is_instance_valid(external_skeleton):
+		var baked_animation_updated := false
 		if FlightRig.supports(species_id):
 			external_animation_state = FlightRig.resolve_state(gait_blend, flight_dive_timer, external_attack_animation_timer, external_hit_animation_timer, is_airborne())
-			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+			baked_animation_updated = _play_external_baked_animation(external_animation_state, speed_ratio)
+			if not baked_animation_updated:
 				var dive_remaining := maxf(flight_dive_timer, external_attack_animation_timer)
 				var dive_progress := 1.0 - clampf(dive_remaining / FlightRig.DIVE_DURATION, 0.0, 1.0)
 				var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
@@ -4478,7 +4489,8 @@ func _update_visual_motion(delta: float) -> void:
 		elif CrocodileRig.supports(species_id):
 			var swimming: bool = game.world != null and game.world.has_method("water_depth_at") and float(game.world.water_depth_at(global_position)) > 0.01
 			external_animation_state = CrocodileRig.resolve_state(gait_blend, external_attack_animation_timer, external_skill_animation_timer, external_hit_animation_timer, swimming)
-			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+			baked_animation_updated = _play_external_baked_animation(external_animation_state, speed_ratio)
+			if not baked_animation_updated:
 				var attack_progress := 1.0 - clampf(external_attack_animation_timer / CrocodileRig.ATTACK_DURATION, 0.0, 1.0)
 				var roll_progress := 1.0 - clampf(external_skill_animation_timer / CrocodileRig.ROLL_DURATION, 0.0, 1.0)
 				var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
@@ -4493,7 +4505,8 @@ func _update_visual_motion(delta: float) -> void:
 				dead,
 				species_id
 			)
-			if not _play_external_baked_animation(external_animation_state, speed_ratio):
+			baked_animation_updated = _play_external_baked_animation(external_animation_state, speed_ratio)
+			if not baked_animation_updated:
 				var action_timer := external_skill_animation_timer if external_animation_state == "skill" else external_attack_animation_timer
 				var action_duration := SkeletonRig.skill_duration(species_id) if external_animation_state == "skill" else SkeletonRig.ATTACK_DURATION
 				var attack_progress := 1.0 - action_timer / action_duration
@@ -4510,6 +4523,8 @@ func _update_visual_motion(delta: float) -> void:
 					delta,
 					species_id
 				)
+		if baked_animation_updated and is_instance_valid(external_animation_player):
+			external_animation_player.advance(delta)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height

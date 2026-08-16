@@ -111,9 +111,60 @@ V3_SPECIES_PROFILE = {
 }
 
 
+# V5 is the real-time near-realistic surface/anatomy pass.  The values are not
+# interchangeable family presets: every animal gets its own rib cage, waist,
+# pelvis, skull and muzzle proportions.  This keeps the existing mobile-safe
+# rig contract while removing the "same toy with different horns" silhouette.
+V5_FAMILY_ANATOMY = {
+    "canid": dict(rib=0.96, waist=0.78, pelvis=0.88, belly=0.88, skull_width=0.90, skull_height=0.88, skull_length=1.00, muzzle_width=0.72, muzzle_height=0.68, muzzle_length=1.05, eye_scale=0.060, ear_width=0.42, muscle=0.82, foot_width=0.84),
+    "felid": dict(rib=1.00, waist=0.74, pelvis=0.96, belly=0.84, skull_width=1.00, skull_height=0.92, skull_length=0.92, muzzle_width=0.82, muzzle_height=0.70, muzzle_length=0.86, eye_scale=0.064, ear_width=0.46, muscle=0.88, foot_width=0.94),
+    "ungulate": dict(rib=0.94, waist=0.72, pelvis=0.84, belly=0.82, skull_width=0.82, skull_height=0.82, skull_length=1.04, muzzle_width=0.72, muzzle_height=0.64, muzzle_length=1.12, eye_scale=0.052, ear_width=0.40, muscle=0.72, foot_width=0.62),
+    "heavy": dict(rib=1.02, waist=0.92, pelvis=1.00, belly=0.98, skull_width=1.00, skull_height=0.92, skull_length=1.00, muzzle_width=0.94, muzzle_height=0.78, muzzle_length=1.00, eye_scale=0.048, ear_width=0.42, muscle=0.90, foot_width=0.96),
+    "primate": dict(rib=1.06, waist=0.76, pelvis=0.88, belly=0.86, skull_width=1.02, skull_height=1.08, skull_length=0.82, muzzle_width=0.84, muzzle_height=0.68, muzzle_length=0.72, eye_scale=0.054, ear_width=0.50, muscle=0.94, foot_width=1.06),
+    "chelonian": dict(rib=1.04, waist=1.00, pelvis=1.02, belly=0.74, skull_width=0.92, skull_height=0.72, skull_length=1.00, muzzle_width=0.82, muzzle_height=0.62, muzzle_length=0.88, eye_scale=0.050, ear_width=0.0, muscle=0.72, foot_width=1.08),
+}
+
+
+V5_SPECIES_ANATOMY = {
+    "fox": dict(rib=0.88, waist=0.62, pelvis=0.76, belly=0.76, skull_width=0.82, skull_height=0.84, muzzle_width=0.62, muzzle_height=0.56, muzzle_length=1.16, eye_scale=0.056, ear_width=0.46, muscle=0.70, foot_width=0.76),
+    "bear": dict(rib=1.10, waist=1.00, pelvis=1.06, belly=1.08, skull_width=1.10, skull_height=0.98, muzzle_width=0.88, muzzle_height=0.72, muzzle_length=0.88, eye_scale=0.040, ear_width=0.46, muscle=1.08, foot_width=1.12),
+    "boar": dict(rib=1.08, waist=0.90, pelvis=0.88, belly=0.92, skull_width=0.86, skull_height=0.72, skull_length=1.08, muzzle_width=0.78, muzzle_height=0.66, muzzle_length=1.28, eye_scale=0.042, ear_width=0.42, muscle=0.98, foot_width=0.68),
+    "raccoon": dict(rib=0.92, waist=0.80, pelvis=0.96, belly=0.90, skull_width=1.02, skull_height=0.94, muzzle_width=0.72, muzzle_height=0.62, muzzle_length=0.82, eye_scale=0.058, ear_width=0.52, muscle=0.76, foot_width=1.04),
+    "porcupine": dict(rib=1.00, waist=0.94, pelvis=1.08, belly=0.90, skull_width=0.76, skull_height=0.70, muzzle_width=0.62, muzzle_height=0.56, muzzle_length=1.08, eye_scale=0.044, ear_width=0.38, muscle=0.78, foot_width=0.86),
+    "capybara": dict(rib=1.02, waist=0.96, pelvis=1.02, belly=1.00, skull_width=1.04, skull_height=1.00, muzzle_width=1.02, muzzle_height=0.82, muzzle_length=0.92, eye_scale=0.040, ear_width=0.42, muscle=0.84, foot_width=0.90),
+    "otter": dict(rib=0.82, waist=0.70, pelvis=0.88, belly=0.76, skull_width=1.02, skull_height=0.90, muzzle_width=0.82, muzzle_height=0.58, muzzle_length=0.82, eye_scale=0.050, ear_width=0.40, muscle=0.68, foot_width=1.12),
+    "lynx": dict(rib=0.92, waist=0.72, pelvis=1.00, belly=0.86, skull_width=1.08, skull_height=1.00, muzzle_width=0.78, muzzle_height=0.66, muzzle_length=0.72, eye_scale=0.058, ear_width=0.44, muscle=0.84, foot_width=1.06),
+    "goat": dict(rib=0.90, waist=0.70, pelvis=0.82, belly=0.80, skull_width=0.78, skull_height=0.82, muzzle_width=0.68, muzzle_height=0.60, muzzle_length=1.08, eye_scale=0.050, ear_width=0.42, muscle=0.72, foot_width=0.62),
+    "wolverine": dict(rib=1.08, waist=0.90, pelvis=1.02, belly=0.94, skull_width=1.06, skull_height=0.92, muzzle_width=0.84, muzzle_height=0.68, muzzle_length=0.86, eye_scale=0.044, ear_width=0.48, muscle=1.00, foot_width=1.16),
+    "bison": dict(rib=1.18, waist=0.84, pelvis=0.90, belly=0.96, skull_width=1.08, skull_height=0.92, muzzle_width=0.92, muzzle_height=0.72, muzzle_length=1.04, eye_scale=0.040, ear_width=0.40, muscle=1.04, foot_width=0.70),
+    "zebra": dict(rib=0.94, waist=0.68, pelvis=0.86, belly=0.78, skull_width=0.76, skull_height=0.78, muzzle_width=0.66, muzzle_height=0.56, muzzle_length=1.18, eye_scale=0.048, ear_width=0.40, muscle=0.72, foot_width=0.58),
+    "elephant": dict(rib=1.10, waist=0.98, pelvis=1.04, belly=1.10, skull_width=1.08, skull_height=1.00, skull_length=0.86, muzzle_width=0.74, muzzle_height=0.68, muzzle_length=0.72, eye_scale=0.032, ear_width=0.0, muscle=1.02, foot_width=1.18),
+    "tiger": dict(rib=1.04, waist=0.68, pelvis=1.02, belly=0.82, skull_width=1.06, skull_height=0.92, muzzle_width=0.84, muzzle_height=0.68, muzzle_length=0.82, eye_scale=0.056, ear_width=0.46, muscle=0.98, foot_width=1.00),
+    "monkey": dict(rib=0.92, waist=0.70, pelvis=0.90, belly=0.82, skull_width=1.02, skull_height=1.10, skull_length=0.76, muzzle_width=0.82, muzzle_height=0.62, muzzle_length=0.64, eye_scale=0.052, ear_width=0.52, muscle=0.74, foot_width=1.14),
+    "moose": dict(rib=1.00, waist=0.72, pelvis=0.84, belly=0.86, skull_width=0.82, skull_height=0.82, muzzle_width=0.78, muzzle_height=0.66, muzzle_length=1.24, eye_scale=0.044, ear_width=0.42, muscle=0.78, foot_width=0.62),
+    "turtle": dict(rib=1.08, waist=1.04, pelvis=1.08, belly=0.66, skull_width=0.86, skull_height=0.70, muzzle_width=0.76, muzzle_height=0.58, muzzle_length=0.82, eye_scale=0.046, muscle=0.68, foot_width=1.16),
+    "cheetah": dict(rib=0.82, waist=0.56, pelvis=0.88, belly=0.70, skull_width=0.86, skull_height=0.82, muzzle_width=0.72, muzzle_height=0.56, muzzle_length=0.82, eye_scale=0.058, ear_width=0.44, muscle=0.70, foot_width=0.82),
+    "rhino": dict(rib=1.10, waist=0.96, pelvis=1.04, belly=1.02, skull_width=0.94, skull_height=0.78, muzzle_width=1.00, muzzle_height=0.78, muzzle_length=1.24, eye_scale=0.032, ear_width=0.42, muscle=1.02, foot_width=1.10),
+    "gorilla": dict(rib=1.20, waist=0.78, pelvis=0.90, belly=0.92, skull_width=1.12, skull_height=1.04, skull_length=0.78, muzzle_width=1.02, muzzle_height=0.78, muzzle_length=0.68, eye_scale=0.042, ear_width=0.46, muscle=1.16, foot_width=1.22),
+    "hippo": dict(rib=1.12, waist=1.02, pelvis=1.10, belly=1.10, skull_width=1.18, skull_height=0.82, skull_length=1.08, muzzle_width=1.24, muzzle_height=0.82, muzzle_length=1.10, eye_scale=0.034, ear_width=0.42, muscle=1.02, foot_width=1.18),
+    "hyena": dict(rib=1.08, waist=0.70, pelvis=0.80, belly=0.78, skull_width=1.00, skull_height=0.88, muzzle_width=0.82, muzzle_height=0.66, muzzle_length=1.06, eye_scale=0.050, ear_width=0.48, muscle=0.84, foot_width=0.88),
+    "lion": dict(rib=1.08, waist=0.72, pelvis=0.98, belly=0.86, skull_width=1.12, skull_height=1.00, muzzle_width=0.88, muzzle_height=0.72, muzzle_length=0.82, eye_scale=0.052, ear_width=0.44, muscle=1.00, foot_width=1.02),
+}
+
+
+V5_SURFACE = {
+    "canid": dict(coat_roughness=0.86, accent_roughness=0.82, detail_roughness=0.70),
+    "felid": dict(coat_roughness=0.84, accent_roughness=0.80, detail_roughness=0.68),
+    "ungulate": dict(coat_roughness=0.82, accent_roughness=0.78, detail_roughness=0.62),
+    "heavy": dict(coat_roughness=0.80, accent_roughness=0.74, detail_roughness=0.58),
+    "primate": dict(coat_roughness=0.84, accent_roughness=0.72, detail_roughness=0.58),
+    "chelonian": dict(coat_roughness=0.72, accent_roughness=0.64, detail_roughness=0.50),
+}
+
+
 def parse_args() -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    parser = argparse.ArgumentParser(description="Build the remaining Eco Rebirth V4 species")
+    parser = argparse.ArgumentParser(description="Build the remaining Eco Rebirth V5 near-realistic species")
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--species", nargs="*", choices=REMAINING_SPECIES)
     return parser.parse_args(argv)
@@ -145,7 +196,165 @@ def pbr_material(name: str, color: str, roughness: float, metallic: float = 0.0)
         principled.inputs["Base Color"].default_value = rgba(color)
         principled.inputs["Roughness"].default_value = roughness
         principled.inputs["Metallic"].default_value = metallic
+        if "Specular IOR Level" in principled.inputs:
+            principled.inputs["Specular IOR Level"].default_value = 0.32 if "eye" not in name else 0.50
+    material["eco_pbr_surface"] = "v5_near_realistic"
+    material["eco_roughness"] = roughness
     return material
+
+
+def authored_mesh(
+    name: str,
+    vertices_godot: list[tuple[float, float, float]],
+    faces: list[tuple[int, ...]],
+    materials: list[bpy.types.Material],
+    material_indices: list[int] | None = None,
+) -> bpy.types.Object:
+    """Build a compact authored silhouette instead of another inflated sphere."""
+    mesh = bpy.data.meshes.new(f"{name}Mesh")
+    mesh.from_pydata([g2b(vertex) for vertex in vertices_godot], [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    for material in materials:
+        obj.data.materials.append(material)
+    for index, polygon in enumerate(obj.data.polygons):
+        polygon.use_smooth = True
+        if material_indices is not None and index < len(material_indices):
+            polygon.material_index = material_indices[index]
+    return obj
+
+
+def ear_leaf(
+    name: str,
+    base: tuple[float, float, float],
+    tip: tuple[float, float, float],
+    width: float,
+    thickness: float,
+    outer: bpy.types.Material,
+    inner: bpy.types.Material,
+    hero: bool,
+) -> list[bpy.types.Object]:
+    """Create a tapered mammal pinna with a recessed inner panel."""
+    base_v = Vector(base)
+    tip_v = Vector(tip)
+    middle = base_v.lerp(tip_v, 0.56)
+    centres = (base_v, middle, tip_v)
+    widths = (width * 0.78, width, width * 0.10)
+    vertices: list[tuple[float, float, float]] = []
+    for depth in (-thickness, thickness):
+        for centre, half_width in zip(centres, widths):
+            vertices.append((centre.x - half_width, centre.y, centre.z + depth))
+            vertices.append((centre.x + half_width, centre.y, centre.z + depth))
+    faces = [
+        (0, 2, 3, 1), (2, 4, 5, 3),
+        (7, 9, 8, 6), (9, 11, 10, 8),
+        (0, 6, 8, 2), (2, 8, 10, 4),
+        (1, 3, 9, 7), (3, 5, 11, 9),
+        (0, 1, 7, 6), (4, 10, 11, 5),
+    ]
+    ear = authored_mesh(name, vertices, faces, [outer], [0] * len(faces))
+    bevel = ear.modifiers.new("PinnaEdge", "BEVEL")
+    bevel.width = max(thickness * 0.65, 0.008)
+    bevel.segments = 2 if hero else 1
+    bpy.context.view_layer.objects.active = ear
+    bpy.ops.object.modifier_apply(modifier=bevel.name)
+    result = [ear]
+    if hero:
+        inset_base = base_v.lerp(tip_v, 0.13)
+        inset_tip = base_v.lerp(tip_v, 0.86)
+        inset_mid = inset_base.lerp(inset_tip, 0.56)
+        panel_vertices = [
+            (inset_base.x - width * 0.42, inset_base.y, inset_base.z - thickness * 1.10),
+            (inset_base.x + width * 0.42, inset_base.y, inset_base.z - thickness * 1.10),
+            (inset_mid.x + width * 0.50, inset_mid.y, inset_mid.z - thickness * 1.10),
+            (inset_tip.x, inset_tip.y, inset_tip.z - thickness * 1.10),
+            (inset_mid.x - width * 0.50, inset_mid.y, inset_mid.z - thickness * 1.10),
+        ]
+        panel = authored_mesh(f"{name}InnerDetail", panel_vertices, [(0, 1, 2, 3, 4)], [inner], [0])
+        result.append(panel)
+    return result
+
+
+def elephant_ear_fan(
+    name: str,
+    side: float,
+    centre: tuple[float, float, float],
+    height: float,
+    outer: bpy.types.Material,
+    inner: bpy.types.Material,
+    hero: bool,
+) -> list[bpy.types.Object]:
+    """African-elephant ear with a broad, thin fan rather than an ellipsoid."""
+    x, y, z = centre
+    outward = side * height * 0.72
+    vertices = [
+        (x, y + height * 0.35, z),
+        (x + outward * 0.72, y + height * 0.42, z + height * 0.08),
+        (x + outward, y, z + height * 0.13),
+        (x + outward * 0.78, y - height * 0.48, z + height * 0.06),
+        (x + outward * 0.28, y - height * 0.58, z - height * 0.04),
+    ]
+    back = [(vx, vy, vz + 0.035) for vx, vy, vz in vertices]
+    faces = [(0, 1, 2, 3, 4), (9, 8, 7, 6, 5)]
+    for index in range(5):
+        next_index = (index + 1) % 5
+        faces.append((index, next_index, 5 + next_index, 5 + index))
+    fan = authored_mesh(name, vertices + back, faces, [outer], [0] * len(faces))
+    result = [fan]
+    if hero:
+        inset = [tuple(Vector(centre).lerp(Vector(vertex), 0.78)) for vertex in vertices]
+        inset = [(vx, vy, vz - 0.008) for vx, vy, vz in inset]
+        result.append(authored_mesh(f"{name}InnerDetail", inset, [(0, 1, 2, 3, 4)], [inner], [0]))
+    return result
+
+
+def append_material(obj: bpy.types.Object, material: bpy.types.Material) -> int:
+    for index, current in enumerate(obj.data.materials):
+        if current == material:
+            return index
+    obj.data.materials.append(material)
+    return len(obj.data.materials) - 1
+
+
+def paint_ground_surface(
+    obj: bpy.types.Object,
+    species: str,
+    cfg: dict,
+    layout: dict,
+    accent: bpy.types.Material,
+    dark: bpy.types.Material,
+) -> None:
+    """Assign flush coat markings to torso polygons; never inflate spots/stripes."""
+    accent_index = append_material(obj, accent)
+    dark_index = append_material(obj, dark)
+    features = cfg["features"]
+    body_y = float(layout["body_y"])
+    for polygon in obj.data.polygons:
+        if not polygon.vertices:
+            continue
+        centre_b = sum((obj.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        x, y, z = centre_b.x, centre_b.z, centre_b.y
+        normalized_z = z / max(float(cfg["length"]), 0.2)
+        normalized_x = abs(x) / max(float(cfg["width"]), 0.2)
+        material_index = 0
+        underside = y < body_y - float(cfg["height"]) * 0.42 and z > layout["neck_z"] + cfg["head"] * 0.2
+        if underside and cfg["family"] not in ("primate", "chelonian"):
+            material_index = accent_index
+        if "stripes" in features:
+            wave = math.sin(normalized_z * math.pi * (8.6 if species == "tiger" else 10.8) + y * 2.8 + normalized_x * 1.9)
+            if abs(wave) > (0.67 if species == "tiger" else 0.54) and y > body_y - cfg["height"] * 0.34:
+                material_index = dark_index
+        elif "spots" in features:
+            spot_field = math.sin(x * 18.7 + z * 8.9) * math.cos(y * 15.1 - z * 5.7)
+            if spot_field > (0.48 if species == "cheetah" else 0.56) and normalized_x > 0.34:
+                material_index = dark_index
+        if "side_band" in features and normalized_x > 0.52 and y > body_y - cfg["height"] * 0.15:
+            material_index = accent_index
+        if "silverback" in features and y > body_y + cfg["height"] * 0.16 and z > layout["front_z"] * 0.25:
+            material_index = accent_index
+        polygon.material_index = material_index
+    obj["eco_surface_pattern"] = "v5_flush_material_regions"
 
 
 def metaball_mesh(name: str, elements: list[tuple[tuple[float, float, float], tuple[float, float, float], float]], material: bpy.types.Material, hero: bool) -> bpy.types.Object:
@@ -362,6 +571,10 @@ def config_for(species: str) -> dict:
     profile = dict(V3_FAMILY_PROFILE[result["family"]])
     profile.update(V3_SPECIES_PROFILE.get(species, {}))
     result["v3"] = profile
+    anatomy = dict(V5_FAMILY_ANATOMY[result["family"]])
+    anatomy.update(V5_SPECIES_ANATOMY.get(species, {}))
+    result["v5"] = anatomy
+    result["surface"] = dict(V5_SURFACE[result["family"]])
     return result
 
 
@@ -500,7 +713,8 @@ def build_deer_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, fl
     bpy.ops.object.mode_set(mode="OBJECT")
     rig["eco_species"] = "deer"
     rig["eco_rig_family"] = "ungulate_v3"
-    rig["anatomy_profile"] = "v4_three_segment_limbs_articulated_jaw_tail"
+    rig["anatomy_profile"] = "v5_near_realistic_species_anatomy_three_segment_limbs"
+    rig["surface_profile"] = "v5_flush_markings_facial_landmarks"
     rig["limb_segments"] = 3
     return rig, anchors
 
@@ -533,10 +747,10 @@ def skin_deer_body(body: bpy.types.Object, rig: bpy.types.Object, anchors: dict[
 
 def build_deer_parts(hero: bool, rig: bpy.types.Object, anchors: dict) -> list[bpy.types.Object]:
     """AI-art-directed deer benchmark: species-specific silhouette, anatomy and details."""
-    coat = pbr_material("deer_coat_pbr", "#96592f", 0.82)
-    accent = pbr_material("deer_accent_pbr", "#d7b47c", 0.78)
-    dark = pbr_material("deer_detail_pbr", "#3b291f", 0.54)
-    eye = pbr_material("deer_eye_pbr", "#17100c", 0.10)
+    coat = pbr_material("deer_coat_pbr", "#96592f", 0.86)
+    accent = pbr_material("deer_accent_pbr", "#d7b47c", 0.82)
+    dark = pbr_material("deer_detail_pbr", "#3b291f", 0.62)
+    eye = pbr_material("deer_eye_pbr", "#17100c", 0.08)
     horn = pbr_material("deer_keratin_pbr", "#8d7352", 0.70)
 
     body_elements = [
@@ -551,7 +765,8 @@ def build_deer_parts(hero: bool, rig: bpy.types.Object, anchors: dict) -> list[b
         ((0.0, 2.16, -1.79), (0.25, 0.25, 0.38), 2.18),
         ((0.0, 2.10, -2.04), (0.19, 0.17, 0.27), 2.12),
     ]
-    body = metaball_mesh("DeerOrganicBodyV2", body_elements, coat, hero)
+    body = metaball_mesh("DeerOrganicBodyV2SourceConnected", body_elements, coat, hero)
+    body["eco_anatomy_contract"] = "v5_cervid_rib_waist_pelvis_skull_muzzle"
     skin_deer_body(body, rig, anchors)
     parts = [body]
 
@@ -602,7 +817,8 @@ def build_deer_parts(hero: bool, rig: bpy.types.Object, anchors: dict) -> list[b
             coat,
             f"Lower_{suffix}",
         )
-        sphere(f"DeerJoint_{suffix}", joint, (0.115, 0.125, 0.12), coat, f"Lower_{suffix}")
+        if hero:
+            sphere(f"DeerJoint_{suffix}", joint, (0.082, 0.089, 0.085), coat, f"Lower_{suffix}")
         limb(
             f"DeerMetapodial_{suffix}",
             ankle,
@@ -618,20 +834,36 @@ def build_deer_parts(hero: bool, rig: bpy.types.Object, anchors: dict) -> list[b
         sphere(
             f"DeerHoofDetail_{suffix}",
             (toe[0], 0.085, hoof_z),
-            (0.10, 0.075, 0.17),
+            (0.085, 0.065, 0.15),
             dark,
             f"Paw_{suffix}",
         )
+        if hero:
+            for digit_side in (-1.0, 1.0):
+                sphere(
+                    f"DeerSplitHoofDetail_{suffix}_{digit_side:+.0f}",
+                    (toe[0] + digit_side * 0.047, 0.072, hoof_z - 0.055),
+                    (0.042, 0.054, 0.105),
+                    dark,
+                    f"Paw_{suffix}",
+                )
 
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        ear_position = (side * 0.31, 2.49, -1.37)
-        sphere(f"DeerEar_{suffix}", ear_position, (0.12, 0.23, 0.075), coat, f"Ear_{suffix}")
+        ear_base = (side * 0.20, 2.37, -1.43)
+        ear_tip = (side * 0.40, 2.60, -1.31)
+        for ear_part in ear_leaf(f"V5DeerEarSilhouette_{suffix}", ear_base, ear_tip, 0.105, 0.018, coat, accent, hero):
+            rigid_skin(ear_part, rig, f"Ear_{suffix}")
+            parts.append(ear_part)
+        eye_pos = (side * 0.292, 2.27, -1.68)
+        sphere(f"V5DeerEyeDetail_{suffix}", eye_pos, (0.034, 0.040, 0.027), eye, "Head")
         if hero:
-            sphere(f"DeerInnerEar_{suffix}", (side * 0.325, 2.50, -1.38), (0.072, 0.17, 0.045), accent, f"Ear_{suffix}")
-        sphere(f"DeerEyeDetail_{suffix}", (side * 0.292, 2.27, -1.68), (0.050, 0.058, 0.040), eye, "Head")
+            sphere(f"V5DeerUpperEyelidDetail_{suffix}", (eye_pos[0], eye_pos[1] + 0.027, eye_pos[2] + 0.005), (0.048, 0.017, 0.035), coat, "Head")
 
     sphere("DeerMuzzlePatchDetail", (0.0, 2.10, -2.02), (0.19, 0.15, 0.24), accent, "Head")
-    sphere("DeerNoseDetail", (0.0, 2.08, -2.27), (0.15, 0.105, 0.12), dark, "Head")
+    sphere("V5DeerNoseDetail", (0.0, 2.08, -2.27), (0.13, 0.090, 0.105), dark, "Head")
+    if hero:
+        for side in (-1.0, 1.0):
+            sphere(f"V5DeerNostrilDetail_{side:+.0f}", (side * 0.065, 2.095, -2.355), (0.022, 0.017, 0.014), dark, "Head")
     sphere("DeerThroatPatchDetail", (0.0, 1.93, -1.12), (0.20, 0.34, 0.13), accent, "Neck")
     tail = ellipsoid_between("DeerTail", (0.0, 1.70, 0.84), (0.0, 1.48, 1.18), 0.15, accent, hero, 0.72)
     rigid_skin(tail, rig, "TailTip")
@@ -714,7 +946,8 @@ def build_ground_rig(species: str, cfg: dict, layout: dict) -> tuple[bpy.types.O
     bpy.ops.object.mode_set(mode="OBJECT")
     rig["eco_species"] = species
     rig["eco_rig_family"] = cfg["family"]
-    rig["anatomy_profile"] = "v4_three_segment_limbs_articulated_jaw_tail"
+    rig["anatomy_profile"] = "v5_near_realistic_species_anatomy_three_segment_limbs"
+    rig["surface_profile"] = "v5_flush_markings_facial_landmarks"
     rig["limb_segments"] = 3
     return rig, anchors
 
@@ -780,29 +1013,31 @@ def skin_v3_torso(body: bpy.types.Object, rig: bpy.types.Object, anchors: dict[s
 def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict, layout: dict) -> list[bpy.types.Object]:
     if species == "deer":
         return build_deer_parts(hero, rig, anchors)
-    coat = pbr_material(f"{species}_coat_pbr", cfg["coat"], 0.80)
-    accent = pbr_material(f"{species}_accent_pbr", cfg["accent"], 0.74)
-    dark = pbr_material(f"{species}_detail_pbr", cfg["dark"], 0.47)
-    eye = pbr_material(f"{species}_eye_pbr", cfg["eye"], 0.15)
-    horn = pbr_material(f"{species}_keratin_pbr", "#b9aa87", 0.62)
+    surface = cfg["surface"]
+    anatomy = cfg["v5"]
+    coat = pbr_material(f"{species}_coat_pbr", cfg["coat"], float(surface["coat_roughness"]))
+    accent = pbr_material(f"{species}_accent_pbr", cfg["accent"], float(surface["accent_roughness"]))
+    dark = pbr_material(f"{species}_detail_pbr", cfg["dark"], float(surface["detail_roughness"]))
+    eye = pbr_material(f"{species}_eye_pbr", cfg["eye"], 0.09)
+    horn = pbr_material(f"{species}_keratin_pbr", "#b9aa87", 0.66)
     profile = cfg["v3"]
     if cfg["family"] == "primate":
         elements = [
-            ((0.0, layout["body_y"], layout["rear_z"] * 0.62), (cfg["width"] * float(profile["rump_mass"]) * 0.88, cfg["height"] * 0.68, cfg["length"] * 0.32), 2.30),
-            ((0.0, (layout["body_y"] * 0.56 + layout["shoulder_y"] * 0.44), 0.02), (cfg["width"] * 0.86, cfg["height"] * 0.78, cfg["length"] * 0.34), 2.34),
-            ((0.0, layout["shoulder_y"] * 0.96, layout["front_z"] * 0.74), (cfg["width"] * float(profile["chest_mass"]), cfg["height"] * 0.72, cfg["length"] * 0.34), 2.34),
+            ((0.0, layout["body_y"], layout["rear_z"] * 0.62), (cfg["width"] * float(profile["rump_mass"]) * float(anatomy["pelvis"]) * 0.88, cfg["height"] * 0.68 * float(anatomy["belly"]), cfg["length"] * 0.32), 2.30),
+            ((0.0, (layout["body_y"] * 0.56 + layout["shoulder_y"] * 0.44), 0.02), (cfg["width"] * float(anatomy["waist"]), cfg["height"] * 0.78 * float(anatomy["belly"]), cfg["length"] * 0.34), 2.34),
+            ((0.0, layout["shoulder_y"] * 0.96, layout["front_z"] * 0.74), (cfg["width"] * float(profile["chest_mass"]) * float(anatomy["rib"]), cfg["height"] * 0.72, cfg["length"] * 0.34), 2.34),
         ]
     else:
         elements = [
-            ((0.0, layout["body_y"], layout["rear_z"] * 0.82), (cfg["width"] * float(profile["rump_mass"]), cfg["height"] * 0.94, cfg["length"] * 0.49), 2.28),
-            ((0.0, (layout["body_y"] + layout["shoulder_y"]) * 0.5, 0.08), (cfg["width"] * 0.98, cfg["height"] * 1.00, cfg["length"] * 0.56), 2.32),
-            ((0.0, layout["shoulder_y"], layout["front_z"] * 0.88), (cfg["width"] * float(profile["chest_mass"]), cfg["height"] * 1.04, cfg["length"] * 0.46), 2.30),
+            ((0.0, layout["body_y"], layout["rear_z"] * 0.82), (cfg["width"] * float(profile["rump_mass"]) * float(anatomy["pelvis"]), cfg["height"] * 0.90 * float(anatomy["belly"]), cfg["length"] * 0.49), 2.28),
+            ((0.0, (layout["body_y"] + layout["shoulder_y"]) * 0.5, 0.08), (cfg["width"] * float(anatomy["waist"]), cfg["height"] * 0.94 * float(anatomy["belly"]), cfg["length"] * 0.56), 2.32),
+            ((0.0, layout["shoulder_y"], layout["front_z"] * 0.88), (cfg["width"] * float(profile["chest_mass"]) * float(anatomy["rib"]), cfg["height"] * 1.00, cfg["length"] * 0.46), 2.30),
         ]
     elements.extend([
         ((0.0, (layout["shoulder_y"] * 0.72 + layout["head_y"] * 0.28), (layout["front_z"] * 0.68 + layout["neck_z"] * 0.32)), (cfg["head"] * 0.78, max(cfg["neck"] * 0.48, cfg["head"] * 0.55), max(cfg["neck"] * 0.46, 0.24)), 2.16),
         ((0.0, (layout["shoulder_y"] + layout["head_y"]) * 0.5, layout["neck_z"]), (cfg["head"] * 0.68, max(cfg["neck"] * 0.62, cfg["head"] * 0.62), max(cfg["neck"] * 0.54, 0.24)), 2.14),
-        ((0.0, layout["head_y"], layout["head_z"]), (cfg["head"], cfg["head"] * 0.90, cfg["head"] * 1.00), 2.20),
-        ((0.0, layout["head_y"] - cfg["head"] * 0.08, layout["muzzle_z"]), (cfg["head"] * 0.68, cfg["head"] * 0.54, cfg["muzzle"] * 0.74), 2.12),
+        ((0.0, layout["head_y"], layout["head_z"]), (cfg["head"] * float(anatomy["skull_width"]), cfg["head"] * 0.90 * float(anatomy["skull_height"]), cfg["head"] * float(anatomy["skull_length"])), 2.20),
+        ((0.0, layout["head_y"] - cfg["head"] * 0.08, layout["muzzle_z"]), (cfg["head"] * 0.68 * float(anatomy["muzzle_width"]), cfg["head"] * 0.54 * float(anatomy["muzzle_height"]), cfg["muzzle"] * 0.74 * float(anatomy["muzzle_length"])), 2.12),
     ])
     # A short, heavy animal can place its head far enough in front of its chest
     # that two broad metaballs still resolve as separate islands.  Build a
@@ -827,7 +1062,9 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         ))
     if "shoulder_hump" in cfg["features"]:
         elements.append(((0.0, layout["shoulder_y"] + cfg["height"] * 0.46, layout["front_z"] + 0.18), (cfg["width"] * 0.84, cfg["height"] * 0.56, cfg["length"] * 0.34), 2.2))
-    body = metaball_mesh(f"{species.title()}OrganicBodyV2", elements, coat, hero)
+    body = metaball_mesh(f"{species.title()}OrganicBodyV2SourceConnected", elements, coat, hero)
+    paint_ground_surface(body, species, cfg, layout, accent, dark)
+    body["eco_anatomy_contract"] = "v5_species_specific_rib_waist_pelvis_skull_muzzle"
     skin_v3_torso(body, rig, anchors, cfg)
     parts = [body]
 
@@ -854,14 +1091,21 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         hip, joint, ankle, toe = ground_limb_points(cfg, layout, suffix)
         front = suffix.endswith("F")
         parent_bone = "Chest" if front else "Spine"
-        upper_radius = cfg["paw"] * 0.92 * float(profile["upper_thickness"])
-        lower_radius = cfg["paw"] * 0.78 * float(profile["lower_thickness"])
+        upper_radius = cfg["paw"] * 0.78 * float(profile["upper_thickness"]) * float(anatomy["muscle"])
+        lower_radius = cfg["paw"] * 0.68 * float(profile["lower_thickness"]) * float(anatomy["muscle"])
         muscle_scale = (
             upper_radius * (0.94 if front else 1.04),
             max((hip[1] - joint[1]) * 0.22, upper_radius * 1.12),
             upper_radius * (0.88 if front else 0.98),
         )
-        sphere(f"V3Muscle_{suffix}", tuple(Vector(hip).lerp(Vector(joint), 0.18)), muscle_scale, coat, parent_bone)
+        if cfg["family"] not in ("ungulate", "chelonian"):
+            sphere(
+                f"V5Muscle_{suffix}",
+                tuple(Vector(hip).lerp(Vector(joint), 0.16)),
+                tuple(value * 0.78 for value in muscle_scale),
+                coat,
+                parent_bone,
+            )
         limb(
             f"V3UpperLimb_{suffix}", hip, tuple(Vector(joint).lerp(Vector(hip), -0.06)),
             upper_radius, max(upper_radius * taper_ratio, lower_radius * 1.05), coat, f"Leg_{suffix}",
@@ -870,7 +1114,8 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
             f"V4LowerLimb_{suffix}", tuple(Vector(joint).lerp(Vector(ankle), -0.06)), ankle,
             max(lower_radius * 1.14, cfg["paw"] * 0.10), max(lower_radius * 0.66, cfg["paw"] * 0.08), coat, f"Lower_{suffix}",
         )
-        sphere(f"V4Joint_{suffix}", joint, (lower_radius * 0.92, lower_radius * 0.96, lower_radius * 0.94), coat, f"Lower_{suffix}")
+        if hero:
+            sphere(f"V5Joint_{suffix}", joint, (lower_radius * 0.70, lower_radius * 0.74, lower_radius * 0.72), coat, f"Lower_{suffix}")
         limb(
             f"V4Metapodial_{suffix}", ankle, toe,
             max(lower_radius * 0.70, cfg["paw"] * 0.08), max(lower_radius * 0.50, cfg["paw"] * 0.07), coat, f"Paw_{suffix}",
@@ -881,46 +1126,88 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         if hero:
             sphere(f"V4Hock_{suffix}", ankle, (lower_radius * 0.68, lower_radius * 0.72, lower_radius * 0.70), coat, f"Paw_{suffix}")
         foot_material = dark if cfg["features"] & {"hoof", "hands", "webbed_paws", "claws"} or cfg["family"] in ("canid", "felid") else coat
-        foot_length = cfg["paw"] * (1.64 if cfg["family"] not in ("heavy", "primate") else 1.36)
+        foot_length = cfg["paw"] * (1.54 if cfg["family"] not in ("heavy", "primate") else 1.30)
+        foot_width = max(lower_radius * 0.78 * float(anatomy["foot_width"]), 0.055)
         sphere(
-            f"FootDetail_{suffix}",
+            f"V5FootDetail_{suffix}",
             (toe[0], 0.075, toe[2] - foot_length * 0.12),
-            (max(lower_radius * 0.88, 0.07), max(lower_radius * 0.58, 0.06), max(foot_length, 0.12)),
+            (foot_width, max(lower_radius * 0.48, 0.052), max(foot_length, 0.11)),
             foot_material,
             f"Paw_{suffix}",
         )
+        if hero:
+            if "hoof" in cfg["features"]:
+                for digit_side in (-1.0, 1.0):
+                    sphere(
+                        f"SplitHoofDetail_{suffix}_{digit_side:+.0f}",
+                        (toe[0] + digit_side * foot_width * 0.45, 0.067, toe[2] - foot_length * 0.54),
+                        (foot_width * 0.42, max(lower_radius * 0.38, 0.045), foot_length * 0.42),
+                        dark,
+                        f"Paw_{suffix}",
+                    )
+            elif cfg["family"] != "chelonian":
+                digit_count = 4 if cfg["family"] == "primate" or "hands" in cfg["features"] else 3
+                for digit_index in range(digit_count):
+                    digit_offset = (digit_index - (digit_count - 1) * 0.5) * foot_width * 0.46
+                    claw_start = (toe[0] + digit_offset, 0.070, toe[2] - foot_length * 0.62)
+                    claw_end = (toe[0] + digit_offset, 0.052, toe[2] - foot_length * 0.88)
+                    cone(f"ClawDetail_{suffix}_{digit_index}", claw_start, claw_end, max(foot_width * 0.12, 0.014), dark, f"Paw_{suffix}")
 
-    if cfg["ear"] > 0.02:
+    if cfg["ear"] > 0.02 and "elephant_ears" not in cfg["features"]:
         for suffix, side in (("L", -1.0), ("R", 1.0)):
-            ear_position = (
-                side * cfg["head"] * 0.56,
-                layout["head_y"] + cfg["head"] * 0.46 + cfg["ear"] * 0.26,
-                layout["head_z"] + cfg["head"] * 0.08,
-            )
-            sphere(
-                f"V3Ear_{suffix}", ear_position,
-                (cfg["head"] * (0.30 if "elephant_ears" not in cfg["features"] else 0.18), max(cfg["ear"] * 0.62, 0.11), cfg["head"] * 0.18),
-                coat, f"Ear_{suffix}",
-            )
-            if hero and "elephant_ears" not in cfg["features"]:
-                sphere(
-                    f"InnerEarDetail_{suffix}",
-                    (ear_position[0] * 1.015, ear_position[1], ear_position[2] - 0.01),
-                    (cfg["head"] * 0.17, max(cfg["ear"] * 0.43, 0.08), cfg["head"] * 0.09),
-                    accent, f"Ear_{suffix}",
-                )
+            ear_base = (side * cfg["head"] * 0.52, layout["head_y"] + cfg["head"] * 0.42, layout["head_z"] + cfg["head"] * 0.12)
+            ear_tip = (side * cfg["head"] * 0.64, ear_base[1] + max(cfg["ear"], 0.08), ear_base[2] + 0.04)
+            for ear_part in ear_leaf(
+                f"V5EarSilhouette_{suffix}",
+                ear_base,
+                ear_tip,
+                cfg["head"] * float(anatomy["ear_width"]),
+                max(cfg["head"] * 0.035, 0.012),
+                coat,
+                accent,
+                hero,
+            ):
+                rigid_skin(ear_part, rig, f"Ear_{suffix}")
+                parts.append(ear_part)
 
     if cfg["tail"] > 0.12:
         tail_base = (0.0, layout["body_y"], cfg["length"] * 0.67)
         tail_tip = (0.0, max(0.24, layout["body_y"] - cfg["tail"] * 0.32), tail_base[2] + max(cfg["tail"], 0.15))
         tail_mid = tuple(Vector(tail_base).lerp(Vector(tail_tip), 0.52))
         tail_radius = max(cfg["paw"] * (1.22 if cfg["family"] in ("canid", "felid") else 0.82), 0.10)
-        tail_base_mesh = ellipsoid_between("V4TailBaseSilhouette", tail_base, tail_mid, tail_radius, coat, hero, 0.78)
-        rigid_skin(tail_base_mesh, rig, "Tail")
-        parts.append(tail_base_mesh)
-        tail_tip_mesh = ellipsoid_between("V4TailTipSilhouette", tail_mid, tail_tip, tail_radius * 0.76, coat, hero, 0.72)
-        rigid_skin(tail_tip_mesh, rig, "TailTip")
-        parts.append(tail_tip_mesh)
+        if species == "raccoon":
+            # Build the diagnostic ringed tail out of overlapping tapered coat
+            # segments.  The old implementation advertised `tail_rings` in the
+            # catalog but never rendered them, while adding rings as loose beads
+            # would bring back the toy-like silhouette removed by V5.
+            ring_count = 7 if hero else 5
+            tail_vector_start = Vector(tail_base)
+            tail_vector_end = Vector(tail_tip)
+            for ring_index in range(ring_count):
+                start_amount = ring_index / ring_count
+                end_amount = (ring_index + 1.10) / ring_count
+                ring_start = tuple(tail_vector_start.lerp(tail_vector_end, start_amount))
+                ring_end = tuple(tail_vector_start.lerp(tail_vector_end, min(end_amount, 1.0)))
+                taper = 1.0 - ring_index / max(ring_count - 1, 1) * 0.38
+                ring_material = dark if ring_index % 2 == 1 or ring_index == ring_count - 1 else coat
+                ring = ellipsoid_between(
+                    f"V5RaccoonTailRingDetail_{ring_index}",
+                    ring_start,
+                    ring_end,
+                    tail_radius * taper,
+                    ring_material,
+                    hero,
+                    0.80,
+                )
+                rigid_skin(ring, rig, "Tail" if start_amount < 0.50 else "TailTip")
+                parts.append(ring)
+        else:
+            tail_base_mesh = ellipsoid_between("V5TailBaseSilhouette", tail_base, tail_mid, tail_radius, coat, hero, 0.78)
+            rigid_skin(tail_base_mesh, rig, "Tail")
+            parts.append(tail_base_mesh)
+            tail_tip_mesh = ellipsoid_between("V5TailTipSilhouette", tail_mid, tail_tip, tail_radius * 0.76, coat, hero, 0.72)
+            rigid_skin(tail_tip_mesh, rig, "TailTip")
+            parts.append(tail_tip_mesh)
 
     jaw_start = (0.0, layout["head_y"] - cfg["head"] * 0.20, layout["head_z"] - cfg["head"] * 0.34)
     jaw_end = (0.0, layout["head_y"] - cfg["head"] * 0.25, layout["muzzle_z"] - cfg["muzzle"] * 0.70)
@@ -929,9 +1216,40 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
     rigid_skin(jaw_mesh, rig, "Jaw")
     parts.append(jaw_mesh)
 
+    eye_scale = cfg["head"] * float(anatomy["eye_scale"])
+    eye_x = cfg["head"] * float(anatomy["skull_width"]) * 0.82
     for side in (-1.0, 1.0):
-        sphere(f"EyeDetail_{'L' if side < 0 else 'R'}", (side * cfg["head"] * 0.72, layout["head_y"] + cfg["head"] * 0.12, layout["head_z"] - cfg["head"] * 0.38), (cfg["head"] * 0.105, cfg["head"] * 0.115, cfg["head"] * 0.075), eye)
-    sphere("NoseDetail", (0.0, layout["head_y"] - cfg["head"] * 0.10, layout["muzzle_z"] - cfg["muzzle"] * 0.68), (cfg["head"] * 0.24, cfg["head"] * 0.16, cfg["head"] * 0.18), dark)
+        eye_pos = (side * eye_x, layout["head_y"] + cfg["head"] * 0.13, layout["head_z"] - cfg["head"] * 0.42)
+        sphere(f"V5EyeDetail_{'L' if side < 0 else 'R'}", eye_pos, (eye_scale, eye_scale * 1.02, eye_scale * 0.62), eye)
+        if hero:
+            sphere(
+                f"V5UpperEyelidDetail_{'L' if side < 0 else 'R'}",
+                (eye_pos[0], eye_pos[1] + eye_scale * 0.70, eye_pos[2] + eye_scale * 0.10),
+                (eye_scale * 1.34, eye_scale * 0.42, eye_scale * 0.82),
+                coat,
+            )
+    nose_pos = (0.0, layout["head_y"] - cfg["head"] * 0.10, layout["muzzle_z"] - cfg["muzzle"] * 0.68)
+    nose_width = cfg["head"] * 0.20 * float(anatomy["muzzle_width"])
+    sphere("V5NoseDetail", nose_pos, (nose_width, cfg["head"] * 0.115, cfg["head"] * 0.13), dark)
+    if hero:
+        for side in (-1.0, 1.0):
+            sphere(
+                f"V5NostrilDetail_{side:+.0f}",
+                (side * nose_width * 0.54, nose_pos[1] + cfg["head"] * 0.015, nose_pos[2] - cfg["head"] * 0.095),
+                (nose_width * 0.20, cfg["head"] * 0.027, cfg["head"] * 0.022),
+                dark,
+            )
+        mouth_line = ellipsoid_between(
+            "V5MouthLineDetail",
+            (0.0, layout["head_y"] - cfg["head"] * 0.22, layout["head_z"] - cfg["head"] * 0.38),
+            (0.0, layout["head_y"] - cfg["head"] * 0.24, layout["muzzle_z"] - cfg["muzzle"] * 0.72),
+            max(cfg["head"] * 0.025, 0.012),
+            dark,
+            hero,
+            0.30,
+        )
+        rigid_skin(mouth_line, rig, "Jaw")
+        parts.append(mouth_line)
     features = cfg["features"]
     if features & {"chest", "muzzle_patch", "face_patch", "wide_muzzle"}:
         if "chest" in features:
@@ -970,19 +1288,19 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
             z = layout["rear_z"] - cfg["length"] * 0.95 * index / max(rows - 1, 1)
             for side in (-1.0, 1.0):
                 cone(f"QuillDetail_{index}_{side:+.0f}", (side * cfg["width"] * 0.40, layout["body_y"] + cfg["height"] * 0.42, z), (side * cfg["width"] * 0.85, layout["body_y"] + cfg["height"] * 1.02, z + 0.18), 0.045, horn, "Spine" if z > 0.0 else "Chest")
-    if features & {"stripes", "spots", "side_band", "silverback", "armor_folds"}:
-        if "side_band" in features or "silverback" in features:
-            sphere("CoatBandDetail", (0.0, layout["body_y"] + cfg["height"] * 0.35, 0.12), (cfg["width"] * 0.95, cfg["height"] * 0.34, cfg["length"] * 0.56), accent, "Spine")
-        elif "armor_folds" in features:
-            for index in range(3):
-                sphere(f"ArmorFoldDetail_{index}", (0.0, layout["body_y"] + 0.12, -0.40 + index * 0.42), (cfg["width"] * 1.02, 0.08, 0.12), accent, "Chest" if index < 2 else "Spine")
-        else:
-            count = (12 if "stripes" in features else 16) if hero else (7 if "stripes" in features else 9)
-            for index in range(count):
-                side = -1.0 if index % 2 == 0 else 1.0
-                z = layout["rear_z"] - cfg["length"] * 1.18 * index / max(count - 1, 1)
-                scale = (0.06 if "stripes" in features else 0.09, cfg["height"] * (0.48 if "stripes" in features else 0.13), 0.20 if "stripes" in features else 0.12)
-                sphere(f"{'Stripe' if 'stripes' in features else 'Spot'}Detail_{index}", (side * cfg["width"] * 0.94, layout["body_y"] + (index % 3 - 1) * 0.13, z), scale, dark, "Spine" if z > 0.0 else "Chest")
+    if "armor_folds" in features:
+        for index in range(3):
+            fold = ellipsoid_between(
+                f"ArmorFoldDetail_{index}",
+                (-cfg["width"] * 0.84, layout["body_y"] + 0.14, -0.40 + index * 0.42),
+                (cfg["width"] * 0.84, layout["body_y"] + 0.14, -0.40 + index * 0.42),
+                0.045,
+                accent,
+                hero,
+                0.42,
+            )
+            rigid_skin(fold, rig, "Chest" if index < 2 else "Spine")
+            parts.append(fold)
     if features & {"horns", "antlers", "palm_antlers", "rhino_horns", "tusks"}:
         for side in (-1.0, 1.0):
             if "rhino_horns" in features:
@@ -1010,7 +1328,18 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         cone("SecondHornDetail", (0.0, layout["head_y"] + cfg["head"] * 0.38, layout["head_z"] - 0.12), (0.0, layout["head_y"] + cfg["head"] * 0.92, layout["head_z"] - 0.22), cfg["head"] * 0.13)
     if "elephant_ears" in features:
         for side in (-1.0, 1.0):
-            sphere(f"EarFanDetail_{side:+.0f}", (side * cfg["head"] * 0.88, layout["head_y"] - 0.04, layout["head_z"] + 0.20), (0.10, cfg["ear"] * 0.88, cfg["ear"] * 0.68), accent, f"Ear_{'L' if side < 0 else 'R'}")
+            suffix = "L" if side < 0 else "R"
+            for ear_part in elephant_ear_fan(
+                f"V5EarFanSilhouette_{suffix}",
+                side,
+                (side * cfg["head"] * 0.52, layout["head_y"] - 0.02, layout["head_z"] + 0.18),
+                cfg["ear"],
+                coat,
+                accent,
+                hero,
+            ):
+                rigid_skin(ear_part, rig, f"Ear_{suffix}")
+                parts.append(ear_part)
     if "trunk" in features:
         trunk_elements = []
         for index in range(4):
@@ -1277,14 +1606,15 @@ def create_ground_actions(rig: bpy.types.Object, cfg: dict) -> None:
 
 def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.types.Object]]:
     owl = species == "owl"
-    coat = pbr_material(f"{species}_feather_pbr", "#665a4d" if owl else "#493729", 0.76)
-    accent = pbr_material(f"{species}_accent_pbr", "#d8ceb8" if owl else "#b88a42", 0.66)
-    dark = pbr_material(f"{species}_detail_pbr", "#34383d" if owl else "#211c18", 0.43)
-    eye = pbr_material(f"{species}_eye_pbr", "#e0bc42", 0.14)
+    coat = pbr_material(f"{species}_feather_pbr", "#665a4d" if owl else "#493729", 0.84 if owl else 0.80)
+    accent = pbr_material(f"{species}_accent_pbr", "#d8ceb8" if owl else "#b88a42", 0.76)
+    dark = pbr_material(f"{species}_detail_pbr", "#34383d" if owl else "#211c18", 0.66)
+    eye = pbr_material(f"{species}_eye_pbr", "#e0bc42", 0.08)
+    keratin = pbr_material(f"{species}_keratin_pbr", "#b9a66f" if owl else "#c39a48", 0.52)
     bpy.ops.object.armature_add(enter_editmode=True)
     rig = bpy.context.active_object
     rig.name = "SpeciesFlightSkeleton3D"
-    rig.data.name = f"{species.title()}V3FlightRig"
+    rig.data.name = f"{species.title()}V5FlightRig"
     edit = rig.data.edit_bones
     root = edit[0]
     root.name = "Root"
@@ -1309,7 +1639,21 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
         ((0.0, 1.43, -0.78), (0.57 if owl else 0.37, 0.58 if owl else 0.42, 0.45), 2.20),
         ((0.0, 1.40, -1.03), (0.40 if owl else 0.27, 0.34 if owl else 0.29, 0.32), 2.12),
     ]
-    organic = metaball_mesh(f"{species.title()}OrganicBodyV2", body_elements, coat, hero)
+    organic = metaball_mesh(f"{species.title()}OrganicBodyV2SourceConnected", body_elements, coat, hero)
+    organic["eco_anatomy_contract"] = "v5_species_specific_raptor_body_wing_feather_profile"
+    accent_index = append_material(organic, accent)
+    dark_index = append_material(organic, dark)
+    for polygon in organic.data.polygons:
+        centre = sum((organic.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        if owl:
+            feather_field = math.sin(centre.x * 15.0 + centre.y * 8.0) * math.cos(centre.z * 14.0 - centre.y * 4.0)
+            if feather_field > 0.52:
+                polygon.material_index = dark_index
+            elif centre.z < 1.18 and feather_field < -0.46:
+                polygon.material_index = accent_index
+        elif centre.y < -0.55 and centre.z > 1.24:
+            polygon.material_index = accent_index
+    organic["eco_surface_pattern"] = "v5_flush_feather_regions"
     weights = {"Body": [], "Neck": [], "Head": []}
     for vertex in organic.data.vertices:
         godot_z = vertex.co.y
@@ -1360,7 +1704,7 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
         )
         rigid_skin(primary_blade, rig, f"WingPrimary_{suffix}")
         parts.append(primary_blade)
-        feather_count = 5 if hero else 3
+        feather_count = 7 if hero else 4
         for feather_index in range(feather_count):
             amount = feather_index / max(feather_count - 1, 1)
             base_x = wing_wrist + (wing_tip - wing_wrist) * (0.10 + amount * 0.48)
@@ -1376,9 +1720,28 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
             )
             rigid_skin(feather, rig, f"WingPrimary_{suffix}")
             parts.append(feather)
-        talon = cone_between(f"TalonDetail_{suffix}", (side * 0.27, 0.62, -0.28), (side * 0.31, 0.35, -0.56), 0.07, accent, hero)
+        talon = tapered_segment_between(
+            f"TalonDetail_{suffix}",
+            (side * 0.27, 0.62, -0.28),
+            (side * 0.31, 0.35, -0.56),
+            0.075,
+            0.050,
+            keratin,
+            hero,
+        )
         rigid_skin(talon, rig, f"Talon_{suffix}")
         parts.append(talon)
+        toe_count = 3 if hero else 2
+        for toe_index in range(toe_count):
+            toe_spread = (toe_index - (toe_count - 1) * 0.5) * 0.085
+            toe_start = (side * 0.31 + toe_spread, 0.35, -0.53)
+            toe_end = (side * 0.31 + toe_spread * 1.24, 0.27, -0.73 - abs(toe_spread) * 0.35)
+            toe = tapered_segment_between(
+                f"TalonToeDetail_{suffix}_{toe_index}", toe_start, toe_end,
+                0.036, 0.014, keratin, hero,
+            )
+            rigid_skin(toe, rig, f"Talon_{suffix}")
+            parts.append(toe)
         attach_socket(f"SkillSocket_Wing_{suffix}", (side * (wing_tip - 0.15), 1.06, 0.66), rig, f"WingPrimary_{suffix}")
     for tail_index, side in enumerate((-1.0, 0.0, 1.0)):
         tail = tapered_flat_blade(
@@ -1408,17 +1771,49 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
         nape = uv_sphere("GoldenNapeDetail", (0.0, 1.48, -0.72), (0.38, 0.34, 0.30), accent, hero)
         rigid_skin(nape, rig, "Head")
         parts.append(nape)
-    beak = cone_between("BeakDetail", (0.0, 1.40, -1.08), (0.0, 1.25, -1.52 if owl else -1.60), 0.15 if owl else 0.14, accent, hero)
+    beak = cone_between("BeakDetail", (0.0, 1.40, -1.08), (0.0, 1.25, -1.52 if owl else -1.60), 0.15 if owl else 0.14, keratin, hero)
     rigid_skin(beak, rig, "Head")
     parts.append(beak)
+    lower_beak = ellipsoid_between(
+        "V5LowerBeakDetail",
+        (0.0, 1.33, -1.10),
+        (0.0, 1.23, -1.42 if owl else -1.49),
+        0.082 if owl else 0.074,
+        dark,
+        hero,
+        0.42,
+    )
+    rigid_skin(lower_beak, rig, "Head")
+    parts.append(lower_beak)
     for side in (-1.0, 1.0):
-        eyeball = uv_sphere(f"EyeDetail_{side:+.0f}", (side * (0.30 if owl else 0.24), 1.52, -1.03), (0.112 if owl else 0.092, 0.115, 0.068), eye, hero)
+        eye_position = (side * (0.30 if owl else 0.24), 1.52, -1.03)
+        eyeball = uv_sphere(f"V5EyeDetail_{side:+.0f}", eye_position, (0.096 if owl else 0.066, 0.098 if owl else 0.070, 0.058 if owl else 0.043), eye, hero)
         rigid_skin(eyeball, rig, "Head")
         parts.append(eyeball)
+        brow = uv_sphere(
+            f"V5EyeBrowDetail_{side:+.0f}",
+            (eye_position[0], eye_position[1] + (0.075 if owl else 0.055), eye_position[2] + 0.018),
+            (0.13 if owl else 0.095, 0.035, 0.072 if owl else 0.052),
+            coat,
+            hero,
+        )
+        rigid_skin(brow, rig, "Head")
+        parts.append(brow)
+        if hero:
+            nostril = uv_sphere(
+                f"V5BeakNostrilDetail_{side:+.0f}",
+                (side * (0.055 if owl else 0.050), 1.385, -1.185),
+                (0.015, 0.010, 0.018),
+                dark,
+                hero,
+            )
+            rigid_skin(nostril, rig, "Head")
+            parts.append(nostril)
     attach_socket("SkillSocket_Beak", (0.0, 1.32, -1.48), rig, "Head")
     rig["eco_species"] = species
     rig["eco_rig_family"] = "avian"
-    rig["anatomy_profile"] = "v4_three_stage_wing_neck_tail"
+    rig["anatomy_profile"] = "v5_near_realistic_raptor_three_stage_wing_neck_tail"
+    rig["surface_profile"] = "v5_flush_feather_regions_beak_talons"
     rig["wing_segments"] = 3
     create_bird_actions(rig, species)
     return rig, parts
@@ -1520,14 +1915,14 @@ def create_bird_actions(rig: bpy.types.Object, species: str) -> None:
 
 def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.types.Object]]:
     crocodile = species == "crocodile"
-    coat = pbr_material(f"{species}_scale_pbr", "#526245" if crocodile else "#315a55", 0.66)
-    accent = pbr_material(f"{species}_accent_pbr", "#a0a16c" if crocodile else "#62b9ac", 0.58)
-    dark = pbr_material(f"{species}_detail_pbr", "#202b24" if crocodile else "#152522", 0.38)
-    eye = pbr_material(f"{species}_eye_pbr", "#d0a13a", 0.14)
+    coat = pbr_material(f"{species}_scale_pbr", "#526245" if crocodile else "#315a55", 0.72 if crocodile else 0.62)
+    accent = pbr_material(f"{species}_accent_pbr", "#a0a16c" if crocodile else "#62b9ac", 0.66 if crocodile else 0.54)
+    dark = pbr_material(f"{species}_detail_pbr", "#202b24" if crocodile else "#152522", 0.54 if crocodile else 0.42)
+    eye = pbr_material(f"{species}_eye_pbr", "#d0a13a", 0.08)
     bpy.ops.object.armature_add(enter_editmode=True)
     rig = bpy.context.active_object
     rig.name = "SpeciesCrocodileSkeleton3D"
-    rig.data.name = f"{species.title()}V4LongRig"
+    rig.data.name = f"{species.title()}V5LongRig"
     edit = rig.data.edit_bones
     root = edit[0]
     root.name = "Root"
@@ -1558,17 +1953,47 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
     bpy.ops.object.mode_set(mode="OBJECT")
     elements = []
     if crocodile:
-        chain = [(0.40, 0.76, 0.72), (-0.32, 0.74, 0.68), (-1.02, 0.60, 0.58), (-1.62, 0.48, 0.48), (1.10, 0.50, 0.62), (1.78, 0.36, 0.56), (2.42, 0.20, 0.48)]
-        for z, width, length in chain:
-            elements.append(((0.0, 0.58, z), (width, 0.40 if z < 1.0 else 0.28, length), 2.1))
+        chain = [
+            (0.42, 0.78, 0.36, 0.72),
+            (-0.28, 0.80, 0.38, 0.70),
+            (-0.92, 0.65, 0.34, 0.58),
+            (-1.43, 0.58, 0.30, 0.54),
+            (-1.93, 0.48, 0.23, 0.64),
+            (1.10, 0.52, 0.30, 0.64),
+            (1.76, 0.35, 0.25, 0.58),
+            (2.40, 0.18, 0.18, 0.50),
+        ]
+        for z, width, height, length in chain:
+            centre_y = 0.54 if z < -0.8 else 0.58
+            elements.append(((0.0, centre_y, z), (width, height, length), 2.16))
     else:
-        for index in range(11):
-            z = -1.65 + index * 0.40
-            width = 0.28 * (1.0 - max(0.0, index - 5) * 0.09)
+        for index in range(13):
+            z = -1.62 + index * 0.34
+            width = 0.26 * (1.0 - max(0.0, index - 6) * 0.075)
             y = 0.30 + 0.07 * math.sin(index * 0.78)
-            elements.append(((0.12 * math.sin(index * 0.82), y, z), (max(width, 0.10), max(width * 0.90, 0.10), 0.48), 2.0))
-        elements.append(((0.0, 0.48, -1.78), (0.40, 0.28, 0.46), 2.1))
-    organic = metaball_mesh(f"{species.title()}OrganicBodyV2", elements, coat, hero)
+            elements.append(((0.10 * math.sin(index * 0.82), y, z), (max(width, 0.085), max(width * 0.82, 0.08), 0.42), 2.06))
+        elements.append(((0.0, 0.43, -1.76), (0.36, 0.23, 0.48), 2.16))
+        elements.append(((0.0, 0.42, -2.02), (0.27, 0.18, 0.30), 2.08))
+    organic = metaball_mesh(f"{species.title()}OrganicBodyV2SourceConnected", elements, coat, hero)
+    organic["eco_anatomy_contract"] = "v5_crocodilian_low_skull_taper" if crocodile else "v5_serpentine_tapered_axial_body"
+    accent_index = append_material(organic, accent)
+    dark_index = append_material(organic, dark)
+    for polygon in organic.data.polygons:
+        centre = sum((organic.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        godot_y = centre.z
+        godot_z = centre.y
+        if crocodile:
+            if godot_y < 0.42:
+                polygon.material_index = accent_index
+            elif math.sin(godot_z * 9.2 + centre.x * 7.0) > 0.72 and godot_y > 0.62:
+                polygon.material_index = dark_index
+        else:
+            band = math.sin((godot_z + 1.60) * math.pi * 4.2 + centre.x * 2.0)
+            if band > 0.42:
+                polygon.material_index = accent_index
+            elif band < -0.78:
+                polygon.material_index = dark_index
+    organic["eco_surface_pattern"] = "v5_flush_scale_regions"
     chain_anchors = {
         "Spine_Rear": 0.78,
         "Body": 0.15,
@@ -1617,21 +2042,42 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
                 rigid_skin(joint_cap, rig, f"Lower_{suffix}")
                 parts.append(joint_cap)
     for side in (-1.0, 1.0):
-        eyeball = uv_sphere(f"EyeDetail_{side:+.0f}", (side * (0.31 if crocodile else 0.22), 0.78 if crocodile else 0.58, -1.62), (0.09, 0.09, 0.07), eye, hero)
+        eye_position = (side * (0.34 if crocodile else 0.22), 0.72 if crocodile else 0.54, -1.70)
+        eyeball = uv_sphere(f"V5EyeDetail_{side:+.0f}", eye_position, (0.060 if crocodile else 0.050, 0.055 if crocodile else 0.048, 0.040 if crocodile else 0.034), eye, hero)
         rigid_skin(eyeball, rig, "Head")
         parts.append(eyeball)
+        if hero:
+            brow = uv_sphere(
+                f"V5EyeBrowDetail_{side:+.0f}",
+                (eye_position[0], eye_position[1] + 0.045, eye_position[2] + 0.015),
+                (0.090 if crocodile else 0.070, 0.030, 0.058 if crocodile else 0.045),
+                coat,
+                hero,
+            )
+            rigid_skin(brow, rig, "Head")
+            parts.append(brow)
     if crocodile:
         jaw_shell = ellipsoid_between(
             "LowerJawSilhouette",
             (0.0, 0.48, -1.08),
             (0.0, 0.43, -1.84),
-            0.34,
+            0.28,
             accent,
             hero,
             0.48,
         )
         rigid_skin(jaw_shell, rig, "Jaw")
         parts.append(jaw_shell)
+        for side in (-1.0, 1.0):
+            nostril = uv_sphere(
+                f"V5CrocodileNostrilDetail_{side:+.0f}",
+                (side * 0.20, 0.69, -2.19),
+                (0.045, 0.022, 0.030),
+                dark,
+                hero,
+            )
+            rigid_skin(nostril, rig, "Head")
+            parts.append(nostril)
         scute_count = 13 if hero else 7
         for index in range(scute_count):
             z = -0.90 + index * (2.55 / max(scute_count - 1, 1))
@@ -1648,20 +2094,13 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
             "SnakeJawSilhouette",
             (0.0, 0.43, -1.55),
             (0.0, 0.39, -1.92),
-            0.22,
+            0.18,
             accent,
             hero,
             0.62,
         )
         rigid_skin(jaw_shell, rig, "Jaw")
         parts.append(jaw_shell)
-        ring_count = 14 if hero else 8
-        for index in range(ring_count):
-            z = -1.20 + index * 0.27
-            ring = uv_sphere(f"ScaleBandDetail_{index}", (0.0, 0.34, z), (0.30, 0.04, 0.09), accent if index % 2 == 0 else dark, hero)
-            target = min(chain_anchors, key=lambda name: abs(z - chain_anchors[name]))
-            rigid_skin(ring, rig, target)
-            parts.append(ring)
         for side in (-1.0, 1.0):
             tongue = cone_between(
                 f"ForkedTongueDetail_{side:+.0f}",
@@ -1677,7 +2116,8 @@ def build_long_body(species: str, hero: bool) -> tuple[bpy.types.Object, list[bp
     attach_socket("SkillSocket_TailTip", (0.0, 0.42, 2.75), rig, "Tail_Tip")
     rig["eco_species"] = species
     rig["eco_rig_family"] = "long_body"
-    rig["anatomy_profile"] = "v4_crocodilian_three_segment_limbs" if crocodile else "v4_serpentine_eight_segment_spine"
+    rig["anatomy_profile"] = "v5_near_realistic_crocodilian_three_segment_limbs" if crocodile else "v5_near_realistic_serpentine_eight_segment_spine"
+    rig["surface_profile"] = "v5_flush_scale_regions_facial_landmarks"
     rig["axial_segments"] = 8
     if crocodile:
         rig["limb_segments"] = 3
@@ -1787,7 +2227,7 @@ def mesh_island_summaries(obj: bpy.types.Object) -> list[tuple[int, tuple[float,
 
 
 def validate_continuous_flesh(species: str, parts: list[bpy.types.Object]) -> None:
-    organic_body = next((obj for obj in parts if obj.name.endswith("OrganicBodyV2")), None)
+    organic_body = next((obj for obj in parts if "OrganicBodyV2" in obj.name), None)
     if organic_body is None:
         raise RuntimeError(f"{species}: missing OrganicBodyV2")
     island_summaries = mesh_island_summaries(organic_body)
@@ -1832,7 +2272,7 @@ def main() -> None:
     for species in requested:
         for hero in (True, False):
             triangles, vertices, bones = export_species(species, hero, output_root)
-            print(f"V4_SPECIES_MODEL_OK: {species} / {'hero' if hero else 'mobile'} / {triangles} triangles / {vertices} vertices / {bones} bones")
+            print(f"V5_SPECIES_MODEL_OK: {species} / {'hero' if hero else 'mobile'} / {triangles} triangles / {vertices} vertices / {bones} bones")
 
 
 if __name__ == "__main__":

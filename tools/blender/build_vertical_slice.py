@@ -43,6 +43,10 @@ def pbr_material(name: str, color: tuple[float, float, float, float], roughness:
         principled.inputs["Base Color"].default_value = color
         principled.inputs["Roughness"].default_value = roughness
         principled.inputs["Metallic"].default_value = metallic
+        if "Specular IOR Level" in principled.inputs:
+            principled.inputs["Specular IOR Level"].default_value = 0.32 if "eye" not in name else 0.50
+    material["eco_pbr_surface"] = "v5_near_realistic"
+    material["eco_roughness"] = roughness
     return material
 
 
@@ -319,6 +323,51 @@ def triangular_ear(
     return result
 
 
+def rabbit_ear_leaf(
+    name: str,
+    side: float,
+    outer: bpy.types.Material,
+    inner: bpy.types.Material,
+    hero: bool,
+) -> list[bpy.types.Object]:
+    """Long tapered snow-rabbit pinna with a thin rim and inset inner skin."""
+    centre_x = side * 0.22
+    base_y, base_z = 1.58, -1.30
+    mid_y, mid_z = 2.18, -1.24
+    tip_y, tip_z = 2.72 if side < 0 else 2.66, -1.16
+    half_width = 0.145
+    thickness = 0.048
+    vertices = [
+        (centre_x - half_width * 0.72, base_y, base_z - thickness),
+        (centre_x + half_width * 0.72, base_y, base_z - thickness),
+        (centre_x + half_width, mid_y, mid_z - thickness * 0.72),
+        (centre_x, tip_y, tip_z - thickness * 0.40),
+        (centre_x - half_width, mid_y, mid_z - thickness * 0.72),
+        (centre_x - half_width * 0.72, base_y, base_z + thickness),
+        (centre_x + half_width * 0.72, base_y, base_z + thickness),
+        (centre_x + half_width, mid_y, mid_z + thickness * 0.72),
+        (centre_x, tip_y, tip_z + thickness * 0.40),
+        (centre_x - half_width, mid_y, mid_z + thickness * 0.72),
+    ]
+    faces = [
+        (0, 1, 2, 3, 4), (9, 8, 7, 6, 5),
+        (0, 5, 6, 1), (1, 6, 7, 2), (2, 7, 8, 3),
+        (3, 8, 9, 4), (4, 9, 5, 0),
+    ]
+    ear = authored_mesh(name, vertices, faces, [outer], [0] * len(faces), 1 if hero else 0)
+    result = [ear]
+    if hero:
+        inner_vertices = [
+            (centre_x - half_width * 0.42, base_y + 0.12, base_z - thickness * 1.04),
+            (centre_x + half_width * 0.42, base_y + 0.12, base_z - thickness * 1.04),
+            (centre_x + half_width * 0.60, mid_y - 0.04, mid_z - thickness * 0.88),
+            (centre_x, tip_y - 0.18, tip_z - thickness * 0.56),
+            (centre_x - half_width * 0.60, mid_y - 0.04, mid_z - thickness * 0.88),
+        ]
+        result.append(authored_mesh(f"{name}InnerDetail", inner_vertices, [(0, 1, 2, 3, 4)], [inner], [0], 1))
+    return result
+
+
 def bone(edit_bones: bpy.types.ArmatureEditBones, name: str, head: tuple[float, float, float], tail: tuple[float, float, float], parent=None):
     result = edit_bones.new(name)
     result.head = g2b(head)
@@ -393,7 +442,8 @@ def build_rig(species: str) -> bpy.types.Object:
     rig["eco_species"] = species
     rig["eco_rig_family"] = "lagomorph_v3" if species == "rabbit" else "canid_cinematic_v1"
     if species == "rabbit":
-        rig["anatomy_profile"] = "v4_lagomorph_three_segment_limbs"
+        rig["anatomy_profile"] = "v5_near_realistic_lagomorph_three_segment_limbs"
+        rig["surface_profile"] = "v5_lofted_body_pinna_facial_landmarks"
         rig["limb_segments"] = 3
     return rig
 
@@ -506,6 +556,27 @@ def cinematic_wolf_body_skin(obj: bpy.types.Object, rig: bpy.types.Object) -> No
             raw["Head"] *= 1.75
         elif godot_z < -1.05:
             raw["Neck"] *= 1.38
+        total = sum(raw.values())
+        if total <= 0.0001:
+            nearest = min(anchors, key=lambda item: abs(godot_z - anchors[item]))
+            raw[nearest] = 1.0
+            total = 1.0
+        for name in anchors:
+            weights[name].append(raw[name] / total)
+    add_armature_weights(obj, rig, weights)
+
+
+def realistic_rabbit_body_skin(obj: bpy.types.Object, rig: bpy.types.Object) -> None:
+    """Blend only the axial rabbit body; articulated legs and ears are separate."""
+    anchors = {"Spine": 0.54, "Chest": -0.36, "Neck": -1.00, "Head": -1.62}
+    ranges = {"Spine": 0.92, "Chest": 0.78, "Neck": 0.56, "Head": 0.72}
+    weights = {name: [] for name in anchors}
+    for vertex in obj.data.vertices:
+        godot_z = vertex.co.y
+        raw = {
+            name: max(0.0, 1.0 - abs(godot_z - anchor) / ranges[name]) ** 2.2
+            for name, anchor in anchors.items()
+        }
         total = sum(raw.values())
         if total <= 0.0001:
             nearest = min(anchors, key=lambda item: abs(godot_z - anchors[item]))
@@ -657,66 +728,99 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
     profile = "hero" if hero else "mobile"
     resolution = 0.045 if hero else 0.075
     if species == "rabbit":
-        coat = pbr_material("rabbit_coat_pbr", (0.68, 0.72, 0.71, 1.0), 0.84)
-        coat_light = pbr_material("rabbit_light_coat_pbr", (0.89, 0.88, 0.82, 1.0), 0.88)
-        skin = pbr_material("rabbit_nose_pbr", (0.47, 0.28, 0.30, 1.0), 0.58)
-        eye = pbr_material("rabbit_eye_pbr", (0.10, 0.055, 0.025, 1.0), 0.18)
-        body_elements = [
-            ((0.0, 1.04, 0.54), (0.70, 0.72, 0.88), 2.25),
-            ((0.0, 1.13, -0.25), (0.58, 0.63, 0.70), 2.15),
-            ((0.0, 1.29, -0.87), (0.45, 0.50, 0.48), 2.05),
-            ((0.0, 1.42, -1.35), (0.43, 0.45, 0.50), 2.15),
-            ((0.0, 1.32, -1.76), (0.34, 0.28, 0.42), 2.05),
+        coat = pbr_material("rabbit_coat_pbr", (0.58, 0.63, 0.62, 1.0), 0.88)
+        coat_light = pbr_material("rabbit_light_coat_pbr", (0.87, 0.86, 0.80, 1.0), 0.86)
+        skin = pbr_material("rabbit_nose_pbr", (0.40, 0.22, 0.24, 1.0), 0.52)
+        eye = pbr_material("rabbit_eye_pbr", (0.075, 0.040, 0.020, 1.0), 0.08)
+        claw = pbr_material("rabbit_keratin_pbr", (0.28, 0.24, 0.21, 1.0), 0.62)
+        rings = [
+            (0.92, 1.06, 0.44, 0.48),
+            (0.66, 1.07, 0.62, 0.62),
+            (0.34, 1.05, 0.69, 0.68),
+            (0.04, 1.08, 0.61, 0.61),
+            (-0.28, 1.14, 0.52, 0.54),
+            (-0.58, 1.22, 0.43, 0.47),
+            (-0.88, 1.31, 0.33, 0.38),
+            (-1.15, 1.41, 0.38, 0.40),
+            (-1.42, 1.43, 0.39, 0.37),
+            (-1.65, 1.37, 0.31, 0.27),
+            (-1.88, 1.31, 0.23, 0.19),
+            (-2.04, 1.30, 0.15, 0.12),
         ]
-        leg_data = {
-            "LF": [((-0.34, 0.84, -0.62), (0.20, 0.42, 0.21), 2.1)],
-            "RF": [((0.34, 0.84, -0.62), (0.20, 0.42, 0.21), 2.1)],
-            "LH": [((-0.45, 0.78, 0.57), (0.34, 0.52, 0.40), 2.2)],
-            "RH": [((0.45, 0.78, 0.57), (0.34, 0.52, 0.40), 2.2)],
-        }
-        paw_data = {
-            "LF": [((-0.34, 0.39, -0.74), (0.16, 0.37, 0.18), 2.0), ((-0.34, 0.15, -0.94), (0.20, 0.13, 0.34), 2.0)],
-            "RF": [((0.34, 0.39, -0.74), (0.16, 0.37, 0.18), 2.0), ((0.34, 0.15, -0.94), (0.20, 0.13, 0.34), 2.0)],
-            "LH": [((-0.49, 0.38, 0.30), (0.22, 0.40, 0.25), 2.0), ((-0.49, 0.14, -0.11), (0.27, 0.14, 0.54), 2.0)],
-            "RH": [((0.49, 0.38, 0.30), (0.22, 0.40, 0.25), 2.0), ((0.49, 0.14, -0.11), (0.27, 0.14, 0.54), 2.0)],
-        }
-        for suffix in LIMBS:
-            body_elements.extend(leg_data[suffix])
-            body_elements.extend(paw_data[suffix])
-            side = -1.0 if suffix.startswith("L") else 1.0
-            front = suffix.endswith("F")
-            leg_z = -0.68 if front else 0.42
-            body_elements.extend([
-                ((side * (0.30 if front else 0.39), 0.96, leg_z), (0.34 if front else 0.42, 0.35, 0.38), 2.1),
-                ((side * (0.34 if front else 0.49), 0.34, -0.82 if front else 0.12), (0.23 if front else 0.31, 0.28, 0.38 if front else 0.50), 2.0),
-            ])
-        for side in (-1.0, 1.0):
-            body_elements.extend([
-                ((side * 0.21, 1.88, -1.31), (0.20, 0.48, 0.18), 2.0),
-                ((side * 0.24, 2.42, -1.22), (0.15, 0.45, 0.12), 2.0),
-            ])
-        body_elements.append(((0.0, 1.18, 1.32), (0.34, 0.34, 0.37), 2.2))
-        body = metaball_mesh("RabbitOrganicBodyV2", body_elements, coat, resolution)
-        body_skin(body, rig, species)
+        body = lofted_body("RabbitOrganicBodyV2SourceConnected", rings, [coat, coat_light, coat_light], hero)
+        body["eco_anatomy_contract"] = "v5_lagomorph_rib_waist_haunch_skull_muzzle"
+        body["eco_surface_pattern"] = "v5_lofted_dorsal_ventral_coat"
+        realistic_rabbit_body_skin(body, rig)
         parts = [body]
-        for suffix, side in (("L", -1.0), ("R", 1.0)):
+        leg_layout = {
+            "LF": ((-0.34, 1.02, -0.62), (-0.33, 0.64, -0.54), (-0.34, 0.25, -0.76), (-0.34, 0.10, -1.02)),
+            "RF": ((0.34, 1.02, -0.62), (0.33, 0.64, -0.54), (0.34, 0.25, -0.76), (0.34, 0.10, -1.02)),
+            "LH": ((-0.46, 1.00, 0.62), (-0.50, 0.61, 0.30), (-0.50, 0.24, 0.67), (-0.50, 0.10, -0.10)),
+            "RH": ((0.46, 1.00, 0.62), (0.50, 0.61, 0.30), (0.50, 0.24, 0.67), (0.50, 0.10, -0.10)),
+        }
+
+        def add_part(obj: bpy.types.Object, bone_name: str) -> None:
+            rigid_skin(obj, rig, bone_name)
+            parts.append(obj)
+
+        for suffix, (hip, joint, ankle, toe) in leg_layout.items():
+            front = suffix.endswith("F")
+            upper_radius = 0.125 if front else 0.205
+            lower_radius = 0.082 if front else 0.125
+            add_part(tapered_limb(f"V5RabbitUpperLimb_{suffix}", hip, joint, upper_radius, lower_radius, coat, hero), f"Leg_{suffix}")
+            add_part(tapered_limb(f"V5RabbitLowerLimb_{suffix}", joint, ankle, lower_radius, 0.052 if front else 0.068, coat, hero), f"Lower_{suffix}")
+            add_part(tapered_limb(f"V5RabbitMetapodial_{suffix}", ankle, toe, 0.058 if front else 0.078, 0.042 if front else 0.052, coat_light, hero), f"Paw_{suffix}")
+            if not front:
+                add_part(uv_sphere(f"V5RabbitHaunchDetail_{suffix}", tuple(Vector(hip).lerp(Vector(joint), 0.22)), (0.25, 0.31, 0.28), coat, hero), "Spine")
+            foot_length = 0.34 if front else 0.52
+            foot_centre = (toe[0], 0.075, toe[2] - foot_length * 0.22)
+            add_part(uv_sphere(f"V5RabbitSnowshoeDetail_{suffix}", foot_centre, (0.12 if front else 0.17, 0.065, foot_length), coat_light, hero), f"Paw_{suffix}")
             if hero:
-                inner = uv_sphere(f"InnerEarDetail_{suffix}", (side * 0.245, 2.16, -1.34), (0.105, 0.48, 0.045), skin, hero)
-                rigid_skin(inner, rig, f"Ear_{suffix}")
-                parts.append(inner)
-        chest = uv_sphere("ChestRuffDetail", (0.0, 1.14, -0.76), (0.40, 0.44, 0.16), coat_light, hero)
+                for digit_index in range(3):
+                    offset = (digit_index - 1) * (0.048 if front else 0.060)
+                    add_part(
+                        tapered_limb(
+                            f"V5RabbitClawDetail_{suffix}_{digit_index}",
+                            (toe[0] + offset, 0.070, foot_centre[2] - foot_length * 0.38),
+                            (toe[0] + offset, 0.050, foot_centre[2] - foot_length * 0.54),
+                            0.014,
+                            0.004,
+                            claw,
+                            hero,
+                        ),
+                        f"Paw_{suffix}",
+                    )
+
+        for suffix, side in (("L", -1.0), ("R", 1.0)):
+            for ear_part in rabbit_ear_leaf(f"V5RabbitEarSilhouette_{suffix}", side, coat, skin, hero):
+                add_part(ear_part, f"Ear_{suffix}")
+
+        tail_base = uv_sphere("V5RabbitTailBaseSilhouette", (0.0, 1.16, 1.13), (0.25, 0.25, 0.25), coat_light, hero)
+        add_part(tail_base, "Tail")
+        tail_tip = uv_sphere("V5RabbitTailTipSilhouette", (0.0, 1.16, 1.34), (0.19, 0.20, 0.20), coat_light, hero)
+        add_part(tail_tip, "TailTip")
+
+        chest = uv_sphere("V5RabbitChestRuffDetail", (0.0, 1.18, -0.78), (0.31, 0.34, 0.12), coat_light, hero)
         rigid_skin(chest, rig, "Chest")
         parts.append(chest)
-        nose = uv_sphere("NoseDetail", (0.0, 1.33, -2.13), (0.13, 0.09, 0.10), skin, hero)
+        nose = uv_sphere("V5RabbitNoseDetail", (0.0, 1.32, -2.13), (0.085, 0.060, 0.066), skin, hero)
         rigid_skin(nose, rig, "Head")
         parts.append(nose)
-        jaw = tapered_limb("RabbitLowerJawDetail", (0.0, 1.28, -1.60), (0.0, 1.23, -2.04), 0.13, 0.075, coat_light, hero)
+        jaw = tapered_limb("V5RabbitLowerJawDetail", (0.0, 1.28, -1.60), (0.0, 1.23, -2.04), 0.105, 0.060, coat_light, hero)
         rigid_skin(jaw, rig, "Jaw")
         parts.append(jaw)
         for side in (-1.0, 1.0):
-            eyeball = uv_sphere(f"EyeDetail_{'L' if side < 0 else 'R'}", (side * 0.305, 1.52, -1.67), (0.095, 0.105, 0.075), eye, hero)
+            eye_position = (side * 0.315, 1.51, -1.67)
+            eyeball = uv_sphere(f"V5RabbitEyeDetail_{'L' if side < 0 else 'R'}", eye_position, (0.058, 0.064, 0.042), eye, hero)
             rigid_skin(eyeball, rig, "Head")
             parts.append(eyeball)
+            eyelid = uv_sphere(f"V5RabbitUpperEyelidDetail_{'L' if side < 0 else 'R'}", (eye_position[0], eye_position[1] + 0.044, eye_position[2] + 0.006), (0.080, 0.025, 0.052), coat, hero)
+            rigid_skin(eyelid, rig, "Head")
+            parts.append(eyelid)
+            if hero:
+                nostril = uv_sphere(f"V5RabbitNostrilDetail_{side:+.0f}", (side * 0.038, 1.33, -2.185), (0.012, 0.009, 0.010), eye, hero)
+                rigid_skin(nostril, rig, "Head")
+                parts.append(nostril)
         attach_socket("SkillSocket_Mouth", (0.0, 1.34, -2.19), rig, "Head")
         attach_socket("SkillSocket_Chest", (0.0, 1.20, -0.47), rig, "Chest")
         return parts
@@ -890,7 +994,7 @@ def export_species(species: str, hero: bool, output_root: Path) -> tuple[int, in
     rig = build_rig(species)
     parts = build_parts(species, hero, rig)
     create_actions(rig, species)
-    organic_body = next(obj for obj in parts if obj.name.endswith("OrganicBodyV2"))
+    organic_body = next(obj for obj in parts if "OrganicBodyV2" in obj.name)
     island_count = mesh_island_count(organic_body)
     if island_count != 1:
         raise RuntimeError(f"{species}: OrganicBodyV2 has {island_count} disconnected mesh islands")
@@ -924,7 +1028,7 @@ def main() -> None:
         for hero in (True, False):
             triangles, vertices, bones = export_species(species, hero, output_root)
             print(
-                f"VERTICAL_SLICE_MODEL_OK: {species} / {'hero' if hero else 'mobile'} / "
+                f"V5_VERTICAL_SLICE_MODEL_OK: {species} / {'hero' if hero else 'mobile'} / "
                 f"{triangles} triangles / {vertices} vertices / {bones} bones"
             )
 

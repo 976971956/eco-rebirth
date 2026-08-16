@@ -18,12 +18,16 @@ class ShowcaseGame:
 
 
 const GALLERY_GROUPS := [
-	["rabbit", "fox", "deer", "wolf", "bear"],
-	["boar", "raccoon", "porcupine", "capybara", "otter"],
-	["lynx", "goat", "wolverine", "bison", "zebra"],
-	["elephant", "tiger", "monkey", "owl", "moose"],
-	["turtle", "cheetah", "rhino", "gorilla", "eagle"],
-	["hippo", "hyena", "lion", "snake", "crocodile"],
+	["rabbit", "fox", "deer"],
+	["wolf", "bear", "boar"],
+	["raccoon", "porcupine", "capybara"],
+	["otter", "lynx", "goat"],
+	["wolverine", "bison", "zebra"],
+	["elephant", "tiger", "monkey"],
+	["owl", "moose", "turtle"],
+	["cheetah", "rhino", "gorilla"],
+	["eagle", "hippo", "hyena"],
+	["lion", "snake", "crocodile"],
 ]
 const GALLERY_SCALE := {
 	"rabbit": 0.70, "fox": 0.64, "deer": 0.48, "wolf": 0.58, "bear": 0.46,
@@ -43,15 +47,15 @@ func _render_gallery() -> void:
 	var all_ok := true
 	for group_index in range(GALLERY_GROUPS.size()):
 		var group_suffix := char(97 + group_index)
-		var idle_output := "res://docs/images/v53-v4-species-gallery-%s-idle.png" % group_suffix
-		var move_output := "res://docs/images/v53-v4-species-gallery-%s-move.png" % group_suffix
+		var idle_output := "res://docs/images/v54-v5-realistic-gallery-%s-idle.png" % group_suffix
+		var move_output := "res://docs/images/v54-v5-realistic-gallery-%s-move.png" % group_suffix
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, idle_output, "idle") and all_ok
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, move_output, "locomotion") and all_ok
 	if all_ok:
-		print("V4_SPECIES_GALLERY_OK: 30 species / 12 screenshots / idle + locomotion")
+		print("V5_SPECIES_GALLERY_OK: 30 species / 20 close-up screenshots / idle + locomotion")
 		quit(0)
 	else:
-		push_error("无法保存 V4 三十物种验收图")
+		push_error("无法保存 V5 三十物种近景验收图")
 		quit(1)
 
 
@@ -61,7 +65,7 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 	var game_stub := ShowcaseGame.new()
 	scene.add_child(game_stub)
 	_build_environment(scene, group_index)
-	var x_positions := [6.6, 3.3, 0.0, -3.3, -6.6]
+	var x_positions := [4.6, 0.0, -4.6]
 	for index in range(species_group.size()):
 		var species_id := str(species_group[index])
 		var actor: EcoActor = ActorScript.new()
@@ -69,22 +73,22 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 		scene.add_child(actor)
 		actor.setup(game_stub, group_index * 10 + index + 1, species_id, true, Vector3.ZERO, 0)
 		actor.position = Vector3(float(x_positions[index]), 0.0, 0.0)
-		actor.scale = Vector3.ONE * float(GALLERY_SCALE.get(species_id, 0.55))
+		actor.scale = Vector3.ONE * float(GALLERY_SCALE.get(species_id, 0.55)) * 1.22
 		actor.rotation.y = 0.38
 		_hide_actor_ui(actor)
 		if is_instance_valid(actor.external_animation_player) and actor.external_animation_player.has_animation(animation_name):
 			actor.external_animation_player.play(animation_name)
 			actor.external_animation_player.seek(0.38 if animation_name == "locomotion" else 0.16, true)
-		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.05, 0.0), 26)
+		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.38, 0.0), 28)
 	var pose_title := "移动动作定格" if animation_name == "locomotion" else "静止轮廓"
-	_add_label(scene, "Blender V4 · 三段四肢 / 三段翼 / 长体波动 · %s · 第 %d/6 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 34)
+	_add_label(scene, "Blender V5 · 逐物种解剖 / 贴体纹理 / 渐薄耳足 · %s · 第 %d/10 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 34)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 9.35
-	camera.position = Vector3(0.0, 11.8, -22.2)
+	camera.size = 7.85
+	camera.position = Vector3(0.0, 10.4, -20.6)
 	scene.add_child(camera)
-	camera.look_at(Vector3(0.0, 1.45, 0.0), Vector3.UP)
+	camera.look_at(Vector3(0.0, 1.36, 0.0), Vector3.UP)
 	camera.current = true
 	for _frame in range(18):
 		await process_frame
