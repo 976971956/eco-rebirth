@@ -69,7 +69,7 @@ func _render_gait_cycle() -> bool:
 	for index in range(4):
 		_add_wolf(scene, game, 31 + index, true, Vector3(positions[index], 0.0, 0.0), "locomotion", times[index], 0.62, 2.09)
 		_add_label(scene, labels[index], Vector3(positions[index], 2.92, 0.0), 24)
-	_add_label(scene, "灰狼屈膝步态验收 · 前腕与后膝独立弯曲 · 对角小跑", Vector3(0.0, 3.92, 1.2), 38)
+	_add_label(scene, "灰狼比例与关节链验收 · 腿高 -10% · 摆动期真实屈膝", Vector3(0.0, 3.92, 1.2), 38)
 	return await _capture(scene, "res://docs/images/v52-wolf-balanced-gait.png", 7.35)
 
 

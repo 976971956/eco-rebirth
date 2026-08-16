@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.46 发布候选校验通过：灰狼可读前腕/后膝屈曲、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.47 发布候选校验通过：灰狼短腿比例与真实前腕/后膝折叠、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.46.0\"") and presets.contains("application/short_version=\"1.46.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=560") and presets.contains("application/version=\"560\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.46.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.47.0\"") and presets.contains("application/short_version=\"1.47.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=570") and presets.contains("application/version=\"570\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.47.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -665,27 +665,55 @@ func _validate_external_species_model_contract() -> void:
 	_expect(mobile_actor.external_skeleton.get_bone_count() == 32, "灰狼电影化骨架不是 32 骨契约")
 	var wolf_builder_source := FileAccess.get_file_as_string("res://tools/blender/build_cinematic_wolf.py")
 	_expect(wolf_builder_source.contains("add_adult_wolf_mass(mesh)") and wolf_builder_source.contains("rest_rotation.inverted() @ armature_axis"), "灰狼构建器丢失局部成年体态或横向关节轴转换")
+	_expect(wolf_builder_source.contains("LEG_HEIGHT_SCALE = 0.90") and wolf_builder_source.contains("shorten_leg_proportions(rig, mesh)"), "灰狼构建器丢失模型与骨架同步的短腿比例修正")
 	var left_front_paw := mobile_actor.external_skeleton.find_bone("Paw_LF")
 	var right_hind_paw := mobile_actor.external_skeleton.find_bone("Paw_RH")
+	var left_front_upper := mobile_actor.external_skeleton.find_bone("b_LeftUpperArm")
 	var left_front_joint := mobile_actor.external_skeleton.find_bone("b_LeftForeArm")
+	var right_hind_upper := mobile_actor.external_skeleton.find_bone("b_RightLeg01")
 	var right_hind_joint := mobile_actor.external_skeleton.find_bone("b_RightLeg02")
-	_expect(left_front_paw >= 0 and right_hind_paw >= 0 and left_front_joint >= 0 and right_hind_joint >= 0, "灰狼对角小跑缺少爪部、前腕或后膝关节")
-	if left_front_paw >= 0 and right_hind_paw >= 0 and left_front_joint >= 0 and right_hind_joint >= 0 and is_instance_valid(mobile_actor.external_animation_player):
+	var has_wolf_leg_chains := left_front_upper >= 0 and left_front_joint >= 0 and left_front_paw >= 0 and right_hind_upper >= 0 and right_hind_joint >= 0 and right_hind_paw >= 0
+	_expect(has_wolf_leg_chains, "灰狼对角小跑缺少完整的上腿、中段关节或爪部骨链")
+	if has_wolf_leg_chains and is_instance_valid(mobile_actor.external_animation_player):
 		mobile_actor.external_animation_player.play("locomotion")
 		mobile_actor.external_animation_player.seek(0.267, true)
 		var left_front_first := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
 		var right_hind_first := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
-		var left_front_joint_first := mobile_actor.external_skeleton.get_bone_pose_rotation(left_front_joint)
-		var right_hind_joint_first := mobile_actor.external_skeleton.get_bone_pose_rotation(right_hind_joint)
+		var left_front_upper_first := mobile_actor.external_skeleton.get_bone_global_pose(left_front_upper).origin
+		var left_front_joint_first := mobile_actor.external_skeleton.get_bone_global_pose(left_front_joint).origin
+		var right_hind_upper_first := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_upper).origin
+		var right_hind_joint_first := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_joint).origin
+		var left_front_chain_first := (left_front_joint_first - left_front_upper_first).angle_to(left_front_first - left_front_joint_first)
+		var right_hind_chain_first := (right_hind_joint_first - right_hind_upper_first).angle_to(right_hind_first - right_hind_joint_first)
 		mobile_actor.external_animation_player.seek(0.800, true)
 		var left_front_second := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
 		var right_hind_second := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
-		var left_front_joint_second := mobile_actor.external_skeleton.get_bone_pose_rotation(left_front_joint)
-		var right_hind_joint_second := mobile_actor.external_skeleton.get_bone_pose_rotation(right_hind_joint)
+		var left_front_upper_second := mobile_actor.external_skeleton.get_bone_global_pose(left_front_upper).origin
+		var left_front_joint_second := mobile_actor.external_skeleton.get_bone_global_pose(left_front_joint).origin
+		var right_hind_upper_second := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_upper).origin
+		var right_hind_joint_second := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_joint).origin
+		var left_front_chain_second := (left_front_joint_second - left_front_upper_second).angle_to(left_front_second - left_front_joint_second)
+		var right_hind_chain_second := (right_hind_joint_second - right_hind_upper_second).angle_to(right_hind_second - right_hind_joint_second)
 		_expect(left_front_first.distance_to(left_front_second) > 0.12, "灰狼前腿小跑仍在绕长轴拧转，爪部没有有效前后摆动")
 		_expect(right_hind_first.distance_to(right_hind_second) > 0.12, "灰狼后腿小跑仍在绕长轴拧转，爪部没有有效收腿")
-		_expect(left_front_joint_first.angle_to(left_front_joint_second) > 0.32, "灰狼前腕关节弯曲幅度不可读，看起来仍像整条前腿平移")
-		_expect(right_hind_joint_first.angle_to(right_hind_joint_second) > 0.42, "灰狼后膝关节弯曲幅度不可读，看起来仍像整条后腿平移")
+		_expect(left_front_chain_first > left_front_chain_second + 0.28, "灰狼前腕在摆动期没有真实折叠，上下腿仍像一整条直腿")
+		_expect(right_hind_chain_first > right_hind_chain_second + 0.35, "灰狼后膝在收腿期没有真实折叠，上下腿仍像一整条直腿")
+		mobile_actor.external_animation_player.play("sprint")
+		var sprint_front_max := 0.0
+		var sprint_hind_max := 0.0
+		var sprint_length := maxf(mobile_actor.external_animation_player.current_animation_length, 1.0)
+		for sample_index in range(9):
+			mobile_actor.external_animation_player.seek(sprint_length * float(sample_index) / 9.0, true)
+			var sprint_front_upper := mobile_actor.external_skeleton.get_bone_global_pose(left_front_upper).origin
+			var sprint_front_joint := mobile_actor.external_skeleton.get_bone_global_pose(left_front_joint).origin
+			var sprint_front_paw := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
+			var sprint_hind_upper := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_upper).origin
+			var sprint_hind_joint := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_joint).origin
+			var sprint_hind_paw := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
+			sprint_front_max = maxf(sprint_front_max, (sprint_front_joint - sprint_front_upper).angle_to(sprint_front_paw - sprint_front_joint))
+			sprint_hind_max = maxf(sprint_hind_max, (sprint_hind_joint - sprint_hind_upper).angle_to(sprint_hind_paw - sprint_hind_joint))
+		_expect(sprint_front_max > left_front_chain_second + 0.30, "灰狼冲刺时前腕没有形成比支撑期更明显的真实折叠")
+		_expect(sprint_hind_max > right_hind_chain_second + 0.42, "灰狼冲刺时后膝没有形成比支撑期更明显的真实折叠")
 		mobile_actor.external_animation_player.play("idle")
 		mobile_actor.external_animation_player.seek(0.0, true)
 	var wolf_mouth_position := mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55)

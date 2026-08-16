@@ -11,6 +11,8 @@ from mathutils import Matrix, Quaternion, Vector
 
 ACTIONS = ("idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death")
 SOURCE_BASENAME = "dog2.blend"
+LEG_HEIGHT_SCALE = 0.90
+LEG_COMPRESSION_TOP = 1.72
 
 
 def parse_args() -> argparse.Namespace:
@@ -126,6 +128,59 @@ def add_adult_wolf_mass(mesh: bpy.types.Object) -> None:
         vertex.co = inverse_world @ world
     mesh.data.update()
     mesh["anatomy_profile"] = "adult_gray_wolf_balanced_mass_v2"
+
+
+def _shortened_leg_world_position(position: Vector) -> Vector:
+    shortened = position.copy()
+    if shortened.z > 0.0:
+        shortened.z = min(shortened.z, LEG_COMPRESSION_TOP) * LEG_HEIGHT_SCALE + max(
+            shortened.z - LEG_COMPRESSION_TOP,
+            0.0,
+        )
+    return shortened
+
+
+def shorten_leg_proportions(rig: bpy.types.Object, mesh: bpy.types.Object) -> None:
+    """Shorten the leg chain and matching skin while keeping paws grounded.
+
+    Vertices and edit-bone endpoints use the same piecewise world-space map.
+    The upper body is translated downward by the accumulated compression, so
+    torso/head length and gameplay-facing forward scale stay unchanged.
+    """
+
+    inverse_mesh_world = mesh.matrix_world.inverted()
+    for vertex in mesh.data.vertices:
+        vertex.co = inverse_mesh_world @ _shortened_leg_world_position(mesh.matrix_world @ vertex.co)
+    mesh.data.update()
+
+    bpy.ops.object.select_all(action="DESELECT")
+    rig.select_set(True)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    inverse_rig_world = rig.matrix_world.inverted()
+    original_endpoints = {
+        bone.name: (
+            rig.matrix_world @ bone.head.copy(),
+            rig.matrix_world @ bone.tail.copy(),
+            bone.use_connect,
+        )
+        for bone in rig.data.edit_bones
+    }
+    # Connected edit bones propagate endpoint writes through their hierarchy.
+    # Temporarily disconnect the cached rest pose so every joint is compressed
+    # exactly once instead of recursively lengthening child chains.
+    for bone in rig.data.edit_bones:
+        bone.use_connect = False
+    for bone in rig.data.edit_bones:
+        head_world, tail_world, _was_connected = original_endpoints[bone.name]
+        bone.head = inverse_rig_world @ _shortened_leg_world_position(head_world)
+        bone.tail = inverse_rig_world @ _shortened_leg_world_position(tail_world)
+    for bone in rig.data.edit_bones:
+        bone.use_connect = bool(original_endpoints[bone.name][2])
+    bpy.ops.object.mode_set(mode="OBJECT")
+    rig.select_set(False)
+    rig["leg_height_scale"] = LEG_HEIGHT_SCALE
+    rig["proportion_profile"] = "adult_gray_wolf_shorter_articulated_legs_v3"
 
 
 def detail_materials(coat: bpy.types.Material) -> list[bpy.types.Material]:
@@ -364,12 +419,12 @@ def create_actions(rig: bpy.types.Object) -> None:
                     set_sagittal_rotation(upper, -amount * stride)
                     if suffix in ("LF", "RF"):
                         elbow_flex = front_joint_bend * (0.94 * swing + 0.10 * transfer + 0.10 * support)
-                        set_sagittal_rotation(lower, elbow_flex)
-                        set_sagittal_rotation(paw, -front_joint_bend * (0.44 * swing + 0.08 * transfer))
+                        set_sagittal_rotation(lower, -elbow_flex)
+                        set_sagittal_rotation(paw, front_joint_bend * (0.44 * swing + 0.08 * transfer))
                     else:
                         knee_flex = hind_joint_bend * (0.98 * swing + 0.10 * transfer + 0.08 * support)
-                        set_sagittal_rotation(lower, -knee_flex)
-                        set_sagittal_rotation(paw, hind_joint_bend * (0.50 * swing + 0.08 * transfer))
+                        set_sagittal_rotation(lower, knee_flex)
+                        set_sagittal_rotation(paw, -hind_joint_bend * (0.50 * swing + 0.08 * transfer))
                     for bone_name in (upper_name, lower_name, paw_name):
                         key_rotation(rig, bone_name, frame)
                 flex = (0.045 if action_name == "locomotion" else 0.115) * math.cos(phase)
@@ -474,6 +529,7 @@ def evaluated_stats(objects: list[bpy.types.Object]) -> tuple[int, int]:
 def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int, int, int]:
     rig, mesh = load_source(source_dir)
     add_adult_wolf_mass(mesh)
+    shorten_leg_proportions(rig, mesh)
     merge_terminal_toe_weights(mesh)
     remove_terminal_toe_bones(rig)
     rename_articulated_paw_bones(rig, mesh)
@@ -484,8 +540,8 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
         raise RuntimeError("cinematic wolf organic body is not one connected mesh island")
     if hero:
         add_hero_subdivision(body)
-    attach_socket("SkillSocket_Mouth", (0.0, -1.84, 2.24), rig, "b_Head")
-    attach_socket("SkillSocket_Chest", (0.0, -0.55, 1.72), rig, "b_Spine03")
+    attach_socket("SkillSocket_Mouth", _shortened_leg_world_position(Vector((0.0, -1.84, 2.24))), rig, "b_Head")
+    attach_socket("SkillSocket_Chest", _shortened_leg_world_position(Vector((0.0, -0.55, 1.72))), rig, "b_Spine03")
     create_actions(rig)
     profile = "hero" if hero else "mobile"
     output = output_root / "wolf" / f"wolf_{profile}.glb"
