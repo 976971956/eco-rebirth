@@ -26,7 +26,7 @@ func _render_all() -> void:
 	var gait_ok := await _render_gait_cycle()
 	var closeup_ok := await _render_closeup()
 	if anatomy_ok and motion_ok and gait_ok and closeup_ok:
-		print("WOLF_CINEMATIC_PREVIEW_OK: closeup + hero/mobile + corrected four-phase trot + bite")
+		print("WOLF_CINEMATIC_PREVIEW_OK: closeup + hero/mobile + articulated four-phase trot + bite")
 		quit(0)
 	else:
 		push_error("无法保存灰狼影视化样板验收图")
@@ -65,11 +65,11 @@ func _render_gait_cycle() -> bool:
 	scene.add_child(game)
 	var positions := [-4.65, -1.55, 1.55, 4.65]
 	var times := [0.0, 0.267, 0.533, 0.8]
-	var labels := ["对角触地", "前摆抬爪", "换组触地", "后摆收腿"]
+	var labels := ["对角触地", "前腕屈曲", "换组触地", "后膝收腿"]
 	for index in range(4):
 		_add_wolf(scene, game, 31 + index, true, Vector3(positions[index], 0.0, 0.0), "locomotion", times[index], 0.62, 2.09)
 		_add_label(scene, labels[index], Vector3(positions[index], 2.92, 0.0), 24)
-	_add_label(scene, "灰狼自然步态验收 · 关节横轴摆动 · 对角小跑四相位", Vector3(0.0, 3.92, 1.2), 38)
+	_add_label(scene, "灰狼屈膝步态验收 · 前腕与后膝独立弯曲 · 对角小跑", Vector3(0.0, 3.92, 1.2), 38)
 	return await _capture(scene, "res://docs/images/v52-wolf-balanced-gait.png", 7.35)
 
 

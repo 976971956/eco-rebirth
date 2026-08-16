@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.45 发布候选校验通过：灰狼成年体态与对角小跑、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.46 发布候选校验通过：灰狼可读前腕/后膝屈曲、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.45.0\"") and presets.contains("application/short_version=\"1.45.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=550") and presets.contains("application/version=\"550\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.45.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.46.0\"") and presets.contains("application/short_version=\"1.46.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=560") and presets.contains("application/version=\"560\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.46.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -667,17 +667,25 @@ func _validate_external_species_model_contract() -> void:
 	_expect(wolf_builder_source.contains("add_adult_wolf_mass(mesh)") and wolf_builder_source.contains("rest_rotation.inverted() @ armature_axis"), "灰狼构建器丢失局部成年体态或横向关节轴转换")
 	var left_front_paw := mobile_actor.external_skeleton.find_bone("Paw_LF")
 	var right_hind_paw := mobile_actor.external_skeleton.find_bone("Paw_RH")
-	_expect(left_front_paw >= 0 and right_hind_paw >= 0, "灰狼对角小跑缺少前爪或后爪关节")
-	if left_front_paw >= 0 and right_hind_paw >= 0 and is_instance_valid(mobile_actor.external_animation_player):
+	var left_front_joint := mobile_actor.external_skeleton.find_bone("b_LeftForeArm")
+	var right_hind_joint := mobile_actor.external_skeleton.find_bone("b_RightLeg02")
+	_expect(left_front_paw >= 0 and right_hind_paw >= 0 and left_front_joint >= 0 and right_hind_joint >= 0, "灰狼对角小跑缺少爪部、前腕或后膝关节")
+	if left_front_paw >= 0 and right_hind_paw >= 0 and left_front_joint >= 0 and right_hind_joint >= 0 and is_instance_valid(mobile_actor.external_animation_player):
 		mobile_actor.external_animation_player.play("locomotion")
 		mobile_actor.external_animation_player.seek(0.267, true)
 		var left_front_first := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
 		var right_hind_first := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
+		var left_front_joint_first := mobile_actor.external_skeleton.get_bone_pose_rotation(left_front_joint)
+		var right_hind_joint_first := mobile_actor.external_skeleton.get_bone_pose_rotation(right_hind_joint)
 		mobile_actor.external_animation_player.seek(0.800, true)
 		var left_front_second := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
 		var right_hind_second := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
+		var left_front_joint_second := mobile_actor.external_skeleton.get_bone_pose_rotation(left_front_joint)
+		var right_hind_joint_second := mobile_actor.external_skeleton.get_bone_pose_rotation(right_hind_joint)
 		_expect(left_front_first.distance_to(left_front_second) > 0.12, "灰狼前腿小跑仍在绕长轴拧转，爪部没有有效前后摆动")
 		_expect(right_hind_first.distance_to(right_hind_second) > 0.12, "灰狼后腿小跑仍在绕长轴拧转，爪部没有有效收腿")
+		_expect(left_front_joint_first.angle_to(left_front_joint_second) > 0.32, "灰狼前腕关节弯曲幅度不可读，看起来仍像整条前腿平移")
+		_expect(right_hind_joint_first.angle_to(right_hind_joint_second) > 0.42, "灰狼后膝关节弯曲幅度不可读，看起来仍像整条后腿平移")
 		mobile_actor.external_animation_player.play("idle")
 		mobile_actor.external_animation_player.seek(0.0, true)
 	var wolf_mouth_position := mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55)

@@ -342,6 +342,8 @@ def create_actions(rig: bpy.types.Object) -> None:
 
         if action_name in ("locomotion", "sprint"):
             amount = 0.34 if action_name == "locomotion" else 0.58
+            front_joint_bend = 0.56 if action_name == "locomotion" else 0.80
+            hind_joint_bend = 0.68 if action_name == "locomotion" else 0.94
             for index, frame in enumerate((1, 5, 9, 13, 17, 21, 25, 29, 33)):
                 phase = math.tau * index / 8.0
                 for suffix, (upper_name, lower_name, paw_name) in limb_bones.items():
@@ -351,6 +353,7 @@ def create_actions(rig: bpy.types.Object) -> None:
                         offset = {"LF": math.pi * 0.82, "RF": math.pi * 1.06, "LH": 0.0, "RH": math.pi * 0.20}[suffix]
                     stride = math.sin(phase + offset)
                     swing = max(stride, 0.0)
+                    support = max(-stride, 0.0)
                     transfer = max(0.0, 1.0 - abs(stride) * 1.7)
                     upper = rig.pose.bones[upper_name]
                     lower = rig.pose.bones[lower_name]
@@ -360,11 +363,13 @@ def create_actions(rig: bpy.types.Object) -> None:
                     # between a planted stance and a compact lifted swing.
                     set_sagittal_rotation(upper, -amount * stride)
                     if suffix in ("LF", "RF"):
-                        set_sagittal_rotation(lower, amount * (0.46 * swing + 0.06 * transfer))
-                        set_sagittal_rotation(paw, -amount * (0.25 * swing + 0.04 * transfer))
+                        elbow_flex = front_joint_bend * (0.94 * swing + 0.10 * transfer + 0.10 * support)
+                        set_sagittal_rotation(lower, elbow_flex)
+                        set_sagittal_rotation(paw, -front_joint_bend * (0.44 * swing + 0.08 * transfer))
                     else:
-                        set_sagittal_rotation(lower, -amount * (0.54 * swing + 0.05 * transfer))
-                        set_sagittal_rotation(paw, amount * (0.28 * swing + 0.04 * transfer))
+                        knee_flex = hind_joint_bend * (0.98 * swing + 0.10 * transfer + 0.08 * support)
+                        set_sagittal_rotation(lower, -knee_flex)
+                        set_sagittal_rotation(paw, hind_joint_bend * (0.50 * swing + 0.08 * transfer))
                     for bone_name in (upper_name, lower_name, paw_name):
                         key_rotation(rig, bone_name, frame)
                 flex = (0.045 if action_name == "locomotion" else 0.115) * math.cos(phase)
