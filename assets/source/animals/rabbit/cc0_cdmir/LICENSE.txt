@@ -1,0 +1,26 @@
+Rigged rabbit source asset
+==========================
+
+Title: Rabbit
+Author: CDmir (TinyWorlds)
+Source page: https://opengameart.org/content/rabbit-0
+Original download: https://opengameart.org/sites/default/files/rabbit.blend
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-16
+SHA-256: bb6deef1ee91b21380355138374cae87946451ce864502b1af68eb60f4750843
+
+Eco Rebirth modifications
+-------------------------
+
+- Rebuilt the legacy Blender materials as Godot-compatible PBR materials from
+  the packed diffuse and tangent-space normal textures.
+- Normalized the authored rabbit proportions to the game's species scale.
+- Reduced the source control rig to the 22-bone runtime ground-animal contract.
+- Added eight original gameplay animation clips and two Godot skill sockets.
+- Added separate Hero and Mobile geometry/texture profiles, using 512 and 256
+  pixel maps respectively for the small on-screen species.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.

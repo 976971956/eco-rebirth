@@ -33,10 +33,16 @@ func _print_tree(node: Node, indent: String) -> void:
 		position_text = " global=%s" % str((node as Node3D).global_position)
 	elif node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
-		position_text = " transform=%s aabb=%s skeleton=%s" % [
+		var material_names: Array[String] = []
+		if mesh_instance.mesh != null:
+			for surface_index in range(mesh_instance.mesh.get_surface_count()):
+				var material := mesh_instance.get_active_material(surface_index)
+				material_names.append("%s:%s" % [material.get_class(), material.resource_name] if material != null else "<null>")
+		position_text = " transform=%s aabb=%s skeleton=%s materials=%s" % [
 			str(mesh_instance.transform),
 			str(mesh_instance.get_aabb()),
 			str(mesh_instance.skeleton),
+			str(material_names),
 		]
 	elif node is Skeleton3D:
 		var skeleton := node as Skeleton3D

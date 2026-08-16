@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.49 发布候选校验通过：剩余 29 种 V5 近写实解剖/面部/耳足/贴体纹理、八态动作、移动端预算与三端发布契约正常")
+		print("[release] V1.50 发布候选校验通过：CC0 写实雪兔、原生 UV/PBR、22 骨八态动作、Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.49.0\"") and presets.contains("application/short_version=\"1.49.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=590") and presets.contains("application/version=\"590\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.49.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.50.0\"") and presets.contains("application/short_version=\"1.50.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=600") and presets.contains("application/version=\"600\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.50.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -531,7 +531,7 @@ func _validate_external_species_model_contract() -> void:
 			_expect(is_equal_approx(model.scale.x, float(VisualCatalog.VISUAL_SCALE_CONTRACT[species_id])) and model.scale.is_equal_approx(Vector3.ONE * model.scale.x), "%s 的 %s 模型没有遵循统一根缩放契约" % [species_id, profile])
 			var stats := _external_model_stats(model)
 			profile_vertices[profile] = int(stats["vertices"])
-			var minimum_meshes := 4 if species_id in VisualCatalog.V2_SPECIES else 6
+			var minimum_meshes := 3 if species_id in VisualCatalog.AUTHORED_SOURCE_SPECIES else 4 if species_id in VisualCatalog.V2_SPECIES else 6
 			_expect(int(stats["meshes"]) >= minimum_meshes, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
 			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
@@ -541,7 +541,7 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["lod_meshes"]) == int(stats["meshes"]), "%s 的 %s 网格没有完整配置自动可见距离 LOD" % [species_id, profile])
 			_expect(int(stats["detail_lod_meshes"]) > 0, "%s 的 %s 没有可独立裁剪的远景细节层" % [species_id, profile])
 			_expect(int(stats["organic_body_islands"]) == 1, "%s 的 %s OrganicBodyV2 不是单一连通体，足、耳或尾可能脱离躯干" % [species_id, profile])
-			if species_id != "wolf":
+			if species_id not in VisualCatalog.AUTHORED_SOURCE_SPECIES:
 				_expect(int(stats["near_realistic_face_details"]) >= 2, "%s 的 %s 没有 V5 缩小眼部、鼻口或眼睑结构" % [species_id, profile])
 			if species_id in ["zebra", "tiger", "lynx", "cheetah", "hyena", "owl", "snake", "crocodile"]:
 				_expect(int(stats["flush_pattern_bodies"]) == 1, "%s 的 %s 条纹、斑点或鳞区没有作为贴体材质区域输出" % [species_id, profile])
@@ -562,8 +562,9 @@ func _validate_external_species_model_contract() -> void:
 						if species_id != "wolf":
 							_expect(int(stats["bones"]) == 22, "%s 的 %s 模型不是 V4 22 骨地面动物契约" % [species_label, profile])
 							_expect(int(stats["three_segment_limb_chains"]) == 4, "%s 的 %s 模型缺少上肢、下肢、足部三段式骨链" % [species_label, profile])
-							_expect(int(stats["realistic_foot_details"]) >= 4, "%s 的 %s 模型缺少四足或分蹄轮廓" % [species_label, profile])
-							if species_id != "turtle":
+							if species_id not in VisualCatalog.AUTHORED_SOURCE_SPECIES:
+								_expect(int(stats["realistic_foot_details"]) >= 4, "%s 的 %s 模型缺少四足或分蹄轮廓" % [species_label, profile])
+							if species_id != "turtle" and species_id not in VisualCatalog.AUTHORED_SOURCE_SPECIES:
 								_expect(int(stats["authored_ear_meshes"]) >= 2, "%s 的 %s 仍使用球体耳朵，未导入 V5 渐薄耳廓" % [species_label, profile])
 						_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [species_label, profile])
 					else:

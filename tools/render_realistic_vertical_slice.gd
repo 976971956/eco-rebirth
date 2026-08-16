@@ -48,8 +48,9 @@ func _build_showcase() -> void:
 	rabbit.setup(game_stub, 451, "rabbit", true, Vector3(-2.55, 0.0, -0.15), 0)
 	rabbit.rotation.y = -0.52
 	_hide_actor_ui(rabbit)
-	SkeletonRig.apply_pose(rabbit.external_skeleton, "skill", 1.25, 0.82, 1.0, 0.72, 0.0, 0.4, 1.0, "rabbit")
-	rabbit.external_skeleton.force_update_all_bone_transforms()
+	rabbit.external_animation_player.play("skill")
+	rabbit.external_animation_player.seek(0.50, true)
+	rabbit.external_animation_player.advance(0.0)
 	SkillVFX.moonstep(scene, rabbit.global_position + Vector3.UP * 0.24, Vector3(-0.38, 0.0, -1.0), Color("#b9f4e8"))
 
 	var wolf: EcoActor = ActorScript.new()
@@ -58,12 +59,13 @@ func _build_showcase() -> void:
 	wolf.setup(game_stub, 452, "wolf", true, Vector3(2.35, 0.0, 0.30), 0)
 	wolf.rotation.y = -0.36
 	_hide_actor_ui(wolf)
-	SkeletonRig.apply_pose(wolf.external_skeleton, "attack", 1.38, 0.74, 1.0, 0.62, 0.0, 1.1, 1.0, "wolf")
-	wolf.external_skeleton.force_update_all_bone_transforms()
+	wolf.external_animation_player.play("attack")
+	wolf.external_animation_player.seek(0.26, true)
+	wolf.external_animation_player.advance(0.0)
 	SkillVFX.pack_pounce(scene, wolf.global_position + Vector3(0.0, 0.0, 1.25), wolf.global_position + Vector3(0.0, 0.0, -0.55), Vector3(0.25, 0.0, -1.0), Color("#a9d8ed"))
 
-	_add_label(scene, "V2 竖向切片  ·  雪兔月影折跃  ·  灰狼群猎扑杀", Vector3(0.0, 4.95, -0.20), 43)
-	_add_label(scene, "Blender 连续体块  ·  两段腿骨  ·  Hero PBR  ·  古木林地套件", Vector3(0.0, 4.36, -0.20), 27)
+	_add_label(scene, "CC0 写实切片  ·  雪兔月影折跃  ·  灰狼群猎扑杀", Vector3(0.0, 4.95, -0.20), 43)
+	_add_label(scene, "真实 UV/PBR  ·  三段腿骨  ·  Hero/Mobile  ·  Godot 烘焙动画", Vector3(0.0, 4.36, -0.20), 27)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_PERSPECTIVE

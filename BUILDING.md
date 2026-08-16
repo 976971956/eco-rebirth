@@ -1,4 +1,4 @@
-# 《生态轮回》V1.49 RC1 运行与导出
+# 《生态轮回》V1.50 RC1 运行与导出
 
 ## 直接运行
 
@@ -63,6 +63,8 @@ V1.47 修正 V1.46 中段旋转方向抵消自然关节折角的问题，并把�
 V1.48 重建灰狼之外 29 种动物的 Hero/Mobile GLB。25 种地面动物为 22 骨三段四肢，雪鸮/金雕为 14 骨三段翼，青环蛇/沼泽鳄为 10/22 骨长体。振翼和体波已从错误长轴扭转改为真实横向运动，并增加逐物种关节轨迹门禁。Mobile 总顶点为 134,753 / 140,000。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v148-rc`。
 
 V1.49 保留灰狼样板，完成其余 29 种 V5 实时近写实外观重建：逐物种调整躯干、头颈、吻部和四肢比例，使用薄片耳、渐细足、蹄爪/趾爪、贴体毛色/鳞纹与更克制的面部细节，同时继续使用 V1.48 的已验证骨架和八动作契约。58 份 GLB 已重建，30 种 Mobile 总顶点为 125,344 / 140,000。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v149-rc`。
+
+V1.50 将雪兔替换为经审计的 CC0 外部解剖资产，重建原生 UV/PBR、22 骨与八态烘焙动作。构建器使用 `--disable-autoexec` 打开源 `.blend`，并生成 Hero/Mobile 双档。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v150-rc`。
 
 本地有 Blender 5.2 LTS 时，可以重新生成并校验竖向切片资产：
 

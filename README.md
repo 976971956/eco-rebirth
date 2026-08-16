@@ -1,6 +1,6 @@
 # 《生态轮回》游戏设计文档
 
-版本：发布候选 V1.49 RC1 + GDD V1.0
+版本：发布候选 V1.50 RC1 + GDD V1.0
 状态：自动化发布门禁已通过，等待 Android/iOS 实体设备最终验收
 引擎：Godot 4.7.1  
 视角：3D 斜俯视角
@@ -11,7 +11,7 @@
 
 ## 可玩版本
 
-当前仓库已包含一个可以直接运行的完整生态对战版本。V1.49 保留灰狼 32 骨实时写实样板不变，完成其余 29 种动物的 V5 Hero/Mobile 双档重建：逐物种重定躯干、头颈、吻部、耳朵与四肢比例，加入渐细脚掌、分趾蹄、爪、飞羽、鳞甲和贴体花纹，同时保留 V1.48 已验证的 22 骨三段四肢、14 骨三段翼与 10/22 骨长体动作契约。共更新 58 份可直接导入 Godot 的 GLB，不改碰撞、数值、AI 或存档。
+当前仓库已包含一个可以直接运行的完整生态对战版本。V1.50 开始按灰狼的外部授权资产标准逐种替换：第一种雪兔已改为 CC0 真实解剖基础，使用原生 UV 兔毛/面部/脚垫贴图、法线贴图、22 骨三段四肢、8 个 Godot 烘焙动作与 Hero/Mobile 双档。其余 28 种仍保留 V1.49 已验证的近写实回退资产，不改碰撞、数值、AI 或存档。
 
 2026-08-15 的 Web 动画修复已将运行时骨骼驱动切换为 GLB 内置烘焙动作。这避免了 Blender→glTF 坐标转换后，旧程序欧拉角被错误套用到不同局部轴，导致林鹿等动物的连续体表被拉成“骨骼串”。移动、冲刺、攻击、技能、受击、进食和死亡现在都会走模型自带动作，旧程序姿势仅作无动画资源的降级回退。
 
@@ -27,6 +27,8 @@
 
 ![V1.47 灰狼短腿比例与真实屈膝四相位](docs/images/v52-wolf-balanced-gait.png)
 
+![V1.50 CC0 写实雪兔与灰狼烘焙动作](docs/images/v46-realistic-vertical-slice.png)
+
 ![V1.49 V5 雪兔、赤狐与林鹿近写实移动验收](docs/images/v54-v5-realistic-gallery-a-move.png)
 
 ![V1.49 V5 巨象、猛虎与猕猴近写实轮廓](docs/images/v54-v5-realistic-gallery-f-idle.png)
@@ -34,7 +36,7 @@
 ![V1.49 V5 雄狮、青环蛇与沼泽鳄移动验收](docs/images/v54-v5-realistic-gallery-j-move.png)
 
 - [运行、操作与三端导出说明](BUILDING.md)
-- [V1.49 发布候选与真机验收](docs/15_发布候选与真机验收.md)
+- [V1.50 发布候选与真机验收](docs/15_发布候选与真机验收.md)
 - [V2 写实美术与动画生产方案](docs/17_写实美术与动画生产方案.md)
 - [隐私说明](docs/16_隐私说明.md)
 - [Godot 主场景](scenes/main.tscn)
@@ -247,6 +249,13 @@
 ![V1.49 V5 巨象、猛虎与猕猴静态轮廓](docs/images/v54-v5-realistic-gallery-f-idle.png)
 
 ![V1.49 V5 飞行类、重型类与鬣狗移动定格](docs/images/v54-v5-realistic-gallery-i-move.png)
+
+## V1.50 逐种外部写实资产：雪兔
+
+- 雪兔使用 OpenGameArt 上 CDmir/TinyWorlds 的 CC0 带骨骼兔模型作为解剖基础；原始 `rabbit.blend`、SHA-256、许可证和审计记录保存在 `assets/source/animals/rabbit/cc0_cdmir/`。
+- 旧 Blender 材质已重建为 Godot Compatibility 可用的兔毛、透明毛片与耳内 PBR；Hero 为 8,460 三角面 / 5,124 顶点，Mobile 为 2,840 三角面 / 2,300 顶点。
+- 源 37 骨含 IK 控制骨，发布模型精简为 22 骨；每条腿保留上段、膝/腕和脚掌独立运动，并提供 `idle / locomotion / sprint / attack / skill / hit / eat / death`。
+- 30 种 Mobile 总顶点降为 124,602 / 140,000。这是 29 种逐种替换计划的第一个交付，不声称其余 28 种已达到灰狼同级的外部写实资产标准。
 
 ## V1.42 AI 原创林鹿 V3 基准
 
