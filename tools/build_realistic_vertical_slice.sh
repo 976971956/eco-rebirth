@@ -29,6 +29,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/snake/cc0_methodical_pixel" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_bear.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/bear/cc0_nephthys" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

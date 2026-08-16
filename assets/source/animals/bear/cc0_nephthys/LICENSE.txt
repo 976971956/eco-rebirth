@@ -1,0 +1,25 @@
+Low-poly toy bear reference asset
+=================================
+
+Title: toy bear lowpoly
+Author: NephthysGameDev
+Source page: https://opengameart.org/content/toy-bear-lowpoly
+Original download: https://opengameart.org/sites/default/files/bear_blend.zip
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-16
+Archive SHA-256: 9f35721544eb565305b5d694416f6362703c0f201f2cb77b104aabc7876eb740
+bear.blend SHA-256: 12338af1da802c81ae78cec2391ac74e40e85e20e0b99f220a120316dada7a43
+bear_palette.png SHA-256: 0c8e57ce013a183ab3efc367470f8fbba57274453021117693ed8718b41577dc
+
+Eco Rebirth modifications
+-------------------------
+
+The source is retained as a public-domain shape and palette reference. Its
+upright toy topology is not shipped as the gameplay mesh. Eco Rebirth authors
+a new quadrupedal adult brown-bear surface, exact 22-bone runtime rig, PBR fur,
+plantigrade feet, articulated actions, facial details, and gameplay sockets.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.
