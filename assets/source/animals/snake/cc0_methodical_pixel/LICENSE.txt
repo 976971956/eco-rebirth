@@ -1,0 +1,29 @@
+Rigged low-poly snake source asset
+=================================
+
+Title: Snake low poly animated 3d model
+Author: methodical pixel
+Source page: https://opengameart.org/content/snake-low-poly-animated-3d-model
+Original download: https://opengameart.org/sites/default/files/snake.tar.gz
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-16
+Archive SHA-256: fcadd98c732e39d44af150034d7ba02f9ffe26680ec7e879331f103fa8d279f9
+snake.blend SHA-256: fdfabd55ad7796266d720f21d7fb975f8b2133ca0a629d3dd54faeef06ea3eac
+snake.png SHA-256: 4336a5ea22c30d9b93d27cbba3268360e3aa0689c215699c49cc332e5af380df
+
+Eco Rebirth modifications
+-------------------------
+
+- Preserved the single connected source mesh, authored UV layout, grounded
+  serpentine silhouette, and original CC0 provenance.
+- Rebuilt the 206-triangle cage into separate Hero/Mobile Catmull-Clark
+  profiles and remapped it to the project's ten-bone long-body rig.
+- Recoloured the authored pattern into a blue-green forest scale set and
+  generated albedo, normal, and roughness PBR textures from the source mask.
+- Added original eyes, nostrils, jaw, fangs, forked tongue, two gameplay
+  sockets, and eight baked gameplay actions.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.

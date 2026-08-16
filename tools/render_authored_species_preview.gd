@@ -73,11 +73,12 @@ func _render_gait_cycle() -> bool:
 	scene.add_child(game)
 	var positions := [-4.45, -1.48, 1.48, 4.45]
 	var times := [0.00, 0.267, 0.533, 0.80]
-	var labels := ["第一组触地", "膝肘收腿", "换组触地", "后膝回收"]
+	var labels := ["波峰前移", "前段换向", "躯干伸展", "尾波收束"] if species_id == "snake" else ["第一组触地", "膝肘收腿", "换组触地", "后膝回收"]
 	for index in range(times.size()):
 		_add_actor(scene, game, 200 + index, Vector3(positions[index], 0.0, 0.0), "locomotion", times[index])
 		_add_label(scene, labels[index], Vector3(positions[index], 2.76, 0.0), 24)
-	_add_label(scene, "%s · 四相行走关节验收" % Catalog.display_name(species_id), Vector3(0.0, 3.74, 1.0), 38)
+	var gait_title := "四相游走波动验收" if species_id == "snake" else "四相行走关节验收"
+	_add_label(scene, "%s · %s" % [Catalog.display_name(species_id), gait_title], Vector3(0.0, 3.74, 1.0), 38)
 	return await _capture(scene, "%s-gait.png" % output_prefix, 6.85)
 
 
