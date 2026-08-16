@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description="Build the Eco Rebirth realistic vertical slice")
     parser.add_argument("--output-root", required=True)
+    parser.add_argument("--species", choices=("rabbit", "wolf"), action="append")
     return parser.parse_args(argv)
 
 
@@ -43,6 +44,21 @@ def pbr_material(name: str, color: tuple[float, float, float, float], roughness:
         principled.inputs["Roughness"].default_value = roughness
         principled.inputs["Metallic"].default_value = metallic
     return material
+
+
+def attach_albedo_texture(material: bpy.types.Material, texture_path: Path) -> None:
+    if not texture_path.is_file() or material.node_tree is None:
+        return
+    principled = material.node_tree.nodes.get("Principled BSDF")
+    if principled is None:
+        return
+    image = bpy.data.images.load(str(texture_path), check_existing=True)
+    image.colorspace_settings.name = "sRGB"
+    texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.name = "AIWolfFurAlbedo"
+    texture.image = image
+    texture.extension = "REPEAT"
+    material.node_tree.links.new(texture.outputs["Color"], principled.inputs["Base Color"])
 
 
 def metaball_mesh(
@@ -105,6 +121,204 @@ def uv_sphere(
     return obj
 
 
+def authored_mesh(
+    name: str,
+    vertices: list[tuple[float, float, float]],
+    faces: list[tuple[int, ...]],
+    materials: list[bpy.types.Material],
+    material_indices: list[int] | None = None,
+    subdivision: int = 0,
+) -> bpy.types.Object:
+    """Create a smooth authored mesh in Godot coordinates.
+
+    The V3 metaball body was useful as a robust mobile baseline, but it rounded
+    away the wolf's rib cage, waist, muzzle and digitigrade silhouette.  The
+    cinematic sample uses explicit cross sections and keeps that topology as the
+    deterministic source of truth.
+    """
+    mesh = bpy.data.meshes.new(f"{name}Mesh")
+    mesh.from_pydata([g2b(vertex) for vertex in vertices], [], faces)
+    mesh.validate(clean_customdata=False)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    for material in materials:
+        mesh.materials.append(material)
+    if material_indices is not None:
+        for polygon, material_index in zip(mesh.polygons, material_indices):
+            polygon.material_index = max(0, min(material_index, len(materials) - 1))
+    for polygon in mesh.polygons:
+        polygon.use_smooth = True
+    if subdivision > 0:
+        modifier = obj.modifiers.new("CinematicSubdivision", "SUBSURF")
+        modifier.subdivision_type = "CATMULL_CLARK"
+        modifier.levels = subdivision
+        modifier.render_levels = subdivision
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+        obj.select_set(False)
+    return obj
+
+
+def lofted_body(
+    name: str,
+    rings: list[tuple[float, float, float, float]],
+    materials: list[bpy.types.Material],
+    hero: bool,
+) -> bpy.types.Object:
+    """Build one connected head/neck/torso surface from anatomical sections."""
+    radial = 28 if hero else 16
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, ...]] = []
+    material_indices: list[int] = []
+    face_uvs: list[list[tuple[float, float]]] = []
+    for z, center_y, radius_x, radius_y in rings:
+        for radial_index in range(radial):
+            angle = math.tau * radial_index / radial
+            vertices.append((math.cos(angle) * radius_x, center_y + math.sin(angle) * radius_y, z))
+    for ring_index in range(len(rings) - 1):
+        for radial_index in range(radial):
+            next_radial = (radial_index + 1) % radial
+            current = ring_index * radial + radial_index
+            next_on_ring = ring_index * radial + next_radial
+            next_ring = (ring_index + 1) * radial + radial_index
+            next_ring_next = (ring_index + 1) * radial + next_radial
+            faces.append((current, next_ring, next_ring_next, next_on_ring))
+            u0 = radial_index / radial * 3.0
+            u1 = (radial_index + 1) / radial * 3.0
+            v0 = ring_index / (len(rings) - 1) * 4.0
+            v1 = (ring_index + 1) / (len(rings) - 1) * 4.0
+            face_uvs.append([(u0, v0), (u0, v1), (u1, v1), (u1, v0)])
+            angle = math.tau * (radial_index + 0.5) / radial
+            average_z = (rings[ring_index][0] + rings[ring_index + 1][0]) * 0.5
+            # Keep the textured coat continuous over the back. A former hard
+            # charcoal cap made the animal read like an orca in gameplay views.
+            # The light material is now limited to the throat and lower belly.
+            if math.sin(angle) < -0.78 or (-2.30 < average_z < -1.84 and math.sin(angle) < -0.18):
+                material_indices.append(2)  # cream throat, belly and muzzle
+            else:
+                material_indices.append(0)
+    rear_center = len(vertices)
+    vertices.append((0.0, rings[0][1], rings[0][0]))
+    front_center = len(vertices)
+    vertices.append((0.0, rings[-1][1], rings[-1][0]))
+    for radial_index in range(radial):
+        next_radial = (radial_index + 1) % radial
+        faces.append((rear_center, next_radial, radial_index))
+        material_indices.append(0)
+        face_uvs.append([(0.5, 0.5), (1.0, 0.0), (0.0, 0.0)])
+        last_ring = (len(rings) - 1) * radial
+        faces.append((front_center, last_ring + radial_index, last_ring + next_radial))
+        material_indices.append(2)
+        face_uvs.append([(0.5, 0.5), (0.0, 1.0), (1.0, 1.0)])
+    obj = authored_mesh(name, vertices, faces, materials, material_indices, 0)
+    uv_layer = obj.data.uv_layers.new(name="UVMap")
+    for polygon, polygon_uvs in zip(obj.data.polygons, face_uvs):
+        for loop_index, uv in zip(polygon.loop_indices, polygon_uvs):
+            uv_layer.data[loop_index].uv = uv
+    modifier = obj.modifiers.new("CinematicSubdivision", "SUBSURF")
+    modifier.subdivision_type = "CATMULL_CLARK"
+    modifier.levels = 2 if hero else 1
+    modifier.render_levels = modifier.levels
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.modifier_apply(modifier=modifier.name)
+    obj.select_set(False)
+    return obj
+
+
+def tapered_limb(
+    name: str,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    start_radius: float,
+    end_radius: float,
+    material: bpy.types.Material,
+    hero: bool,
+) -> bpy.types.Object:
+    start_blender = Vector(g2b(start))
+    end_blender = Vector(g2b(end))
+    direction = end_blender - start_blender
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=20 if hero else 12,
+        radius1=end_radius,
+        radius2=start_radius,
+        depth=max(direction.length, 0.01),
+        end_fill_type="NGON",
+        location=(start_blender + end_blender) * 0.5,
+    )
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = Vector((0.0, 0.0, 1.0)).rotation_difference(direction.normalized())
+    obj.data.materials.append(material)
+    bevel = obj.modifiers.new("AnatomyBevel", "BEVEL")
+    bevel.width = min(start_radius, end_radius) * 0.38
+    bevel.segments = 3 if hero else 1
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=bevel.name)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    return obj
+
+
+def curved_tube(
+    name: str,
+    points: list[tuple[tuple[float, float, float], float]],
+    material: bpy.types.Material,
+    hero: bool,
+) -> bpy.types.Object:
+    radial = 18 if hero else 10
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, ...]] = []
+    for (center_x, center_y, center_z), radius in points:
+        for radial_index in range(radial):
+            angle = math.tau * radial_index / radial
+            vertices.append((center_x + math.cos(angle) * radius, center_y + math.sin(angle) * radius, center_z))
+    for point_index in range(len(points) - 1):
+        for radial_index in range(radial):
+            next_radial = (radial_index + 1) % radial
+            current = point_index * radial + radial_index
+            next_ring = (point_index + 1) * radial + radial_index
+            faces.append((current, next_ring, (point_index + 1) * radial + next_radial, point_index * radial + next_radial))
+    return authored_mesh(name, vertices, faces, [material], [0] * len(faces), 1 if hero else 0)
+
+
+def triangular_ear(
+    name: str,
+    side: float,
+    outer: bpy.types.Material,
+    inner: bpy.types.Material,
+    hero: bool,
+) -> list[bpy.types.Object]:
+    center_x = side * 0.285
+    base_y, base_z = 1.99, -1.52
+    tip_y, tip_z = 2.52, -1.45
+    half_width = 0.22
+    thickness = 0.105
+    vertices = [
+        (center_x - half_width, base_y, base_z - thickness),
+        (center_x + half_width, base_y, base_z - thickness),
+        (center_x, tip_y, tip_z - thickness * 0.45),
+        (center_x - half_width, base_y, base_z + thickness),
+        (center_x + half_width, base_y, base_z + thickness),
+        (center_x, tip_y, tip_z + thickness * 0.45),
+    ]
+    faces = [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)]
+    ear = authored_mesh(name, vertices, faces, [outer], [0] * len(faces), 1 if hero else 0)
+    result = [ear]
+    if hero:
+        inner_vertices = [
+            (center_x - half_width * 0.56, base_y + 0.045, base_z - thickness * 1.04),
+            (center_x + half_width * 0.56, base_y + 0.045, base_z - thickness * 1.04),
+            (center_x, tip_y - 0.12, tip_z - thickness * 0.54),
+        ]
+        inner_panel = authored_mesh(f"{name}InnerDetail", inner_vertices, [(0, 1, 2)], [inner], [0], 1)
+        result.append(inner_panel)
+    return result
+
+
 def bone(edit_bones: bpy.types.ArmatureEditBones, name: str, head: tuple[float, float, float], tail: tuple[float, float, float], parent=None):
     result = edit_bones.new(name)
     result.head = g2b(head)
@@ -141,21 +355,22 @@ def build_rig(species: str) -> bpy.types.Object:
         }
         tail_points = ((0.0, 1.15, 0.88), (0.0, 1.16, 1.42))
     else:
-        spine = bone(edit, "Spine", (0.0, 1.25, 1.12), (0.0, 1.34, 0.10), root)
-        chest = bone(edit, "Chest", (0.0, 1.34, 0.10), (0.0, 1.52, -0.72), spine)
-        neck = bone(edit, "Neck", (0.0, 1.52, -0.72), (0.0, 1.68, -1.38), chest)
-        head = bone(edit, "Head", (0.0, 1.68, -1.38), (0.0, 1.58, -2.38), neck)
+        spine = bone(edit, "Spine", (0.0, 1.30, 1.10), (0.0, 1.39, 0.10), root)
+        chest = bone(edit, "Chest", (0.0, 1.39, 0.10), (0.0, 1.55, -0.78), spine)
+        neck = bone(edit, "Neck", (0.0, 1.55, -0.78), (0.0, 1.76, -1.42), chest)
+        head = bone(edit, "Head", (0.0, 1.76, -1.42), (0.0, 1.60, -2.48), neck)
+        bone(edit, "Jaw", (0.0, 1.61, -1.78), (0.0, 1.48, -2.48), head)
         leg_anchors = {
-            "LF": ((-0.47, 1.24, -0.57), (-0.48, 0.70, -0.68), (-0.48, 0.18, -0.87)),
-            "RF": ((0.47, 1.24, -0.57), (0.48, 0.70, -0.68), (0.48, 0.18, -0.87)),
-            "LH": ((-0.46, 1.18, 0.66), (-0.47, 0.68, 0.53), (-0.47, 0.18, 0.25)),
-            "RH": ((0.46, 1.18, 0.66), (0.47, 0.68, 0.53), (0.47, 0.18, 0.25)),
+            "LF": ((-0.51, 1.43, -0.61), (-0.50, 0.76, -0.57), (-0.49, 0.15, -0.88)),
+            "RF": ((0.51, 1.43, -0.61), (0.50, 0.76, -0.57), (0.49, 0.15, -0.88)),
+            "LH": ((-0.47, 1.32, 0.66), (-0.50, 0.88, 0.42), (-0.48, 0.15, 0.34)),
+            "RH": ((0.47, 1.32, 0.66), (0.50, 0.88, 0.42), (0.48, 0.15, 0.34)),
         }
         ear_anchors = {
-            "L": ((-0.27, 1.91, -1.43), (-0.31, 2.43, -1.34)),
-            "R": ((0.27, 1.91, -1.43), (0.31, 2.43, -1.34)),
+            "L": ((-0.28, 1.99, -1.52), (-0.28, 2.52, -1.45)),
+            "R": ((0.28, 1.99, -1.52), (0.28, 2.52, -1.45)),
         }
-        tail_points = ((0.0, 1.29, 1.08), (0.08, 0.83, 2.40))
+        tail_points = ((0.0, 1.34, 1.02), (0.10, 0.50, 2.48))
 
     for suffix, (upper, joint, paw) in leg_anchors.items():
         upper_bone = bone(edit, f"Leg_{suffix}", upper, joint, chest if suffix.endswith("F") else spine)
@@ -165,7 +380,7 @@ def build_rig(species: str) -> bpy.types.Object:
     bone(edit, "Tail", tail_points[0], tail_points[1], spine)
     bpy.ops.object.mode_set(mode="OBJECT")
     rig["eco_species"] = species
-    rig["eco_rig_family"] = "lagomorph_v3" if species == "rabbit" else "canid_v3"
+    rig["eco_rig_family"] = "lagomorph_v3" if species == "rabbit" else "canid_cinematic_v1"
     return rig
 
 
@@ -258,6 +473,30 @@ def body_skin(obj: bpy.types.Object, rig: bpy.types.Object, species: str) -> Non
     add_armature_weights(obj, rig, weights)
 
 
+def cinematic_wolf_body_skin(obj: bpy.types.Object, rig: bpy.types.Object) -> None:
+    anchors = {"Spine": 0.58, "Chest": -0.34, "Neck": -1.18, "Head": -2.08}
+    ranges = {"Spine": 1.05, "Chest": 0.92, "Neck": 0.70, "Head": 0.92}
+    weights = {name: [] for name in anchors}
+    for vertex in obj.data.vertices:
+        godot_z = vertex.co.y
+        raw = {
+            name: max(0.0, 1.0 - abs(godot_z - anchor) / ranges[name]) ** 2.3
+            for name, anchor in anchors.items()
+        }
+        if godot_z < -1.72:
+            raw["Head"] *= 1.75
+        elif godot_z < -1.05:
+            raw["Neck"] *= 1.38
+        total = sum(raw.values())
+        if total <= 0.0001:
+            nearest = min(anchors, key=lambda item: abs(godot_z - anchors[item]))
+            raw[nearest] = 1.0
+            total = 1.0
+        for name in anchors:
+            weights[name].append(raw[name] / total)
+    add_armature_weights(obj, rig, weights)
+
+
 def attach_socket(name: str, position: tuple[float, float, float], rig: bpy.types.Object, bone_name: str) -> bpy.types.Object:
     socket = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(socket)
@@ -268,6 +507,129 @@ def attach_socket(name: str, position: tuple[float, float, float], rig: bpy.type
     socket.parent_bone = bone_name
     socket.matrix_world = Matrix.Translation(g2b(position))
     return socket
+
+
+def build_cinematic_wolf_parts(hero: bool, rig: bpy.types.Object) -> list[bpy.types.Object]:
+    coat = pbr_material("wolf_cinematic_coat_pbr", (0.285, 0.30, 0.295, 1.0), 0.80)
+    dark = pbr_material("wolf_cinematic_saddle_pbr", (0.070, 0.080, 0.085, 1.0), 0.86)
+    light = pbr_material("wolf_cinematic_cream_pbr", (0.61, 0.59, 0.53, 1.0), 0.84)
+    inner_ear = pbr_material("wolf_cinematic_inner_ear_pbr", (0.24, 0.15, 0.14, 1.0), 0.74)
+    skin = pbr_material("wolf_cinematic_nose_pbr", (0.018, 0.021, 0.022, 1.0), 0.22)
+    amber = pbr_material("wolf_cinematic_iris_pbr", (0.72, 0.35, 0.055, 1.0), 0.14)
+    pupil = pbr_material("wolf_cinematic_pupil_pbr", (0.005, 0.006, 0.005, 1.0), 0.10)
+    catchlight = pbr_material("wolf_cinematic_catchlight_pbr", (0.96, 0.93, 0.82, 1.0), 0.04)
+    attach_albedo_texture(
+        coat,
+        Path(__file__).resolve().parents[2] / "assets/textures/animals/wolf/wolf_cinematic_fur_albedo.png",
+    )
+
+    # Sections follow the reference sheet from rump to nose.  The shoulder peak,
+    # deep rib cage, tucked waist and long narrow muzzle are authored separately
+    # instead of being inferred from one generic quadruped capsule.
+    rings = [
+        (1.10, 1.31, 0.36, 0.40),
+        (0.82, 1.35, 0.48, 0.50),
+        (0.48, 1.39, 0.52, 0.53),
+        (0.16, 1.44, 0.47, 0.49),
+        (-0.18, 1.47, 0.54, 0.59),
+        (-0.52, 1.53, 0.60, 0.64),
+        (-0.78, 1.61, 0.56, 0.59),
+        (-1.04, 1.70, 0.45, 0.52),
+        (-1.28, 1.79, 0.41, 0.44),
+        (-1.52, 1.82, 0.40, 0.39),
+        (-1.76, 1.78, 0.36, 0.32),
+        (-2.00, 1.70, 0.30, 0.25),
+        (-2.24, 1.63, 0.25, 0.20),
+        (-2.46, 1.59, 0.20, 0.15),
+        (-2.58, 1.59, 0.14, 0.11),
+    ]
+    body = lofted_body("WolfOrganicBodyV2", rings, [coat, dark, light], hero)
+    cinematic_wolf_body_skin(body, rig)
+    parts = [body]
+
+    def add_sphere(name: str, position, scale, material, bone_name: str) -> bpy.types.Object:
+        obj = uv_sphere(name, position, scale, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    def add_limb(name: str, start, end, start_radius, end_radius, material, bone_name: str) -> bpy.types.Object:
+        obj = tapered_limb(name, start, end, start_radius, end_radius, material, hero)
+        rigid_skin(obj, rig, bone_name)
+        parts.append(obj)
+        return obj
+
+    leg_layout = {
+        "LF": ((-0.51, 1.43, -0.61), (-0.50, 0.76, -0.57), (-0.49, 0.31, -0.70), (-0.49, 0.13, -0.90)),
+        "RF": ((0.51, 1.43, -0.61), (0.50, 0.76, -0.57), (0.49, 0.31, -0.70), (0.49, 0.13, -0.90)),
+        "LH": ((-0.47, 1.32, 0.66), (-0.50, 0.88, 0.42), (-0.50, 0.38, 0.73), (-0.48, 0.13, 0.34)),
+        "RH": ((0.47, 1.32, 0.66), (0.50, 0.88, 0.42), (0.50, 0.38, 0.73), (0.48, 0.13, 0.34)),
+    }
+    for suffix, (hip, knee, hock, paw_center) in leg_layout.items():
+        front = suffix.endswith("F")
+        upper_bone = f"Leg_{suffix}"
+        lower_bone = f"Paw_{suffix}"
+        add_limb(f"UpperLeg_{suffix}", hip, knee, 0.175 if front else 0.205, 0.115, coat, upper_bone)
+        add_limb(f"LowerLegA_{suffix}", knee, hock, 0.125, 0.084, light if front else coat, lower_bone)
+        add_limb(f"LowerLegB_{suffix}", hock, paw_center, 0.092, 0.065, light, lower_bone)
+        add_sphere(f"KneeJoint_{suffix}", knee, (0.125, 0.14, 0.125), coat, lower_bone)
+        add_sphere(f"HockJoint_{suffix}", hock, (0.092, 0.105, 0.092), light, lower_bone)
+        paw_z = paw_center[2] - (0.09 if front else 0.13)
+        add_sphere(f"PawBody_{suffix}", (paw_center[0], 0.09, paw_z), (0.165, 0.085, 0.235), light, lower_bone)
+        toe_offsets = (-0.075, 0.0, 0.075) if hero else (-0.052, 0.052)
+        for toe_index, toe_offset in enumerate(toe_offsets):
+            toe_position = (paw_center[0] + toe_offset, 0.075, paw_z - 0.155)
+            add_sphere(f"ToeDetail_{suffix}_{toe_index}", toe_position, (0.050, 0.048, 0.090), light, lower_bone)
+            if hero:
+                add_limb(
+                    f"ClawDetail_{suffix}_{toe_index}",
+                    (toe_position[0], 0.082, toe_position[2] - 0.055),
+                    (toe_position[0], 0.066, toe_position[2] - 0.125),
+                    0.017,
+                    0.006,
+                    skin,
+                    lower_bone,
+                )
+
+    tail_points = [
+        ((0.0, 1.34, 1.00), 0.30),
+        ((0.0, 1.27, 1.30), 0.32),
+        ((0.02, 1.13, 1.62), 0.30),
+        ((0.04, 0.95, 1.92), 0.27),
+        ((0.07, 0.74, 2.20), 0.22),
+        ((0.10, 0.53, 2.45), 0.14),
+        ((0.12, 0.42, 2.60), 0.055),
+    ]
+    tail = curved_tube("TailSilhouette", tail_points, dark, hero)
+    rigid_skin(tail, rig, "Tail")
+    parts.append(tail)
+
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        for ear_part in triangular_ear(f"EarSilhouette_{suffix}", side, dark, inner_ear, hero):
+            rigid_skin(ear_part, rig, f"Ear_{suffix}")
+            parts.append(ear_part)
+
+    # A separate lower jaw makes the bite readable while the continuous muzzle
+    # keeps the resting silhouette closed and free of visible rig gaps.
+    add_limb("LowerJawDetail", (0.0, 1.52, -1.94), (0.0, 1.47, -2.48), 0.15, 0.082, light, "Jaw")
+    add_sphere("NoseDetail", (0.0, 1.59, -2.66), (0.145, 0.105, 0.11), skin, "Head")
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        add_sphere(f"MuzzlePadDetail_{suffix}", (side * 0.125, 1.58, -2.35), (0.155, 0.125, 0.20), light, "Head")
+        add_sphere(f"EyeIrisDetail_{suffix}", (side * 0.27, 1.85, -1.91), (0.060, 0.068, 0.038), amber, "Head")
+        add_sphere(f"EyePupilDetail_{suffix}", (side * 0.27, 1.85, -1.947), (0.020, 0.038, 0.013), pupil, "Head")
+        if hero:
+            add_sphere(f"EyeCatchlightDetail_{suffix}", (side * 0.258, 1.873, -1.958), (0.009, 0.009, 0.006), catchlight, "Head")
+
+    ruff_count = 11 if hero else 6
+    for index in range(ruff_count):
+        angle = -1.12 + 2.24 * index / max(ruff_count - 1, 1)
+        start = (math.sin(angle) * 0.46, 1.54 + math.cos(angle) * 0.13, -0.92)
+        end = (math.sin(angle) * 0.62, 1.39 + math.cos(angle) * 0.18, -0.97)
+        add_limb(f"ChestRuffDetail_{index}", start, end, 0.075, 0.012, light, "Chest")
+
+    attach_socket("SkillSocket_Mouth", (0.0, 1.54, -2.78), rig, "Head")
+    attach_socket("SkillSocket_Chest", (0.0, 1.50, -0.62), rig, "Chest")
+    return parts
 
 
 def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.types.Object]:
@@ -335,58 +697,7 @@ def build_parts(species: str, hero: bool, rig: bpy.types.Object) -> list[bpy.typ
         attach_socket("SkillSocket_Chest", (0.0, 1.20, -0.47), rig, "Chest")
         return parts
 
-    coat = pbr_material("wolf_coat_pbr", (0.27, 0.31, 0.33, 1.0), 0.82)
-    dark = pbr_material("wolf_dark_coat_pbr", (0.075, 0.09, 0.095, 1.0), 0.86)
-    light = pbr_material("wolf_light_coat_pbr", (0.55, 0.56, 0.53, 1.0), 0.84)
-    skin = pbr_material("wolf_nose_pbr", (0.035, 0.045, 0.047, 1.0), 0.30)
-    eye = pbr_material("wolf_eye_pbr", (0.62, 0.31, 0.055, 1.0), 0.16)
-    body_elements = [
-        ((0.0, 1.28, 0.68), (0.64, 0.66, 0.86), 2.2),
-        ((0.0, 1.42, -0.08), (0.73, 0.75, 0.76), 2.2),
-        ((0.0, 1.55, -0.75), (0.61, 0.70, 0.66), 2.15),
-        ((0.0, 1.72, -1.35), (0.51, 0.51, 0.54), 2.1),
-        ((0.0, 1.63, -1.88), (0.40, 0.34, 0.54), 2.05),
-        ((0.0, 1.55, -2.28), (0.27, 0.23, 0.40), 2.0),
-    ]
-    for suffix in LIMBS:
-        side = -1.0 if suffix.startswith("L") else 1.0
-        front = suffix.endswith("F")
-        z = -0.57 if front else 0.66
-        body_elements.extend([
-            ((side * 0.47, 0.96, z), (0.24, 0.43, 0.25), 2.1),
-            ((side * 0.48, 0.46, z - (0.08 if front else 0.10)), (0.19, 0.38, 0.18), 2.0),
-            ((side * 0.48, 0.14, z - 0.24), (0.24, 0.13, 0.34), 2.0),
-            ((side * 0.39, 1.18, z), (0.42, 0.40, 0.42), 2.1),
-            ((side * 0.48, 0.34, z - (0.16 if front else 0.12)), (0.25, 0.28, 0.38), 2.0),
-        ])
-    for side in (-1.0, 1.0):
-        body_elements.extend([
-            ((side * 0.28, 2.05, -1.46), (0.24, 0.32, 0.17), 2.0),
-            ((side * 0.31, 2.32, -1.39), (0.15, 0.30, 0.11), 2.0),
-        ])
-    body_elements.extend([
-            ((0.0, 1.23, 1.25), (0.31, 0.30, 0.42), 2.0),
-            ((0.03, 1.12, 1.49), (0.30, 0.29, 0.42), 2.0),
-            ((0.06, 1.02, 1.72), (0.27, 0.27, 0.48), 2.0),
-            ((0.09, 0.90, 1.95), (0.24, 0.24, 0.40), 2.0),
-            ((0.11, 0.79, 2.17), (0.19, 0.20, 0.43), 2.0),
-    ])
-    body = metaball_mesh("WolfOrganicBodyV2", body_elements, coat, resolution)
-    body_skin(body, rig, species)
-    parts = [body]
-    chest = uv_sphere("ChestRuffDetail", (0.0, 1.36, -0.86), (0.56, 0.61, 0.25), light, hero)
-    rigid_skin(chest, rig, "Chest")
-    parts.append(chest)
-    nose = uv_sphere("NoseDetail", (0.0, 1.55, -2.69), (0.18, 0.13, 0.14), skin, hero)
-    rigid_skin(nose, rig, "Head")
-    parts.append(nose)
-    for side in (-1.0, 1.0):
-        eyeball = uv_sphere(f"EyeDetail_{'L' if side < 0 else 'R'}", (side * 0.30, 1.83, -1.95), (0.090, 0.100, 0.070), eye, hero)
-        rigid_skin(eyeball, rig, "Head")
-        parts.append(eyeball)
-    attach_socket("SkillSocket_Mouth", (0.0, 1.56, -2.72), rig, "Head")
-    attach_socket("SkillSocket_Chest", (0.0, 1.46, -0.55), rig, "Chest")
-    return parts
+    return build_cinematic_wolf_parts(hero, rig)
 
 
 def create_actions(rig: bpy.types.Object, species: str) -> None:
@@ -401,7 +712,7 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
         frames = (1, 9, 17, 25, 33)
         if action_name in ("locomotion", "sprint"):
             cycle_frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)
-            amount = (0.62 if action_name == "locomotion" else 0.92) if species == "rabbit" else (0.42 if action_name == "locomotion" else 0.70)
+            amount = (0.62 if action_name == "locomotion" else 0.92) if species == "rabbit" else (0.46 if action_name == "locomotion" else 0.84)
             for frame_index, frame in enumerate(cycle_frames):
                 phase = math.tau * frame_index / (len(cycle_frames) - 1)
                 for index, suffix in enumerate(LIMBS):
@@ -413,23 +724,43 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                         upper.rotation_euler[0] = amount * curve * (1.0 if is_hind else 0.66)
                         lower.rotation_euler[0] = -amount * (0.62 if is_hind else 0.38) * max(curve, -0.18)
                     else:
-                        diagonal_phase = 0.0 if index in (0, 3) else math.pi
-                        curve = math.sin(phase + diagonal_phase)
-                        upper.rotation_euler[0] = amount * curve
-                        lower.rotation_euler[0] = -amount * 0.52 * max(curve, -0.22)
+                        if action_name == "sprint":
+                            gallop_phase = {"LF": math.pi * 0.88, "RF": math.pi * 1.08, "LH": 0.0, "RH": math.pi * 0.18}[suffix]
+                            curve = math.sin(phase + gallop_phase)
+                            upper.rotation_euler[0] = amount * curve * (1.08 if suffix.endswith("H") else 0.92)
+                            lower.rotation_euler[0] = -amount * 0.64 * max(curve, -0.34)
+                        else:
+                            diagonal_phase = 0.0 if index in (0, 3) else math.pi
+                            curve = math.sin(phase + diagonal_phase)
+                            upper.rotation_euler[0] = amount * curve
+                            lower.rotation_euler[0] = -amount * 0.56 * max(curve, -0.24)
                     upper.keyframe_insert(data_path="rotation_euler", frame=frame, group=upper.name)
                     lower.keyframe_insert(data_path="rotation_euler", frame=frame, group=lower.name)
-                rig.pose.bones["Spine"].rotation_euler[0] = (0.10 if species == "rabbit" else 0.045) * math.cos(phase)
-                rig.pose.bones["Chest"].rotation_euler[0] = -(0.07 if species == "rabbit" else 0.028) * math.cos(phase)
-                rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
-                rig.pose.bones["Chest"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Chest")
+                flex = (0.10 if species == "rabbit" else 0.055 if action_name == "locomotion" else 0.15) * math.cos(phase)
+                rig.pose.bones["Spine"].rotation_euler[0] = flex
+                rig.pose.bones["Chest"].rotation_euler[0] = -flex * (0.70 if species == "rabbit" else 0.56)
+                for name in ("Spine", "Chest"):
+                    rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+                if species == "wolf":
+                    rig.pose.bones["Neck"].rotation_euler[0] = -flex * 0.30
+                    rig.pose.bones["Head"].rotation_euler[0] = flex * 0.18
+                    rig.pose.bones["Tail"].rotation_euler[1] = math.sin(phase * 0.5) * (0.08 if action_name == "locomotion" else 0.15)
+                    for name in ("Neck", "Head", "Tail"):
+                        rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         elif action_name == "attack":
-            for frame, curve in zip((1, 8, 18), (0.0, 1.0, 0.0)):
-                rig.pose.bones["Chest"].rotation_euler[0] = (-0.12 if species == "rabbit" else -0.24) * curve
-                rig.pose.bones["Head"].rotation_euler[0] = (0.12 if species == "rabbit" else 0.24) * curve
+            attack_frames = (1, 5, 9, 14, 22) if species == "wolf" else (1, 8, 18)
+            attack_curves = (0.0, 0.52, 1.0, 0.64, 0.0) if species == "wolf" else (0.0, 1.0, 0.0)
+            for frame, curve in zip(attack_frames, attack_curves):
+                rig.pose.bones["Chest"].rotation_euler[0] = (-0.12 if species == "rabbit" else -0.32) * curve
+                rig.pose.bones["Neck"].rotation_euler[0] = (-0.04 if species == "rabbit" else -0.18) * curve
+                rig.pose.bones["Head"].rotation_euler[0] = (0.12 if species == "rabbit" else 0.34) * curve
                 for suffix in ("LF", "RF"):
-                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = (-0.38 if species == "rabbit" else -0.68) * curve
-                for name in ("Chest", "Head", "Leg_LF", "Leg_RF"):
+                    rig.pose.bones[f"Leg_{suffix}"].rotation_euler[0] = (-0.38 if species == "rabbit" else -0.72) * curve
+                keyed_names = ["Chest", "Neck", "Head", "Leg_LF", "Leg_RF"]
+                if species == "wolf":
+                    rig.pose.bones["Jaw"].rotation_euler[0] = -0.46 * math.sin(math.pi * curve)
+                    keyed_names.append("Jaw")
+                for name in keyed_names:
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         elif action_name == "skill":
             for frame, curve in zip((1, 10, 22), (0.0, 1.0, 0.0)):
@@ -439,16 +770,25 @@ def create_actions(rig: bpy.types.Object, species: str) -> None:
                     rig.pose.bones[f"Paw_{suffix}"].rotation_euler[0] = (-0.72 if species == "rabbit" else -0.50) * curve
                 for name in ("Spine", "Leg_LH", "Leg_RH", "Paw_LH", "Paw_RH"):
                     rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+                if species == "wolf":
+                    rig.pose.bones["Neck"].rotation_euler[0] = -0.22 * curve
+                    rig.pose.bones["Head"].rotation_euler[0] = 0.30 * curve
+                    rig.pose.bones["Jaw"].rotation_euler[0] = -0.36 * curve
+                    for name in ("Neck", "Head", "Jaw"):
+                        rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
         elif action_name == "hit":
             for frame, curve in zip((1, 6, 15), (0.0, 1.0, 0.0)):
                 rig.pose.bones["Spine"].rotation_euler[2] = 0.26 * curve
                 rig.pose.bones["Spine"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Spine")
         elif action_name == "eat":
-            for frame, curve in zip(frames, (0.0, 1.0, 0.0)):
+            for frame, curve in zip(frames, (0.0, 1.0, 0.82, 1.0, 0.0)):
                 rig.pose.bones["Neck"].rotation_euler[0] = 0.56 * curve
                 rig.pose.bones["Head"].rotation_euler[0] = 0.30 * curve
                 rig.pose.bones["Neck"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Neck")
                 rig.pose.bones["Head"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Head")
+                if species == "wolf":
+                    rig.pose.bones["Jaw"].rotation_euler[0] = -0.16 * (1.0 - abs(math.sin(frame * 0.42))) * curve
+                    rig.pose.bones["Jaw"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Jaw")
         elif action_name == "death":
             for frame, curve in zip((1, 18, 32), (0.0, 0.75, 1.0)):
                 rig.pose.bones["Spine"].rotation_euler[2] = 1.22 * curve
@@ -524,7 +864,8 @@ def export_species(species: str, hero: bool, output_root: Path) -> tuple[int, in
 def main() -> None:
     args = parse_args()
     output_root = Path(args.output_root).resolve()
-    for species in ("rabbit", "wolf"):
+    species_targets = tuple(args.species) if args.species else ("rabbit", "wolf")
+    for species in species_targets:
         for hero in (True, False):
             triangles, vertices, bones = export_species(species, hero, output_root)
             print(

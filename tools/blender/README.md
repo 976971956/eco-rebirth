@@ -21,15 +21,19 @@ vertical slice with:
 ./tools/build_realistic_vertical_slice.sh
 ```
 
-The command first builds rabbit/wolf, then the other 28 species by skeleton
-family, and finally the two forest trees. The generated GLBs live under
-`assets/models_v2/`. Godot prefers V2 and falls back to the matching V1.39
-asset if a V2 file is absent.
+The command first builds the procedural rabbit, then the licensed CC0 gray-wolf
+cinematic sample, the other 28 species by skeleton family, and finally the two
+forest trees. The generated GLBs live under `assets/models_v2/`. The wolf source
+and provenance notice live under `assets/source/animals/wolf/cc0_newdlc/`, which
+Godot ignores at import time. Godot prefers V2 and falls back to the matching
+V1.39 asset if a V2 file is absent.
 
-Animal export is fail-fast: each `OrganicBodyV2` must be one connected mesh
-island, every skinned mesh is explicitly parented to its armature, and Blender
-Python exceptions return a non-zero shell status. This prevents detached feet,
-ears and tails from being shipped as a flesh model.
+Animal export is fail-fast: each `OrganicBodyV2` must be one connected source
+mesh island, every skinned mesh is explicitly parented to its armature, and
+Blender Python exceptions return a non-zero shell status. The wolf records its
+validated source island count because glTF must split UV/tangent seams into
+render vertices. This prevents detached feet, ears and tails from being shipped
+as a flesh model without rejecting a correctly UV-mapped asset.
 
 Rules:
 
@@ -40,4 +44,5 @@ Rules:
 - Keep new V2 assets beside V1.39 fallbacks and run the visual, animation,
   socket, navigation and performance validation before release.
 - Never put signing files, downloaded marketplace assets or unverified
-  third-party content in the repository.
+  third-party content in the repository. Third-party source must have a checked
+  commercial-use license and an adjacent provenance notice.

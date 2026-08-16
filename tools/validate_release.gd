@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.43 发布候选校验通过：30 种 V3 Hero/Mobile 模型、物种专属轮廓与步态、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.44 发布候选校验通过：灰狼写实样板、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.43.0\"") and presets.contains("application/short_version=\"1.43.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=530") and presets.contains("application/version=\"530\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.43.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.44.0\"") and presets.contains("application/short_version=\"1.44.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=540") and presets.contains("application/version=\"540\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.44.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -850,6 +850,13 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 				stats["silhouette_lod_meshes"] = int(stats["silhouette_lod_meshes"]) + 1
 		var mesh := mesh_instance.mesh
 		if mesh != null:
+			var source_connected := "SourceConnected" in node_name
+			if "OrganicBodyV2" in node_name and source_connected:
+				# Real UV-mapped GLBs duplicate vertices along UV/tangent seams. The
+				# source generator validates connected topology before export and
+				# records that contract in the node name so those render-time splits
+				# are not false failures after import.
+				stats["organic_body_islands"] = int(stats["organic_body_islands"]) + 1
 			if mesh_instance.skin != null:
 				stats["skinned_meshes"] = int(stats["skinned_meshes"]) + 1
 				if "OrganicBodyV2" in node_name:
@@ -857,7 +864,7 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 			stats["meshes"] = int(stats["meshes"]) + 1
 			for surface_index in range(mesh.get_surface_count()):
 				var arrays := mesh.surface_get_arrays(surface_index)
-				if "OrganicBodyV2" in node_name:
+				if "OrganicBodyV2" in node_name and not source_connected:
 					stats["organic_body_islands"] = int(stats["organic_body_islands"]) + _surface_mesh_island_count(arrays)
 				if arrays.size() > Mesh.ARRAY_VERTEX and arrays[Mesh.ARRAY_VERTEX] != null:
 					stats["vertices"] = int(stats["vertices"]) + arrays[Mesh.ARRAY_VERTEX].size()
@@ -880,13 +887,16 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 							if absf(weight_sum - 1.0) > 0.01:
 								stats["invalid_weight_vertices"] = int(stats["invalid_weight_vertices"]) + 1
 				var material := mesh_instance.get_active_material(surface_index)
-				if material is StandardMaterial3D and not (material as StandardMaterial3D).albedo_color.is_equal_approx(Color.WHITE):
-					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
-					var material_name := material.resource_name
+				if material is StandardMaterial3D:
+					var standard_material := material as StandardMaterial3D
+					var has_visible_albedo := standard_material.albedo_texture != null or not standard_material.albedo_color.is_equal_approx(Color.WHITE)
+					if has_visible_albedo:
+						stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
+					var material_name := standard_material.resource_name
 					for slot_name in ["coat", "feather", "scale", "eye", "nose", "paw", "detail", "accent", "keratin"]:
 						if "_%s_pbr" % slot_name in material_name:
 							stats["pbr_slots"][slot_name] = true
-					if "_coat_pbr" in material_name and (material as StandardMaterial3D).albedo_texture != null and (material as StandardMaterial3D).normal_texture != null and (material as StandardMaterial3D).roughness_texture != null:
+					if "_coat_pbr" in material_name and standard_material.albedo_texture != null and standard_material.normal_texture != null and standard_material.roughness_texture != null:
 						stats["textured_coat_surfaces"] = int(stats["textured_coat_surfaces"]) + 1
 				elif material is ShaderMaterial and "_coat_atlas_pbr" in material.resource_name:
 					var shader_material := material as ShaderMaterial

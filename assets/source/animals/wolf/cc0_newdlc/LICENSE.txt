@@ -1,0 +1,23 @@
+3D Wolf source asset
+====================
+
+Title: 3d wolf
+Author: NewDLC
+Source: https://opengameart.org/content/3d-wolf
+Original release date: 2016-09-02
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+Eco Rebirth modifications
+-------------------------
+
+- Repainted the original albedo into a gray-wolf palette with OpenAI image
+  generation while preserving the source UV layout.
+- Rebuilt the PBR material from the supplied albedo, normal and roughness maps.
+- Reduced the runtime skeleton to 32 weighted bones by merging terminal toe
+  weights.
+- Added eight original gameplay animation clips and Godot skill sockets.
+- Generated separate Hero and Mobile GLB exports for Godot 4 Compatibility.
+
+The original and modified source files in this directory may be used under
+CC0 1.0. Attribution is not required; this notice is kept for provenance.

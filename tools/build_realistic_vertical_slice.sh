@@ -10,6 +10,11 @@ if [ ! -x "$BLENDER_BIN" ]; then
 fi
 
 "$BLENDER_BIN" --background --factory-startup --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_vertical_slice.py" -- \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals" \
+	--species rabbit
+
+"$BLENDER_BIN" --background --factory-startup --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_wolf.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/wolf/cc0_newdlc" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
 "$BLENDER_BIN" --background --factory-startup --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
