@@ -23,9 +23,10 @@ func _initialize() -> void:
 func _render_all() -> void:
 	var anatomy_ok := await _render_anatomy()
 	var motion_ok := await _render_motion()
+	var gait_ok := await _render_gait_cycle()
 	var closeup_ok := await _render_closeup()
-	if anatomy_ok and motion_ok and closeup_ok:
-		print("WOLF_CINEMATIC_PREVIEW_OK: closeup + hero/mobile + idle/trot/bite")
+	if anatomy_ok and motion_ok and gait_ok and closeup_ok:
+		print("WOLF_CINEMATIC_PREVIEW_OK: closeup + hero/mobile + corrected four-phase trot + bite")
 		quit(0)
 	else:
 		push_error("无法保存灰狼影视化样板验收图")
@@ -56,6 +57,20 @@ func _render_motion() -> bool:
 	_add_label(scene, "张颌扑咬", Vector3(3.85, 3.05, 0.0), 28)
 	_add_label(scene, "灰狼 Hero · 真实 EcoActor 动画路径", Vector3(0.0, 4.05, 1.2), 40)
 	return await _capture(scene, "res://docs/images/v51-wolf-cinematic-motion.png", 7.65)
+
+
+func _render_gait_cycle() -> bool:
+	var scene := _build_scene()
+	var game := ShowcaseGame.new()
+	scene.add_child(game)
+	var positions := [-4.65, -1.55, 1.55, 4.65]
+	var times := [0.0, 0.267, 0.533, 0.8]
+	var labels := ["对角触地", "前摆抬爪", "换组触地", "后摆收腿"]
+	for index in range(4):
+		_add_wolf(scene, game, 31 + index, true, Vector3(positions[index], 0.0, 0.0), "locomotion", times[index], 0.62, 2.09)
+		_add_label(scene, labels[index], Vector3(positions[index], 2.92, 0.0), 24)
+	_add_label(scene, "灰狼自然步态验收 · 关节横轴摆动 · 对角小跑四相位", Vector3(0.0, 3.92, 1.2), 38)
+	return await _capture(scene, "res://docs/images/v52-wolf-balanced-gait.png", 7.35)
 
 
 func _render_closeup() -> bool:
@@ -117,7 +132,8 @@ func _add_wolf(
 	position: Vector3,
 	animation_name: String,
 	seek_time: float,
-	display_scale: float
+	display_scale: float,
+	yaw: float = 0.52
 ) -> void:
 	var actor: EcoActor = ActorScript.new()
 	actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -125,7 +141,7 @@ func _add_wolf(
 	actor.setup(game, actor_id, "wolf", player_controlled, Vector3.ZERO, 0)
 	actor.position = position
 	actor.scale = Vector3.ONE * display_scale
-	actor.rotation.y = 0.52
+	actor.rotation.y = yaw
 	_hide_actor_ui(actor)
 	if not is_instance_valid(actor.external_animation_player):
 		push_error("灰狼没有绑定导入动画")

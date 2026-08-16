@@ -2,7 +2,7 @@
 
 set -eu
 
-REPORT_ROOT="${1:-/tmp/eco-rebirth-v144-rc}"
+REPORT_ROOT="${1:-/tmp/eco-rebirth-v145-rc}"
 GODOT_COMMAND="${GODOT_COMMAND:-godot}"
 PROJECT_ROOT="$(pwd)"
 XCODEBUILD_COMMAND="/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
@@ -16,7 +16,7 @@ run_godot_check() {
 	"$GODOT_COMMAND" --headless --log-file "$REPORT_ROOT/$NAME.log" --path "$PROJECT_ROOT" "$@"
 }
 
-printf '《生态轮回》V1.44 发布候选验证\n'
+printf '《生态轮回》V1.45 发布候选验证\n'
 run_godot_check parse --editor --quit
 run_godot_check species --script res://tools/validate_species.gd
 run_godot_check release --script res://tools/validate_release.gd
@@ -61,7 +61,7 @@ SOURCE_REF="$(git -C "$PROJECT_ROOT" describe --always --dirty 2>/dev/null || pr
 GODOT_VERSION="$($GODOT_COMMAND --version | tr -d '\n')"
 GENERATED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 MANIFEST_PATH="$REPORT_ROOT/release_candidate_manifest.json"
-printf '{\n  "game_version": "1.44.0",\n  "build_number": 540,\n  "source_ref": "%s",\n  "godot_version": "%s",\n  "generated_at_utc": "%s",\n  "checks": {"parse": "passed", "species": "passed", "release": "passed", "runtime_1200_frames": "passed", "performance_gate": "passed", "performance_levels": [1, 5, 10], "ecology_soak": "%s"},\n  "artifacts": {"web": {"status": "%s", "pck_sha256": "%s"}, "ios": {"status": "%s", "binary_sha256": "%s"}, "android": {"status": "%s", "apk_sha256": "%s"}},\n  "device_validation": "required_separately"\n}\n' "$SOURCE_REF" "$GODOT_VERSION" "$GENERATED_AT" "$SOAK_STATUS" "$WEB_STATUS" "$WEB_SHA" "$IOS_STATUS" "$IOS_SHA" "$ANDROID_STATUS" "$ANDROID_SHA" >"$MANIFEST_PATH"
+printf '{\n  "game_version": "1.45.0",\n  "build_number": 550,\n  "source_ref": "%s",\n  "godot_version": "%s",\n  "generated_at_utc": "%s",\n  "checks": {"parse": "passed", "species": "passed", "release": "passed", "runtime_1200_frames": "passed", "performance_gate": "passed", "performance_levels": [1, 5, 10], "ecology_soak": "%s"},\n  "artifacts": {"web": {"status": "%s", "pck_sha256": "%s"}, "ios": {"status": "%s", "binary_sha256": "%s"}, "android": {"status": "%s", "apk_sha256": "%s"}},\n  "device_validation": "required_separately"\n}\n' "$SOURCE_REF" "$GODOT_VERSION" "$GENERATED_AT" "$SOAK_STATUS" "$WEB_STATUS" "$WEB_SHA" "$IOS_STATUS" "$IOS_SHA" "$ANDROID_STATUS" "$ANDROID_SHA" >"$MANIFEST_PATH"
 
 printf '发布候选验证完成：%s\n' "$MANIFEST_PATH"
 printf 'Web=%s · iOS=%s · Android=%s\n' "$WEB_STATUS" "$IOS_STATUS" "$ANDROID_STATUS"

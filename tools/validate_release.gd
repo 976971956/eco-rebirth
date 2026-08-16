@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.44 发布候选校验通过：灰狼写实样板、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
+		print("[release] V1.45 发布候选校验通过：灰狼成年体态与对角小跑、30 种 Hero/Mobile 模型、烘焙动作运行时、自动门禁与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.44.0\"") and presets.contains("application/short_version=\"1.44.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=540") and presets.contains("application/version=\"540\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.44.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.45.0\"") and presets.contains("application/short_version=\"1.45.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=550") and presets.contains("application/version=\"550\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.45.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -662,6 +662,24 @@ func _validate_external_species_model_contract() -> void:
 	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有为灰狼 Mobile 模型绑定连续躯干骨链")
 	_expect(is_instance_valid(mobile_actor.external_animation_player) and mobile_actor.external_baked_animation == "idle", "真实灰狼 AI 没有启用 Mobile 烘焙动作")
 	_expect(mobile_actor.external_skill_sockets.size() == 2, "真实灰狼角色流程没有绑定两个技能挂点")
+	_expect(mobile_actor.external_skeleton.get_bone_count() == 32, "灰狼电影化骨架不是 32 骨契约")
+	var wolf_builder_source := FileAccess.get_file_as_string("res://tools/blender/build_cinematic_wolf.py")
+	_expect(wolf_builder_source.contains("add_adult_wolf_mass(mesh)") and wolf_builder_source.contains("rest_rotation.inverted() @ armature_axis"), "灰狼构建器丢失局部成年体态或横向关节轴转换")
+	var left_front_paw := mobile_actor.external_skeleton.find_bone("Paw_LF")
+	var right_hind_paw := mobile_actor.external_skeleton.find_bone("Paw_RH")
+	_expect(left_front_paw >= 0 and right_hind_paw >= 0, "灰狼对角小跑缺少前爪或后爪关节")
+	if left_front_paw >= 0 and right_hind_paw >= 0 and is_instance_valid(mobile_actor.external_animation_player):
+		mobile_actor.external_animation_player.play("locomotion")
+		mobile_actor.external_animation_player.seek(0.267, true)
+		var left_front_first := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
+		var right_hind_first := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
+		mobile_actor.external_animation_player.seek(0.800, true)
+		var left_front_second := mobile_actor.external_skeleton.get_bone_global_pose(left_front_paw).origin
+		var right_hind_second := mobile_actor.external_skeleton.get_bone_global_pose(right_hind_paw).origin
+		_expect(left_front_first.distance_to(left_front_second) > 0.12, "灰狼前腿小跑仍在绕长轴拧转，爪部没有有效前后摆动")
+		_expect(right_hind_first.distance_to(right_hind_second) > 0.12, "灰狼后腿小跑仍在绕长轴拧转，爪部没有有效收腿")
+		mobile_actor.external_animation_player.play("idle")
+		mobile_actor.external_animation_player.seek(0.0, true)
 	var wolf_mouth_position := mobile_actor.skill_socket_world_position("SkillSocket_Mouth", 1.55)
 	var wolf_mouth_offset := wolf_mouth_position - mobile_actor.global_position
 	_expect(wolf_mouth_offset.length() > 0.5, "灰狼嘴部技能挂点退化到了角色原点")

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Quaternion, Vector
 
 
 ACTIONS = ("idle", "locomotion", "sprint", "attack", "skill", "hit", "eat", "death")
@@ -81,6 +81,51 @@ def pbr_material(source_dir: Path, texture_size: int) -> bpy.types.Material:
     links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
     material.diffuse_color = (0.72, 0.75, 0.76, 1.0)
     return material
+
+
+def _smoothstep(edge_start: float, edge_end: float, value: float) -> float:
+    if edge_start == edge_end:
+        return 0.0
+    amount = max(0.0, min(1.0, (value - edge_start) / (edge_end - edge_start)))
+    return amount * amount * (3.0 - 2.0 * amount)
+
+
+def _interval_weight(value: float, start: float, fade_in: float, fade_out: float, end: float) -> float:
+    return _smoothstep(start, fade_in, value) * (1.0 - _smoothstep(fade_out, end, value))
+
+
+def add_adult_wolf_mass(mesh: bpy.types.Object) -> None:
+    """Strengthen the source dog's silhouette without scaling its face or legs.
+
+    The CC0 source has useful anatomy and skinning, but its ribcage and waist read
+    like a very light domestic dog at the game's camera distance.  Deforming in
+    world space lets the profile masks stay independent of the source object's
+    legacy -90 degree import rotation.
+    """
+
+    inverse_world = mesh.matrix_world.inverted()
+    for vertex in mesh.data.vertices:
+        world = mesh.matrix_world @ vertex.co
+        body_height = _interval_weight(world.z, 0.82, 1.18, 2.40, 2.82)
+        neck_height = _interval_weight(world.z, 1.42, 1.70, 2.52, 2.86)
+        shoulder = _interval_weight(world.y, -1.02, -0.72, -0.12, 0.22) * body_height
+        ribcage = _interval_weight(world.y, -0.58, -0.22, 0.58, 0.92) * body_height
+        waist = _interval_weight(world.y, 0.34, 0.62, 0.94, 1.18) * body_height
+        haunch = _interval_weight(world.y, 0.72, 0.98, 1.56, 1.88) * body_height
+        neck = _interval_weight(world.y, -1.42, -1.14, -0.58, -0.34) * neck_height
+
+        # Wolves keep a visible waist; the chest, neck and hindquarters carry
+        # most of the extra volume instead of applying a generic wide scale.
+        width_gain = 0.24 * shoulder + 0.19 * ribcage + 0.09 * waist + 0.18 * haunch + 0.13 * neck
+        world.x *= 1.0 + width_gain
+
+        depth_mass = max(shoulder, ribcage * 0.82, haunch * 0.68, neck * 0.45)
+        if depth_mass > 0.0:
+            chest_center = 1.72
+            world.z = chest_center + (world.z - chest_center) * (1.0 + 0.075 * depth_mass)
+        vertex.co = inverse_world @ world
+    mesh.data.update()
+    mesh["anatomy_profile"] = "adult_gray_wolf_balanced_mass_v2"
 
 
 def detail_materials(coat: bpy.types.Material) -> list[bpy.types.Material]:
@@ -236,6 +281,41 @@ def reset_pose(rig: bpy.types.Object) -> None:
         pose_bone.scale = (1.0, 1.0, 1.0)
 
 
+def set_armature_axis_rotation(
+    pose_bone: bpy.types.PoseBone,
+    rotations: tuple[tuple[Vector, float], ...],
+) -> None:
+    """Set a pose using axes shared by the rig rather than inconsistent bone roll.
+
+    The source limbs have their cross-body hinge near local +/-Z, not local X.
+    Converting the desired armature-space axis through each rest matrix prevents
+    the old walk clip from twisting legs around their length.
+    """
+
+    rest_rotation = pose_bone.bone.matrix_local.to_quaternion()
+    result = Quaternion()
+    for armature_axis, angle in rotations:
+        local_axis = rest_rotation.inverted() @ armature_axis
+        local_axis.normalize()
+        result = result @ Quaternion(local_axis, angle)
+    pose_bone.rotation_euler = result.to_euler("XYZ")
+
+
+def set_sagittal_rotation(pose_bone: bpy.types.PoseBone, angle: float) -> None:
+    set_armature_axis_rotation(pose_bone, ((Vector((1.0, 0.0, 0.0)), angle),))
+
+
+def set_tail_rotation(pose_bone: bpy.types.PoseBone, pitch: float, sway: float) -> None:
+    # Armature Y maps to the vertical world axis after the source rig transform.
+    set_armature_axis_rotation(
+        pose_bone,
+        (
+            (Vector((1.0, 0.0, 0.0)), pitch),
+            (Vector((0.0, 1.0, 0.0)), sway),
+        ),
+    )
+
+
 def key_rotation(rig: bpy.types.Object, bone_name: str, frame: int) -> None:
     rig.pose.bones[bone_name].keyframe_insert(data_path="rotation_euler", frame=frame, group=bone_name)
 
@@ -255,13 +335,13 @@ def create_actions(rig: bpy.types.Object) -> None:
         reset_pose(rig)
         # A relaxed wolf carries its tail below the topline. Preserve that
         # anatomical baseline in every clip and animate sway around it.
-        rig.pose.bones["b_Tail01"].rotation_euler[0] = -0.62
-        rig.pose.bones["b_Tail02"].rotation_euler[0] = -0.20
+        set_tail_rotation(rig.pose.bones["b_Tail01"], -0.42, 0.0)
+        set_tail_rotation(rig.pose.bones["b_Tail02"], -0.16, 0.0)
         for pose_bone in rig.pose.bones:
             pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
 
         if action_name in ("locomotion", "sprint"):
-            amount = 0.44 if action_name == "locomotion" else 0.72
+            amount = 0.34 if action_name == "locomotion" else 0.58
             for index, frame in enumerate((1, 5, 9, 13, 17, 21, 25, 29, 33)):
                 phase = math.tau * index / 8.0
                 for suffix, (upper_name, lower_name, paw_name) in limb_bones.items():
@@ -270,33 +350,45 @@ def create_actions(rig: bpy.types.Object) -> None:
                     else:
                         offset = {"LF": math.pi * 0.82, "RF": math.pi * 1.06, "LH": 0.0, "RH": math.pi * 0.20}[suffix]
                     stride = math.sin(phase + offset)
+                    swing = max(stride, 0.0)
+                    transfer = max(0.0, 1.0 - abs(stride) * 1.7)
                     upper = rig.pose.bones[upper_name]
                     lower = rig.pose.bones[lower_name]
                     paw = rig.pose.bones[paw_name]
-                    upper.rotation_euler[0] = amount * stride
-                    lower.rotation_euler[0] = -amount * 0.58 * max(stride, -0.30)
-                    paw.rotation_euler[0] = amount * 0.22 * max(-stride, 0.0)
+                    # Negative cross-body rotation sends the paw toward the
+                    # wolf's forward (-Y) direction. Diagonal pairs alternate
+                    # between a planted stance and a compact lifted swing.
+                    set_sagittal_rotation(upper, -amount * stride)
+                    if suffix in ("LF", "RF"):
+                        set_sagittal_rotation(lower, amount * (0.46 * swing + 0.06 * transfer))
+                        set_sagittal_rotation(paw, -amount * (0.25 * swing + 0.04 * transfer))
+                    else:
+                        set_sagittal_rotation(lower, -amount * (0.54 * swing + 0.05 * transfer))
+                        set_sagittal_rotation(paw, amount * (0.28 * swing + 0.04 * transfer))
                     for bone_name in (upper_name, lower_name, paw_name):
                         key_rotation(rig, bone_name, frame)
                 flex = (0.045 if action_name == "locomotion" else 0.115) * math.cos(phase)
-                rig.pose.bones["b_Spine01"].rotation_euler[0] = flex
-                rig.pose.bones["b_Spine03"].rotation_euler[0] = -flex * 0.65
-                rig.pose.bones["b_Neck"].rotation_euler[0] = flex * 0.30
-                rig.pose.bones["b_Head"].rotation_euler[0] = -flex * 0.20
+                set_sagittal_rotation(rig.pose.bones["b_Spine01"], flex)
+                set_sagittal_rotation(rig.pose.bones["b_Spine03"], -flex * 0.65)
+                set_sagittal_rotation(rig.pose.bones["b_Neck"], flex * 0.30)
+                set_sagittal_rotation(rig.pose.bones["b_Head"], -flex * 0.20)
                 for tail_index in range(1, 5):
                     tail_name = f"b_Tail0{tail_index}"
-                    rig.pose.bones[tail_name].rotation_euler[2] = math.sin(phase * 0.5 - tail_index * 0.32) * (0.07 if action_name == "locomotion" else 0.12)
+                    pitch = -0.42 if tail_index == 1 else (-0.16 if tail_index == 2 else 0.0)
+                    sway = math.sin(phase * 0.5 - tail_index * 0.32) * (0.07 if action_name == "locomotion" else 0.12)
+                    set_tail_rotation(rig.pose.bones[tail_name], pitch, sway)
                     key_rotation(rig, tail_name, frame)
                 for bone_name in ("b_Spine01", "b_Spine03", "b_Neck", "b_Head"):
                     key_rotation(rig, bone_name, frame)
         elif action_name == "idle":
             for frame, curve in zip((1, 9, 17, 25, 33), (-1.0, 0.1, 1.0, -0.15, -1.0)):
-                rig.pose.bones["b_Spine03"].rotation_euler[0] = 0.018 * curve
-                rig.pose.bones["b_Neck"].rotation_euler[0] = -0.012 * curve
+                set_sagittal_rotation(rig.pose.bones["b_Spine03"], 0.018 * curve)
+                set_sagittal_rotation(rig.pose.bones["b_Neck"], -0.012 * curve)
                 rig.pose.bones["b_Head"].rotation_euler[2] = 0.018 * curve
                 for tail_index in range(1, 5):
                     tail_name = f"b_Tail0{tail_index}"
-                    rig.pose.bones[tail_name].rotation_euler[2] = 0.055 * curve * tail_index / 4.0
+                    pitch = -0.42 if tail_index == 1 else (-0.16 if tail_index == 2 else 0.0)
+                    set_tail_rotation(rig.pose.bones[tail_name], pitch, 0.055 * curve * tail_index / 4.0)
                     key_rotation(rig, tail_name, frame)
                 for bone_name in ("b_Spine03", "b_Neck", "b_Head"):
                     key_rotation(rig, bone_name, frame)
@@ -376,6 +468,7 @@ def evaluated_stats(objects: list[bpy.types.Object]) -> tuple[int, int]:
 
 def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int, int, int]:
     rig, mesh = load_source(source_dir)
+    add_adult_wolf_mass(mesh)
     merge_terminal_toe_weights(mesh)
     remove_terminal_toe_bones(rig)
     rename_articulated_paw_bones(rig, mesh)
