@@ -1,0 +1,26 @@
+Rigged forest deer source asset
+================================
+
+Title: Deer Female
+Author: CDmir (TinyWorlds)
+Source page: https://opengameart.org/content/deer-female
+Original download: https://opengameart.org/sites/default/files/doe.blend
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-16
+SHA-256: 577b9e48ce7cee955c6dac1b0a70333eccdfcad3f11eaa1f96a15900b64ca25e
+
+Eco Rebirth modifications
+-------------------------
+
+- Rebuilt the legacy materials from the two packed 1024 body/head fur maps as
+  Godot Compatibility PBR materials.
+- Reduced the 31-bone source control rig to the 22-bone runtime ground-animal
+  contract while retaining three independently articulated limb segments.
+- Added an original lightweight adult-stag antler silhouette, eight gameplay
+  clips, and two Godot skill sockets.
+- Added separate Hero and Mobile subdivision, texture, and antler profiles.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.

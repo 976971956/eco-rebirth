@@ -21,6 +21,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/fox/cc0_br_n518" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_deer.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/deer/cc0_cdmir" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

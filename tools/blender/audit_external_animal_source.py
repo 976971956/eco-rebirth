@@ -172,6 +172,10 @@ def extract_packed_images(output_dir: Path, asset_name: str) -> list[str]:
 
 def render_previews(output_dir: Path, asset_name: str) -> list[str]:
     scene = bpy.context.scene
+    active = bpy.context.view_layer.objects.active
+    if active is not None and active.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.select_all(action="DESELECT")
     mesh_objects = [obj for obj in scene.objects if obj.type == "MESH" and not obj.hide_render]
     minimum, maximum = scene_bounds(mesh_objects)
     center = (minimum + maximum) * 0.5
