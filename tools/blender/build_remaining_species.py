@@ -14,7 +14,7 @@ LIMBS = ("LF", "RF", "LH", "RH")
 BIRDS = ("owl", "eagle")
 LONG_BODY = ("snake", "crocodile")
 REMAINING_SPECIES = (
-    "moose", "turtle",
+    "turtle",
     "cheetah", "rhino", "gorilla",
     "eagle", "hippo", "hyena", "lion",
 )
@@ -99,7 +99,7 @@ V3_SPECIES_PROFILE = {
     "elephant": dict(gait="amble", sprint_gait="charge", stride=0.24, flex=0.20, stance=0.78, fore_scale=1.02, rear_scale=1.00, upper_thickness=1.26, lower_thickness=1.16, chest_mass=1.18, rump_mass=1.14, body_bob=0.035, attack="stomp"),
     "tiger": dict(gait="stalk", sprint_gait="gallop", stride=0.50, flex=0.58, stance=0.76, upper_thickness=1.12, lower_thickness=0.76, chest_mass=1.08, rump_mass=1.08, attack="pounce"),
     "monkey": dict(gait="primate_walk", sprint_gait="primate_run", stride=0.40, flex=0.54, stance=0.74, fore_scale=1.62, rear_scale=1.16, upper_thickness=0.92, lower_thickness=0.72, chest_mass=0.98, rump_mass=0.86, attack="swipe"),
-    "moose": dict(gait="four_beat", sprint_gait="long_trot", stride=0.42, flex=0.46, stance=0.72, fore_scale=1.04, rear_scale=1.00, upper_thickness=0.96, lower_thickness=0.48, chest_mass=1.10, rump_mass=0.94, attack="charge"),
+    "moose": dict(gait="four_beat", sprint_gait="long_trot", stride=0.38, flex=0.44, stance=0.74, fore_scale=1.04, rear_scale=1.00, upper_thickness=1.14, lower_thickness=0.68, chest_mass=1.12, rump_mass=0.96, attack="charge"),
     "turtle": dict(gait="crawl", sprint_gait="crawl", stride=0.19, flex=0.25, stance=1.06, fore_scale=0.76, rear_scale=0.76, upper_thickness=1.32, lower_thickness=1.20, chest_mass=1.08, rump_mass=1.08, attack="bash"),
     "cheetah": dict(gait="stalk", sprint_gait="gallop", stride=0.62, flex=0.68, stance=0.70, rear_scale=1.12, upper_thickness=0.86, lower_thickness=0.58, chest_mass=0.92, rump_mass=0.98, body_bob=0.060, attack="pounce"),
     "rhino": dict(gait="lumber", sprint_gait="charge", stride=0.30, flex=0.26, stance=0.82, upper_thickness=1.38, lower_thickness=1.06, chest_mass=1.26, rump_mass=1.08, attack="charge"),

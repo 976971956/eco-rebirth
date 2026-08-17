@@ -685,8 +685,62 @@ def customize_monkey(parts, hero: bool, rig, cfg: dict, layout: dict, coat, acce
         parts.append(palm)
 
 
+def customize_moose(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Replace branch-like deer antlers with broad bull-moose palms."""
+    remove_named(parts, ("AntlerDetail", "AntlerBranchDetail", "BeardDetail"))
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        root = (side * cfg["head"] * 0.38, layout["head_y"] + cfg["head"] * 0.40, layout["head_z"] + 0.02)
+        beam_points = [
+            root,
+            (side * cfg["head"] * 0.66, layout["head_y"] + cfg["head"] * 0.78, layout["head_z"] + 0.02),
+            (side * cfg["head"] * 1.02, layout["head_y"] + cfg["head"] * 1.08, layout["head_z"] + 0.04),
+        ]
+        beam = connected_weighted_tube(
+            f"MooseAntlerBeamSilhouette_{suffix}", hero, rig, beam_points,
+            [cfg["head"] * 0.105, cfg["head"] * 0.088, cfg["head"] * 0.068],
+            detail, "Head", "Head", 0.88,
+        )
+        parts.append(beam)
+        palm_start = beam_points[-1]
+        palm_end = (
+            side * cfg["head"] * 1.78,
+            layout["head_y"] + cfg["head"] * 1.25,
+            layout["head_z"] + cfg["head"] * 0.10,
+        )
+        palm = PIPELINE.ellipsoid_between(
+            f"MoosePalmateAntlerSilhouette_{suffix}", palm_start, palm_end,
+            cfg["head"] * 0.27, detail, hero, 0.28,
+        )
+        PIPELINE.rigid_skin(palm, rig, "Head")
+        palm["eco_antler_contract"] = "broad_flat_bull_moose_palm"
+        parts.append(palm)
+        tine_count = 4 if hero else 3
+        for index in range(tine_count):
+            amount = (index + 0.32) / tine_count
+            tine_start = tuple(Vector(palm_start).lerp(Vector(palm_end), amount))
+            tine_end = (
+                tine_start[0] + side * cfg["head"] * (0.20 + index * 0.035),
+                tine_start[1] + cfg["head"] * (0.42 + index * 0.035),
+                tine_start[2] - cfg["head"] * (0.08 + index * 0.025),
+            )
+            tine = PIPELINE.cone_between(
+                f"MoosePalmTineDetail_{suffix}_{index}", tine_start, tine_end,
+                cfg["head"] * (0.066 - index * 0.006), detail, hero,
+            )
+            PIPELINE.rigid_skin(tine, rig, "Head")
+            parts.append(tine)
+    bell_top = (0.0, layout["head_y"] - cfg["head"] * 0.42, layout["head_z"] - cfg["head"] * 0.08)
+    bell_tip = (0.0, bell_top[1] - cfg["head"] * 0.78, bell_top[2] + cfg["head"] * 0.06)
+    bell = PIPELINE.ellipsoid_between(
+        "MooseThroatBellSilhouette", bell_top, bell_tip,
+        cfg["head"] * 0.16, detail, hero, 0.48,
+    )
+    PIPELINE.rigid_skin(bell, rig, "Head")
+    parts.append(bell)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey"):
+    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey", "moose"):
         return
     rig.animation_data_create()
 
@@ -800,7 +854,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Lower_{suffix}", frame, (0.76 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, -0.20 * amount))
-        else:
+        elif species == "monkey":
             # The macaque braces on three limbs, coils through the torso and
             # whips the right arm forward to release a fruit projectile.
             throw = max(amount, 0.0)
@@ -816,6 +870,19 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, (0.26 * throw, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.30 * throw, 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.32 * amount))
+        else:
+            drive = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.12 * abs(amount), 0.0, 0.0))
+            insert("skill", "Chest", frame, (0.18 * drive, 0.0, 0.0))
+            insert("skill", "Neck", frame, (0.58 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (0.42 * amount, 0.0, 0.0))
+            for suffix in ("LF", "RF"):
+                insert("skill", f"Leg_{suffix}", frame, (-0.28 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.38 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.18 * abs(amount), 0.0, 0.0))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.42 * drive, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.48 * drive, 0.0, 0.0))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -893,6 +960,8 @@ def export_species(
         customize_tiger(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "monkey":
         customize_monkey(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "moose":
+        customize_moose(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
