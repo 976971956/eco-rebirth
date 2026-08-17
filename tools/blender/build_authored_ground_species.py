@@ -632,8 +632,61 @@ def customize_tiger(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accen
     parts.append(tail)
 
 
+def customize_monkey(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Build macaque ears and a curved, connected balancing tail."""
+    remove_named(parts, (
+        "V5EarSilhouette", "V5TailBaseSilhouette", "V5TailTipSilhouette",
+        "MuzzlePatchDetail", "V4LowerJawDetail", "V5FootDetail", "ClawDetail",
+    ))
+    face = PIPELINE.uv_sphere(
+        "MacaqueCompactBareFaceSilhouette",
+        (0.0, layout["head_y"] - cfg["head"] * 0.04, layout["muzzle_z"] - cfg["muzzle"] * 0.16),
+        (cfg["head"] * 0.40, cfg["head"] * 0.37, cfg["muzzle"] * 0.45),
+        accent, hero,
+    )
+    PIPELINE.rigid_skin(face, rig, "Head")
+    parts.append(face)
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        ear = PIPELINE.uv_sphere(
+            f"MacaqueRoundEarSilhouette_{suffix}",
+            (side * cfg["head"] * 0.55, layout["head_y"] + cfg["head"] * 0.12, layout["head_z"] + cfg["head"] * 0.05),
+            (cfg["head"] * 0.18, cfg["head"] * 0.20, cfg["head"] * 0.075),
+            accent, hero,
+        )
+        PIPELINE.rigid_skin(ear, rig, f"Ear_{suffix}")
+        parts.append(ear)
+
+    tail_base = (0.0, layout["body_y"] + cfg["height"] * 0.05, cfg["length"] * 0.42)
+    tail_points = [
+        tail_base,
+        (0.0, layout["body_y"] + cfg["tail"] * 0.18, cfg["length"] * 0.58 + cfg["tail"] * 0.18),
+        (0.0, layout["body_y"] + cfg["tail"] * 0.28, cfg["length"] * 0.56 + cfg["tail"] * 0.48),
+        (0.0, layout["body_y"] + cfg["tail"] * 0.14, cfg["length"] * 0.48 + cfg["tail"] * 0.78),
+        (0.0, layout["body_y"] - cfg["tail"] * 0.12, cfg["length"] * 0.42 + cfg["tail"] * 1.02),
+    ]
+    tail = connected_weighted_tube(
+        "MacaqueConnectedCurvedTailSilhouette", hero, rig, tail_points,
+        [cfg["paw"] * value for value in (0.48, 0.43, 0.34, 0.25, 0.15)],
+        coat, "Tail", "TailTip", 0.88,
+    )
+    tail["eco_tail_contract"] = "single_connected_curved_macaque_balance_tail"
+    parts.append(tail)
+
+    for suffix in LIMBS:
+        _, _, _, toe = PIPELINE.ground_limb_points(cfg, layout, suffix)
+        palm = PIPELINE.uv_sphere(
+            f"MacaqueGraspingPalmSilhouette_{suffix}",
+            (toe[0], 0.085, toe[2] - cfg["paw"] * 0.14),
+            (cfg["paw"] * 0.56, cfg["paw"] * 0.30, cfg["paw"] * 0.86),
+            accent, hero,
+        )
+        PIPELINE.rigid_skin(palm, rig, f"Paw_{suffix}")
+        palm["eco_hand_foot_contract"] = "compact_grasping_primate_hand_or_foot"
+        parts.append(palm)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger"):
+    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey"):
         return
     rig.animation_data_create()
 
@@ -729,7 +782,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, (0.12 * stomp, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.16 * stomp, 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.14 * amount))
-        else:
+        elif species == "tiger":
             # A tiger compresses low through the pelvis, launches both rear
             # legs, reaches with the forepaws and finishes in a jaw clamp.
             launch = max(amount, 0.0)
@@ -747,6 +800,22 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Lower_{suffix}", frame, (0.76 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, -0.20 * amount))
+        else:
+            # The macaque braces on three limbs, coils through the torso and
+            # whips the right arm forward to release a fruit projectile.
+            throw = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.10 * abs(amount), 0.0, -0.28 * amount))
+            insert("skill", "Chest", frame, (0.12 * throw, 0.0, 0.36 * amount))
+            insert("skill", "Neck", frame, (-0.10 * amount, 0.0, -0.12 * amount))
+            insert("skill", "Head", frame, (0.08 * amount, 0.0, -0.16 * amount))
+            insert("skill", "Leg_RF", frame, (-1.02 * amount, 0.0, 0.30 * amount))
+            insert("skill", "Lower_RF", frame, (0.82 * abs(amount), 0.0, 0.0))
+            insert("skill", "Paw_RF", frame, (-0.42 * throw, 0.0, 0.0))
+            insert("skill", "Leg_LF", frame, (0.20 * throw, 0.0, -0.18 * amount))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.26 * throw, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.30 * throw, 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, 0.32 * amount))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -822,6 +891,8 @@ def export_species(
         customize_elephant(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "tiger":
         customize_tiger(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "monkey":
+        customize_monkey(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
