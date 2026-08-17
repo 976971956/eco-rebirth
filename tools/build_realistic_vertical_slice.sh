@@ -37,6 +37,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/boar/cc0_teh_bucket" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_raccoon.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/raccoon/cc0_quaternius" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

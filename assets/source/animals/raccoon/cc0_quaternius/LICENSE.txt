@@ -1,0 +1,25 @@
+Raccoon reference asset
+=======================
+
+Title: Raccoon (Cube World Kit)
+Author: Quaternius
+Official pack page: https://quaternius.com/packs/cubeworldkit.html
+Official download folder: https://drive.google.com/drive/folders/1Yyag0ibcOX6lOBY9a3m6iPnz8HwjwLFJ
+Poly Pizza mirror: https://poly.pizza/m/xMmx6VQP3r
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-17
+Raccoon.blend SHA-256: 033156c482437c797503814ae2047e209bb6e6fa062fd60305b60e2aed3fc181
+
+Eco Rebirth modifications
+-------------------------
+
+The source is retained as a public-domain silhouette, markings and motion
+reference. Its cubic production mesh is not shipped as the gameplay surface.
+Eco Rebirth authors a new continuous adult-raccoon body, exact 22-bone runtime
+rig, PBR fur, articulated grasping paws, facial mask, ring tail, gameplay
+actions and skill sockets.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.
