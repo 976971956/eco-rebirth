@@ -41,6 +41,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/raccoon/cc0_quaternius" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_porcupine.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/porcupine/cc_by_google_poly" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

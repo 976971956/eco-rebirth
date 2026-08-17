@@ -1,0 +1,18 @@
+"Porcupine" by Poly by Google
+
+Original Google Poly asset id: 17NdW1sy5PC
+Archive metadata: https://blob.polygone.art/assets/17NdW1sy5PC/data.json
+Public mirror: https://poly.pizza/m/17NdW1sy5PC
+
+License: Creative Commons Attribution (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+The files in this directory are the archived source glTF, binary buffer and
+base-color texture. They are retained as an anatomy, silhouette and quill-flow
+reference. Eco Rebirth's production porcupine is a newly authored derivative
+with a new continuous body, runtime rig, materials and animation set.
+
+Changes: rebuilt proportions and topology; added three-segment legs, a 22-bone
+runtime rig, PBR surface treatment, layered quills, facial details, skill
+sockets and eight gameplay animations; generated separate Hero and Mobile
+profiles.
