@@ -53,6 +53,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/capybara/cc_by_google_poly" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_otter.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/otter/cc_by_google_poly" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

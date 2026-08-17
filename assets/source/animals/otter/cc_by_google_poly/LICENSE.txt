@@ -1,0 +1,13 @@
+River otter by Poly by Google is licensed under the Creative Commons
+Attribution 3.0 Unported license (CC BY 3.0).
+
+License text and terms:
+https://creativecommons.org/licenses/by/3.0/
+
+Attribution:
+"River otter" by Poly by Google, accessed through Poly Pizza.
+https://poly.pizza/m/dJW3JeUWXQ-
+
+The Eco Rebirth otter mesh, rig, materials and animations are a
+project-authored implementation. The linked 1.1k-triangle model is retained as
+an anatomical and silhouette reference; its mesh is not redistributed here.
