@@ -14,7 +14,7 @@ LIMBS = ("LF", "RF", "LH", "RH")
 BIRDS = ("owl", "eagle")
 LONG_BODY = ("snake", "crocodile")
 REMAINING_SPECIES = (
-    "elephant", "tiger", "monkey", "owl", "moose", "turtle",
+    "tiger", "monkey", "owl", "moose", "turtle",
     "cheetah", "rhino", "gorilla",
     "eagle", "hippo", "hyena", "lion",
 )
@@ -96,7 +96,7 @@ V3_SPECIES_PROFILE = {
     "wolverine": dict(gait="lope", sprint_gait="bound", stride=0.34, flex=0.44, stance=0.86, upper_thickness=1.28, lower_thickness=1.00, chest_mass=1.10, rump_mass=1.02, attack="swipe"),
     "bison": dict(gait="lumber", sprint_gait="charge", stride=0.31, flex=0.32, stance=0.80, upper_thickness=1.26, lower_thickness=0.92, chest_mass=1.34, rump_mass=0.92, body_bob=0.052, attack="charge"),
     "zebra": dict(gait="four_beat", sprint_gait="gallop", stride=0.43, flex=0.48, stance=0.72, upper_thickness=0.90, lower_thickness=0.50, chest_mass=1.00, rump_mass=0.98, attack="kick"),
-    "elephant": dict(gait="amble", sprint_gait="charge", stride=0.24, flex=0.20, stance=0.78, fore_scale=1.02, rear_scale=1.00, upper_thickness=1.48, lower_thickness=1.28, chest_mass=1.18, rump_mass=1.14, body_bob=0.035, attack="stomp"),
+    "elephant": dict(gait="amble", sprint_gait="charge", stride=0.24, flex=0.20, stance=0.78, fore_scale=1.02, rear_scale=1.00, upper_thickness=1.26, lower_thickness=1.16, chest_mass=1.18, rump_mass=1.14, body_bob=0.035, attack="stomp"),
     "tiger": dict(gait="stalk", sprint_gait="gallop", stride=0.50, flex=0.58, stance=0.76, upper_thickness=1.12, lower_thickness=0.76, chest_mass=1.08, rump_mass=1.08, attack="pounce"),
     "monkey": dict(gait="primate_walk", sprint_gait="primate_run", stride=0.40, flex=0.54, stance=0.74, fore_scale=1.62, rear_scale=1.16, upper_thickness=0.92, lower_thickness=0.72, chest_mass=0.98, rump_mass=0.86, attack="swipe"),
     "moose": dict(gait="four_beat", sprint_gait="long_trot", stride=0.42, flex=0.46, stance=0.72, fore_scale=1.04, rear_scale=1.00, upper_thickness=0.96, lower_thickness=0.48, chest_mass=1.10, rump_mass=0.94, attack="charge"),

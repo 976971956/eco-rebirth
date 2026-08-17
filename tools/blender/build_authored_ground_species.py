@@ -144,6 +144,70 @@ def connected_tail(
     return result
 
 
+def connected_weighted_tube(
+    name: str,
+    hero: bool,
+    rig,
+    points: list[tuple[float, float, float]],
+    radii: list[float],
+    material,
+    root_bone: str,
+    tip_bone: str,
+    flatten: float = 1.0,
+):
+    """Create a curved, closed appendage with a stable frame and two-bone skin."""
+    if len(points) < 2 or len(points) != len(radii):
+        raise RuntimeError(f"invalid tube guide for {name}")
+    sides = 12 if hero else 7
+    vertices = []
+    faces = []
+    root_weights = []
+    tip_weights = []
+    centres = [Vector(point) for point in points]
+    for ring, centre in enumerate(centres):
+        amount = ring / (len(centres) - 1)
+        if ring == 0:
+            tangent = (centres[1] - centre).normalized()
+        elif ring == len(centres) - 1:
+            tangent = (centre - centres[ring - 1]).normalized()
+        else:
+            tangent = (centres[ring + 1] - centres[ring - 1]).normalized()
+        reference = Vector((0.0, 0.0, 1.0))
+        if abs(tangent.dot(reference)) > 0.92:
+            reference = Vector((1.0, 0.0, 0.0))
+        axis_a = tangent.cross(reference).normalized()
+        axis_b = tangent.cross(axis_a).normalized()
+        for side in range(sides):
+            angle = math.tau * side / sides
+            point = centre + axis_a * math.cos(angle) * radii[ring] + axis_b * math.sin(angle) * radii[ring] * flatten
+            vertices.append(tuple(point))
+            blend = max(0.0, min(1.0, (amount - 0.22) / 0.62))
+            root_weights.append(1.0 - blend)
+            tip_weights.append(blend)
+    for ring in range(len(centres) - 1):
+        for side in range(sides):
+            next_side = (side + 1) % sides
+            a = ring * sides + side
+            b = ring * sides + next_side
+            c = (ring + 1) * sides + next_side
+            d = (ring + 1) * sides + side
+            faces.append((a, b, c, d))
+    faces.append(tuple(reversed(range(sides))))
+    last = (len(centres) - 1) * sides
+    faces.append(tuple(last + side for side in range(sides)))
+    result = PIPELINE.authored_mesh(name, vertices, faces, [material], [0] * len(faces))
+    for polygon in result.data.polygons:
+        polygon.use_smooth = True
+    weights = (
+        {root_bone: [1.0] * len(vertices)}
+        if root_bone == tip_bone
+        else {root_bone: root_weights, tip_bone: tip_weights}
+    )
+    PIPELINE.add_armature_weights(result, rig, weights)
+    BEAR.smart_uv(result)
+    return result
+
+
 def customize_lynx(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
     remove_named(parts, ("CheekRuffDetail", "V5TailBaseSilhouette", "V5TailTipSilhouette"))
     for side in (-1.0, 1.0):
@@ -361,8 +425,121 @@ def customize_zebra(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accen
             obj["eco_hoof_contract"] = "compact_single_equine_hoof"
 
 
+def customize_elephant(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Replace generic heavy-animal details with an African elephant silhouette."""
+    remove_named(parts, (
+        "TrunkDetail", "TuskDetail", "V5FootDetail", "ClawDetail", "V5Muscle", "V5Joint",
+        "V5EarFanSilhouette",
+        "V5TailBaseSilhouette", "V5TailTipSilhouette",
+    ))
+
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        centre = (
+            side * cfg["head"] * 0.48,
+            layout["head_y"] - cfg["head"] * 0.02,
+            layout["head_z"] + cfg["head"] * 0.16,
+        )
+        ear_parts = PIPELINE.elephant_ear_fan(
+            f"ElephantAngledEarFanSilhouette_{suffix}", side, centre,
+            cfg["ear"] * 1.05, coat, accent, hero,
+        )
+        angle = side * 0.38
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        for ear_part in ear_parts:
+            for vertex in ear_part.data.vertices:
+                # Blender coordinates are X, Godot-Z, Godot-Y. Rotate the
+                # ear around the vertical axis so a three-quarter game camera
+                # reads its fan area instead of only the paper-thin edge.
+                dx = vertex.co.x - centre[0]
+                dz = vertex.co.y - centre[2]
+                vertex.co.x = centre[0] + dx * cosine + dz * sine
+                vertex.co.y = centre[2] - dx * sine + dz * cosine
+            PIPELINE.rigid_skin(ear_part, rig, f"Ear_{suffix}")
+            ear_part["eco_ear_contract"] = "broad_angled_african_elephant_fan"
+            parts.append(ear_part)
+
+    trunk_points = [
+        (0.0, layout["head_y"] - cfg["head"] * 0.08, layout["muzzle_z"] - cfg["muzzle"] * 0.12),
+        (0.0, layout["head_y"] - cfg["head"] * 0.42, layout["muzzle_z"] - cfg["muzzle"] * 0.28),
+        (0.0, layout["head_y"] - cfg["head"] * 0.80, layout["muzzle_z"] - cfg["muzzle"] * 0.30),
+        (0.0, layout["head_y"] - cfg["head"] * 1.18, layout["muzzle_z"] - cfg["muzzle"] * 0.20),
+        (0.0, max(0.24, layout["head_y"] - cfg["head"] * 1.52), layout["muzzle_z"] + cfg["muzzle"] * 0.02),
+    ]
+    trunk = connected_weighted_tube(
+        "ElephantConnectedTrunkSilhouette", hero, rig, trunk_points,
+        [cfg["head"] * value for value in (0.25, 0.225, 0.185, 0.145, 0.105)],
+        coat, "Head", "Jaw", 0.88,
+    )
+    trunk["eco_trunk_contract"] = "single_connected_tapered_head_jaw_skinned_trunk"
+    parts.append(trunk)
+    if hero:
+        for side in (-1.0, 1.0):
+            nostril = PIPELINE.uv_sphere(
+                f"ElephantTrunkNostrilDetail_{side:+.0f}",
+                (side * cfg["head"] * 0.045, trunk_points[-1][1] - cfg["head"] * 0.015, trunk_points[-1][2] - cfg["head"] * 0.075),
+                (cfg["head"] * 0.035, cfg["head"] * 0.020, cfg["head"] * 0.048),
+                detail, hero,
+            )
+            PIPELINE.rigid_skin(nostril, rig, "Jaw")
+            parts.append(nostril)
+
+    ivory = PIPELINE.pbr_material("elephant_authored_ivory_pbr", "#d9d0b6", 0.54)
+    for side in (-1.0, 1.0):
+        tusk_points = [
+            (side * cfg["head"] * 0.34, layout["head_y"] - cfg["head"] * 0.18, layout["muzzle_z"] - cfg["muzzle"] * 0.10),
+            (side * cfg["head"] * 0.40, layout["head_y"] - cfg["head"] * 0.40, layout["muzzle_z"] - cfg["head"] * 0.32),
+            (side * cfg["head"] * 0.44, layout["head_y"] - cfg["head"] * 0.34, layout["muzzle_z"] - cfg["head"] * 0.66),
+            (side * cfg["head"] * 0.46, layout["head_y"] - cfg["head"] * 0.14, layout["muzzle_z"] - cfg["head"] * 0.96),
+        ]
+        tusk = connected_weighted_tube(
+            f"ElephantConnectedTuskDetail_{side:+.0f}", hero, rig, tusk_points,
+            [cfg["head"] * value for value in (0.105, 0.082, 0.050, 0.014)],
+            ivory, "Head", "Head", 0.94,
+        )
+        tusk["eco_tusk_contract"] = "single_connected_upcurved_ivory_tusk"
+        parts.append(tusk)
+
+    for suffix in LIMBS:
+        _, _, _, toe = PIPELINE.ground_limb_points(cfg, layout, suffix)
+        pad = PIPELINE.uv_sphere(
+            f"ElephantRoundFootPadSilhouette_{suffix}",
+            (toe[0], 0.115, toe[2] - cfg["paw"] * 0.04),
+            (cfg["paw"] * 0.82, cfg["paw"] * 0.40, cfg["paw"] * 0.72),
+            coat, hero,
+        )
+        PIPELINE.rigid_skin(pad, rig, f"Paw_{suffix}")
+        pad["eco_foot_contract"] = "round_columnar_elephant_foot_pad"
+        parts.append(pad)
+        if hero:
+            for nail_index in range(3):
+                offset = (nail_index - 1) * cfg["paw"] * 0.34
+                nail = PIPELINE.uv_sphere(
+                    f"ElephantToenailDetail_{suffix}_{nail_index}",
+                    (toe[0] + offset, 0.090, toe[2] - cfg["paw"] * 0.62),
+                    (cfg["paw"] * 0.115, cfg["paw"] * 0.075, cfg["paw"] * 0.11),
+                    detail, hero,
+                )
+                PIPELINE.rigid_skin(nail, rig, f"Paw_{suffix}")
+                parts.append(nail)
+
+    tail_start = (0.0, layout["body_y"] + cfg["height"] * 0.02, cfg["length"] * 0.60)
+    tail_end = (0.0, max(0.30, layout["body_y"] - cfg["tail"] * 0.88), cfg["length"] * 0.60 + cfg["tail"] * 0.55)
+    tail = connected_tail(
+        "ElephantConnectedTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 0.28, cfg["paw"] * 0.12, coat, 0.88,
+    )
+    parts.append(tail)
+    tuft = PIPELINE.ellipsoid_between(
+        "ElephantTailTuftDetail", tuple(Vector(tail_start).lerp(Vector(tail_end), 0.78)), tail_end,
+        cfg["paw"] * 0.28, detail, hero, 0.62,
+    )
+    PIPELINE.rigid_skin(tuft, rig, "TailTip")
+    parts.append(tuft)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine", "bison", "zebra"):
+    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant"):
         return
     rig.animation_data_create()
 
@@ -425,7 +602,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, (0.36 * drive, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.42 * drive, 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.18 * amount))
-        else:
+        elif species == "zebra":
             # The zebra shifts onto both forelegs, gathers the hocks, then
             # extends both hind hooves in a compact defensive double kick.
             kick = max(amount, 0.0)
@@ -441,6 +618,23 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Lower_{suffix}", frame, (0.64 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.24 * amount))
+        else:
+            # The elephant gathers its weight, lifts both forefeet, then
+            # stamps through the chest while the trunk recoils from the shock.
+            stomp = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.08 * stomp, 0.0, 0.0))
+            insert("skill", "Chest", frame, (0.18 * amount, 0.0, 0.0))
+            insert("skill", "Neck", frame, (-0.20 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (-0.28 * amount, 0.0, 0.0))
+            insert("skill", "Jaw", frame, (0.36 * amount, 0.0, 0.0))
+            for suffix in ("LF", "RF"):
+                insert("skill", f"Leg_{suffix}", frame, (-0.42 * stomp, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.34 * stomp, 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.18 * stomp, 0.0, 0.0))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.12 * stomp, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.16 * stomp, 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, 0.14 * amount))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -489,7 +683,11 @@ def export_species(
     rig, anchors = PIPELINE.build_ground_rig(species, cfg, layout)
     parts = PIPELINE.build_ground_parts(species, hero, rig, anchors, cfg, layout)
     project_root = Path(__file__).resolve().parents[2]
-    coat = coat_material(project_root, species, tint, hero, 0.86)
+    coat = (
+        PIPELINE.pbr_material("elephant_cinematic_wrinkled_skin_pbr", cfg["coat"], 0.94)
+        if species == "elephant"
+        else coat_material(project_root, species, tint, hero, 0.86)
+    )
     accent = PIPELINE.pbr_material(f"{species}_cinematic_accent_pbr", cfg["accent"], 0.88)
     detail = PIPELINE.pbr_material(f"{species}_cinematic_detail_pbr", cfg["dark"], 0.76)
     eye = PIPELINE.pbr_material(f"{species}_cinematic_eye_pbr", cfg["eye"], 0.10)
@@ -508,6 +706,8 @@ def export_species(
         customize_bison(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "zebra":
         customize_zebra(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "elephant":
+        customize_elephant(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6

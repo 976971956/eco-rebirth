@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.50 发布候选校验通过：逐种写实替换 16/29、斑马马科体轴/贴体条纹/直立鬃/双蹄踢击、骨架八态动作、Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.50 发布候选校验通过：逐种写实替换 17/29、非洲巨象连续象鼻/展开耳廓/柱状腿/践踏动作、骨架八态动作、Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:

@@ -17,7 +17,7 @@ const EXTERNAL_SPECIES := [
 	"rhino", "gorilla", "eagle", "hippo", "hyena", "lion",
 ]
 const V2_SPECIES := EXTERNAL_SPECIES
-const AUTHORED_SOURCE_SPECIES := ["rabbit", "wolf", "fox", "deer", "snake", "bear", "boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine", "bison", "zebra"]
+const AUTHORED_SOURCE_SPECIES := ["rabbit", "wolf", "fox", "deer", "snake", "bear", "boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine", "bison", "zebra", "elephant"]
 const THIRD_BATCH_SPECIES := ["lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla"]
 const FOURTH_BATCH_SPECIES := ["raccoon", "porcupine", "capybara", "otter", "wolverine", "zebra", "owl", "turtle", "cheetah", "hyena"]
 const SKELETAL_SPECIES := [
@@ -67,7 +67,7 @@ const FUR_ATLAS_REGIONS := {
 	"bear": Vector2(0.5, 0.5),
 }
 const DETAIL_LOD_TOKENS := ["detail", "iris", "pupil", "catchlight", "innerear", "whisker", "stripe", "spot", "quill", "mane", "plate", "antlerbranch", "tooth", "claw"]
-const ESSENTIAL_SILHOUETTE_TOKENS := ["wingbody", "wingfeather", "tailfeather", "beakdetail", "trunkdetail", "shelldetail"]
+const ESSENTIAL_SILHOUETTE_TOKENS := ["wingbody", "wingfeather", "tailfeather", "beakdetail", "trunkdetail", "trunksilhouette", "earfansilhouette", "shelldetail"]
 const HERO_DETAIL_RANGE := 28.0
 const MOBILE_DETAIL_RANGE := 20.0
 const HERO_BODY_RANGE := 82.0
