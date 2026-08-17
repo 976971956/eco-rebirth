@@ -1,0 +1,13 @@
+Tiger by Poly by Google is licensed under the Creative Commons
+Attribution 3.0 Unported license (CC BY 3.0).
+
+License text and terms:
+https://creativecommons.org/licenses/by/3.0/
+
+Attribution:
+"Tiger" by Poly by Google, accessed through Poly Pizza.
+https://poly.pizza/m/5A3w06FXUup
+
+The Eco Rebirth tiger mesh, rig, materials and animations are a
+project-authored implementation. The linked model is retained only as an
+anatomical and silhouette reference; its mesh is not redistributed here.

@@ -14,7 +14,7 @@ LIMBS = ("LF", "RF", "LH", "RH")
 BIRDS = ("owl", "eagle")
 LONG_BODY = ("snake", "crocodile")
 REMAINING_SPECIES = (
-    "tiger", "monkey", "owl", "moose", "turtle",
+    "monkey", "owl", "moose", "turtle",
     "cheetah", "rhino", "gorilla",
     "eagle", "hippo", "hyena", "lion",
 )
@@ -344,6 +344,10 @@ def paint_ground_surface(
             if species == "zebra":
                 wave = math.sin(normalized_z * math.pi * 7.0 + y * 2.2 + normalized_x * 1.4)
                 if wave > 0.58 and y > body_y - cfg["height"] * 0.38:
+                    material_index = dark_index
+            elif species == "tiger":
+                wave = math.sin(normalized_z * math.pi * 7.0 + y * 2.3 + normalized_x * 1.2)
+                if wave > 0.64 and y > body_y - cfg["height"] * 0.32 and normalized_x > 0.30:
                     material_index = dark_index
             else:
                 wave = math.sin(normalized_z * math.pi * 8.6 + y * 2.8 + normalized_x * 1.9)

@@ -538,8 +538,102 @@ def customize_elephant(parts, hero: bool, rig, cfg: dict, layout: dict, coat, ac
     parts.append(tuft)
 
 
+def customize_tiger(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Build the tiger's rounded face, broad paws and flush striped tail."""
+    remove_named(parts, (
+        "V5EarSilhouette", "V5TailBaseSilhouette", "V5TailTipSilhouette",
+        "ChestRuffDetail", "V5FootDetail", "ClawDetail",
+    ))
+
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        ear_position = (
+            side * cfg["head"] * 0.49,
+            layout["head_y"] + cfg["head"] * 0.47,
+            layout["head_z"] + cfg["head"] * 0.08,
+        )
+        outer = PIPELINE.uv_sphere(
+            f"TigerRoundedDarkEarSilhouette_{suffix}", ear_position,
+            (cfg["head"] * 0.22, cfg["head"] * 0.25, cfg["head"] * 0.10),
+            detail, hero,
+        )
+        PIPELINE.rigid_skin(outer, rig, f"Ear_{suffix}")
+        parts.append(outer)
+        inner = PIPELINE.uv_sphere(
+            f"TigerRoundedEarInnerDetail_{suffix}",
+            (ear_position[0], ear_position[1] - cfg["head"] * 0.02, ear_position[2] - cfg["head"] * 0.08),
+            (cfg["head"] * 0.125, cfg["head"] * 0.145, cfg["head"] * 0.035),
+            accent, hero,
+        )
+        PIPELINE.rigid_skin(inner, rig, f"Ear_{suffix}")
+        parts.append(inner)
+
+        cheek = PIPELINE.ellipsoid_between(
+            f"TigerWhiteCheekRuffDetail_{side:+.0f}",
+            (side * cfg["head"] * 0.52, layout["head_y"] - cfg["head"] * 0.04, layout["head_z"] - cfg["head"] * 0.30),
+            (side * cfg["head"] * 0.74, layout["head_y"] - cfg["head"] * 0.20, layout["head_z"] - cfg["head"] * 0.10),
+            cfg["head"] * 0.13, accent, hero, 0.58,
+        )
+        PIPELINE.rigid_skin(cheek, rig, "Head")
+        parts.append(cheek)
+
+    for obj in parts:
+        if obj.name.startswith(("V3UpperLimb", "V4LowerLimb", "V4Metapodial")):
+            dark_index = PIPELINE.append_material(obj, detail)
+            z_values = [vertex.co.z for vertex in obj.data.vertices]
+            minimum = min(z_values)
+            span = max(max(z_values) - minimum, 0.001)
+            for polygon in obj.data.polygons:
+                centre = sum(obj.data.vertices[index].co.z for index in polygon.vertices) / len(polygon.vertices)
+                band = int((centre - minimum) / span * (4 if hero else 3))
+                if band == 1 or (hero and band == 3):
+                    polygon.material_index = dark_index
+            obj["eco_stripe_contract"] = "flush_tiger_leg_bands"
+    for suffix in LIMBS:
+        _, _, _, toe = PIPELINE.ground_limb_points(cfg, layout, suffix)
+        paw = PIPELINE.uv_sphere(
+            f"TigerRoundPawSilhouette_{suffix}",
+            (toe[0], 0.095, toe[2] - cfg["paw"] * 0.20),
+            (cfg["paw"] * 0.72, cfg["paw"] * 0.35, cfg["paw"] * 0.92),
+            coat, hero,
+        )
+        PIPELINE.rigid_skin(paw, rig, f"Paw_{suffix}")
+        paw["eco_paw_contract"] = "broad_round_retractile_claw_ambush_paw"
+        parts.append(paw)
+        if hero:
+            for digit in range(3):
+                offset = (digit - 1) * cfg["paw"] * 0.30
+                toe_pad = PIPELINE.uv_sphere(
+                    f"TigerToeDetail_{suffix}_{digit}",
+                    (toe[0] + offset, 0.075, toe[2] - cfg["paw"] * 0.76),
+                    (cfg["paw"] * 0.11, cfg["paw"] * 0.075, cfg["paw"] * 0.13),
+                    detail, hero,
+                )
+                PIPELINE.rigid_skin(toe_pad, rig, f"Paw_{suffix}")
+                parts.append(toe_pad)
+
+    tail_start = (0.0, layout["body_y"], cfg["length"] * 0.62)
+    tail_end = (0.0, max(0.30, layout["body_y"] - cfg["tail"] * 0.28), cfg["length"] * 0.62 + cfg["tail"] * 1.08)
+    tail = connected_tail(
+        "TigerConnectedRingedTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 1.18, cfg["paw"] * 0.62, coat, 0.84,
+    )
+    dark_index = PIPELINE.append_material(tail, detail)
+    start_b = Vector(PIPELINE.g2b(tail_start))
+    end_b = Vector(PIPELINE.g2b(tail_end))
+    direction = end_b - start_b
+    denominator = max(direction.length_squared, 0.001)
+    for polygon in tail.data.polygons:
+        centre = sum((tail.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        amount = max(0.0, min(1.0, (centre - start_b).dot(direction) / denominator))
+        band = int(amount * (8 if hero else 6))
+        if band % 2 == 1 and amount > 0.24:
+            polygon.material_index = dark_index
+    tail["eco_tail_contract"] = "single_connected_flush_ringed_tiger_tail"
+    parts.append(tail)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant"):
+    if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger"):
         return
     rig.animation_data_create()
 
@@ -618,7 +712,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Lower_{suffix}", frame, (0.64 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.24 * amount))
-        else:
+        elif species == "elephant":
             # The elephant gathers its weight, lifts both forefeet, then
             # stamps through the chest while the trunk recoils from the shock.
             stomp = max(amount, 0.0)
@@ -635,6 +729,24 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, (0.12 * stomp, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.16 * stomp, 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.14 * amount))
+        else:
+            # A tiger compresses low through the pelvis, launches both rear
+            # legs, reaches with the forepaws and finishes in a jaw clamp.
+            launch = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.28 * abs(amount), 0.0, 0.08 * amount))
+            insert("skill", "Chest", frame, (0.24 * launch, 0.0, -0.06 * amount))
+            insert("skill", "Neck", frame, (-0.26 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (-0.18 * amount, 0.0, 0.0))
+            insert("skill", "Jaw", frame, (-0.48 * launch, 0.0, 0.0))
+            for suffix in ("LF", "RF"):
+                insert("skill", f"Leg_{suffix}", frame, (-0.66 * amount, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.38 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.20 * abs(amount), 0.0, 0.0))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.72 * amount, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.76 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, -0.20 * amount))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -708,6 +820,8 @@ def export_species(
         customize_zebra(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "elephant":
         customize_elephant(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "tiger":
+        customize_tiger(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
