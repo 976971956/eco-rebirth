@@ -250,8 +250,66 @@ def customize_wolverine(parts, hero: bool, rig, cfg: dict, layout: dict, coat, a
         parts.append(ruff)
 
 
+def customize_bison(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Build the front-heavy wool, low brow and compact horns of a bull bison."""
+    remove_named(parts, ("HornDetail", "BeardDetail", "ManeQuillDetail"))
+    for obj in parts:
+        if obj.name.startswith("V5FootDetail"):
+            obj.scale.y *= 0.70
+            obj["eco_hoof_contract"] = "compact_load_bearing_split_hoof"
+    forelock = PIPELINE.ellipsoid_between(
+        "BisonCompactForelockDetail",
+        (0.0, layout["head_y"] + cfg["head"] * 0.40, layout["head_z"] + cfg["head"] * 0.22),
+        (0.0, layout["head_y"] + cfg["head"] * 0.30, layout["head_z"] - cfg["head"] * 0.18),
+        cfg["head"] * 0.25, coat, hero, 0.72,
+    )
+    PIPELINE.rigid_skin(forelock, rig, "Head")
+    parts.append(forelock)
+    for side in (-1.0, 1.0):
+        points = [
+            (side * cfg["head"] * 0.42, layout["head_y"] + cfg["head"] * 0.35, layout["head_z"] + 0.02),
+            (side * cfg["head"] * 0.78, layout["head_y"] + cfg["head"] * 0.30, layout["head_z"] - cfg["head"] * 0.04),
+            (side * cfg["head"] * 1.02, layout["head_y"] + cfg["head"] * 0.56, layout["head_z"] - cfg["head"] * 0.12),
+        ]
+        for index in range(2):
+            horn = PIPELINE.cone_between(
+                f"BisonCompactHornDetail_{side:+.0f}_{index}", points[index], points[index + 1],
+                cfg["head"] * (0.15 - index * 0.05), detail, hero,
+            )
+            PIPELINE.rigid_skin(horn, rig, "Head")
+            parts.append(horn)
+
+    beard_top = (0.0, layout["head_y"] - cfg["head"] * 0.42, layout["head_z"] - cfg["head"] * 0.05)
+    beard_mid = (0.0, beard_top[1] - cfg["head"] * 0.38, beard_top[2] + cfg["head"] * 0.12)
+    beard_tip = (0.0, beard_top[1] - cfg["head"] * 0.72, beard_top[2] + cfg["head"] * 0.20)
+    for index, (start, end, radius) in enumerate(((beard_top, beard_mid, 0.17), (beard_mid, beard_tip, 0.12))):
+        beard = PIPELINE.ellipsoid_between(
+            f"BisonTaperedBeardSilhouette_{index}", start, end, cfg["head"] * radius,
+            detail, hero, 0.72,
+        )
+        PIPELINE.rigid_skin(beard, rig, "Head")
+        parts.append(beard)
+
+    fringe_count = 3 if hero else 2
+    for side in (-1.0, 1.0):
+        for index in range(fringe_count):
+            amount = index / max(fringe_count - 1, 1)
+            start = (
+                side * cfg["width"] * (0.48 + amount * 0.10),
+                layout["shoulder_y"] - cfg["height"] * (0.12 + amount * 0.12),
+                layout["front_z"] + cfg["length"] * (0.04 + amount * 0.15),
+            )
+            end = (start[0], start[1] - cfg["height"] * (0.25 - amount * 0.05), start[2] + 0.06)
+            fringe = PIPELINE.ellipsoid_between(
+                f"BisonForequarterFringeDetail_{side:+.0f}_{index}", start, end,
+                cfg["paw"] * (0.28 - amount * 0.035), detail, hero, 0.68,
+            )
+            PIPELINE.rigid_skin(fringe, rig, "Chest")
+            parts.append(fringe)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine"):
+    if species not in ("lynx", "goat", "wolverine", "bison"):
         return
     rig.animation_data_create()
 
@@ -283,7 +341,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, ((-0.56 if rear else 0.28) * amount, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, ((0.78 if rear else -0.34) * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.24 * abs(amount), 0.0, 0.0))
-        else:
+        elif species == "wolverine":
             # The wolverine plants its rear paws, twists through the shoulders,
             # hooks with one forepaw and finishes with a deep tearing bite.
             insert("skill", "Spine", frame, (-0.20 * abs(amount), 0.0, 0.18 * amount))
@@ -298,6 +356,22 @@ def customize_actions(species: str, rig) -> None:
             for suffix in ("LH", "RH"):
                 insert("skill", f"Leg_{suffix}", frame, (0.22 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.34 * abs(amount), 0.0, 0.0))
+        else:
+            # A bison drops the head behind the shoulder mass, braces the
+            # forequarters, then drives and hooks upward through both horns.
+            drive = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.10 * abs(amount), 0.0, 0.0))
+            insert("skill", "Chest", frame, (0.12 * drive, 0.0, 0.0))
+            insert("skill", "Neck", frame, (0.52 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (0.46 * amount, 0.0, 0.0))
+            for suffix in ("LF", "RF"):
+                insert("skill", f"Leg_{suffix}", frame, (-0.24 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.30 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.16 * abs(amount), 0.0, 0.0))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.36 * drive, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.42 * drive, 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, 0.18 * amount))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -341,6 +415,8 @@ def export_species(
     cfg.update(config_overrides)
     cfg["v5"].update(anatomy_overrides)
     layout = PIPELINE.ground_layout(cfg)
+    if species == "bison":
+        layout["head_y"] -= cfg["height"] * 0.28
     rig, anchors = PIPELINE.build_ground_rig(species, cfg, layout)
     parts = PIPELINE.build_ground_parts(species, hero, rig, anchors, cfg, layout)
     project_root = Path(__file__).resolve().parents[2]
@@ -359,6 +435,8 @@ def export_species(
         customize_goat(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "wolverine":
         customize_wolverine(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "bison":
+        customize_bison(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
