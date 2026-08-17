@@ -739,6 +739,87 @@ def customize_moose(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accen
     parts.append(bell)
 
 
+def customize_cheetah(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Give the cursorial cat one continuously skinned counterbalance tail."""
+    remove_named(parts, ("V5TailBaseSilhouette", "V5TailTipSilhouette"))
+    tail_start = (0.0, layout["body_y"], cfg["length"] * 0.62)
+    tail_end = (0.0, max(0.27, layout["body_y"] - cfg["tail"] * 0.24), cfg["length"] * 0.62 + cfg["tail"] * 1.10)
+    tail = connected_tail(
+        "CheetahConnectedBalanceTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 0.94, cfg["paw"] * 0.48, coat, 0.82,
+    )
+    dark_index = PIPELINE.append_material(tail, detail)
+    start_b = Vector(PIPELINE.g2b(tail_start))
+    end_b = Vector(PIPELINE.g2b(tail_end))
+    direction = end_b - start_b
+    denominator = max(direction.length_squared, 0.001)
+    for polygon in tail.data.polygons:
+        centre = sum((tail.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        amount = max(0.0, min(1.0, (centre - start_b).dot(direction) / denominator))
+        if amount > 0.72 and int(amount * (10 if hero else 8)) % 2 == 1:
+            polygon.material_index = dark_index
+    tail["eco_tail_contract"] = "single_connected_ring_tipped_cheetah_balance_tail"
+    parts.append(tail)
+
+
+def customize_hyena(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    remove_named(parts, ("V5TailBaseSilhouette", "V5TailTipSilhouette", "ManeQuillDetail"))
+    tail_start = (0.0, layout["body_y"], cfg["length"] * 0.61)
+    tail_end = (0.0, 0.31, cfg["length"] * 0.61 + cfg["tail"] * 0.96)
+    tail = connected_tail(
+        "HyenaConnectedCoarseTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 0.82, cfg["paw"] * 0.40, coat, 0.88,
+    )
+    tail["eco_tail_contract"] = "single_connected_coarse_spotted_hyena_tail"
+    parts.append(tail)
+    ridge_count = 6 if hero else 4
+    for index in range(ridge_count):
+        amount = index / max(ridge_count - 1, 1)
+        z = layout["front_z"] + cfg["length"] * (0.08 + amount * 0.76)
+        ridge = PIPELINE.uv_sphere(
+            f"HyenaFlushRidgeManeDetail_{index}",
+            (0.0, layout["body_y"] + cfg["height"] * (0.61 - amount * 0.12), z),
+            (cfg["width"] * 0.10, cfg["height"] * 0.19, cfg["length"] * 0.14),
+            detail, hero,
+        )
+        PIPELINE.rigid_skin(ridge, rig, "Chest" if amount < 0.55 else "Spine")
+        parts.append(ridge)
+
+
+def customize_lion(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    remove_named(parts, (
+        "V5TailBaseSilhouette", "V5TailTipSilhouette", "TailTipDetail",
+        "ManeSilhouette", "ChestRuffDetail",
+    ))
+    mane_y = (layout["head_y"] + layout["shoulder_y"]) * 0.50
+    mane_z = layout["head_z"] + cfg["head"] * 0.16
+    mane_parts = [
+        ("LionNeckManeSilhouette", (0.0, mane_y, mane_z), (cfg["head"] * 0.88, cfg["head"] * 0.90, cfg["head"] * 0.64)),
+        ("LionCheekManeSilhouette_L", (-cfg["head"] * 0.42, mane_y - cfg["head"] * 0.04, mane_z - cfg["head"] * 0.08), (cfg["head"] * 0.38, cfg["head"] * 0.62, cfg["head"] * 0.36)),
+        ("LionCheekManeSilhouette_R", (cfg["head"] * 0.42, mane_y - cfg["head"] * 0.04, mane_z - cfg["head"] * 0.08), (cfg["head"] * 0.38, cfg["head"] * 0.62, cfg["head"] * 0.36)),
+        ("LionChestManeSilhouette", (0.0, layout["shoulder_y"] + cfg["height"] * 0.14, layout["front_z"] - cfg["head"] * 0.02), (cfg["head"] * 0.42, cfg["head"] * 0.38, cfg["head"] * 0.24)),
+    ]
+    for name, position, scale in mane_parts:
+        mane = PIPELINE.uv_sphere(name, position, scale, detail, hero)
+        PIPELINE.rigid_skin(mane, rig, "Neck" if "Chest" not in name else "Chest")
+        parts.append(mane)
+    tail_start = (0.0, layout["body_y"], cfg["length"] * 0.61)
+    tail_end = (0.0, max(0.30, layout["body_y"] - cfg["tail"] * 0.30), cfg["length"] * 0.61 + cfg["tail"] * 1.06)
+    tail = connected_tail(
+        "LionConnectedTuftedTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 0.54, cfg["paw"] * 0.24, coat, 0.84,
+    )
+    tail["eco_tail_contract"] = "single_connected_lion_tail_with_compact_tuft"
+    parts.append(tail)
+    tuft = PIPELINE.uv_sphere(
+        "LionCompactTailTuftDetail", tail_end,
+        (cfg["paw"] * 0.34, cfg["paw"] * 0.40, cfg["paw"] * 0.48),
+        detail, hero,
+    )
+    PIPELINE.rigid_skin(tuft, rig, "TailTip")
+    parts.append(tuft)
+
+
 def customize_actions(species: str, rig) -> None:
     if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey", "moose"):
         return
@@ -931,10 +1012,10 @@ def export_species(
     rig, anchors = PIPELINE.build_ground_rig(species, cfg, layout)
     parts = PIPELINE.build_ground_parts(species, hero, rig, anchors, cfg, layout)
     project_root = Path(__file__).resolve().parents[2]
+    skin_species = species in ("elephant", "turtle", "rhino", "hippo")
     coat = (
-        PIPELINE.pbr_material("elephant_cinematic_wrinkled_skin_pbr", cfg["coat"], 0.94)
-        if species == "elephant"
-        else coat_material(project_root, species, tint, hero, 0.86)
+        PIPELINE.pbr_material(f"{species}_cinematic_coat_pbr", cfg["coat"], 0.94 if species != "turtle" else 0.82)
+        if skin_species else coat_material(project_root, species, tint, hero, 0.86)
     )
     accent = PIPELINE.pbr_material(f"{species}_cinematic_accent_pbr", cfg["accent"], 0.88)
     detail = PIPELINE.pbr_material(f"{species}_cinematic_detail_pbr", cfg["dark"], 0.76)
@@ -962,6 +1043,12 @@ def export_species(
         customize_monkey(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "moose":
         customize_moose(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "cheetah":
+        customize_cheetah(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "hyena":
+        customize_hyena(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "lion":
+        customize_lion(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
@@ -969,7 +1056,7 @@ def export_species(
     rig["source_reference"] = source_reference
     rig["anatomy_profile"] = f"adult_{species}_species_specific_v1"
     rig["locomotion_profile"] = f"authored_{species}_gait_and_skill"
-    rig["surface_profile"] = f"species_tinted_fur_pbr_{species}"
+    rig["surface_profile"] = f"species_authored_{'skin_or_shell' if skin_species else 'tinted_fur'}_pbr_{species}"
     PIPELINE.create_ground_actions(rig, cfg)
     customize_actions(species, rig)
     profile = "hero" if hero else "mobile"

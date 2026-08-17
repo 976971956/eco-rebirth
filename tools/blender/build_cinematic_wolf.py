@@ -46,7 +46,7 @@ def load_source(source_dir: Path) -> tuple[bpy.types.Object, bpy.types.Object]:
     return rig, mesh
 
 
-def pbr_material(source_dir: Path, texture_size: int) -> bpy.types.Material:
+def pbr_material(source_dir: Path, texture_size: int, hero: bool) -> bpy.types.Material:
     material = bpy.data.materials.new("wolf_cinematic_coat_pbr")
     material.use_nodes = True
     nodes = material.node_tree.nodes
@@ -73,14 +73,17 @@ def pbr_material(source_dir: Path, texture_size: int) -> bpy.types.Material:
         return node
 
     albedo = texture_node("AIGrayWolfAlbedo", "dog2Color.png", "sRGB")
-    roughness = texture_node("WolfRoughness", "dog2Roughness.png", "Non-Color")
-    normal = texture_node("WolfNormal", "dog2Normal.png", "Non-Color")
-    normal_map = nodes.new("ShaderNodeNormalMap")
-    normal_map.inputs["Strength"].default_value = 0.62
     links.new(albedo.outputs["Color"], principled.inputs["Base Color"])
-    links.new(roughness.outputs["Color"], principled.inputs["Roughness"])
-    links.new(normal.outputs["Color"], normal_map.inputs["Color"])
-    links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
+    if hero:
+        roughness = texture_node("WolfRoughness", "dog2Roughness.png", "Non-Color")
+        normal = texture_node("WolfNormal", "dog2Normal.png", "Non-Color")
+        normal_map = nodes.new("ShaderNodeNormalMap")
+        normal_map.inputs["Strength"].default_value = 0.62
+        links.new(roughness.outputs["Color"], principled.inputs["Roughness"])
+        links.new(normal.outputs["Color"], normal_map.inputs["Color"])
+        links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
+    else:
+        material["mobile_surface_channels"] = "albedo_plus_scalar_roughness"
     material.diffuse_color = (0.72, 0.75, 0.76, 1.0)
     return material
 
@@ -533,7 +536,7 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
     merge_terminal_toe_weights(mesh)
     remove_terminal_toe_bones(rig)
     rename_articulated_paw_bones(rig, mesh)
-    material = pbr_material(source_dir, 1024 if hero else 512)
+    material = pbr_material(source_dir, 1024 if hero else 64, hero)
     parts = split_body_and_details(mesh, material, detail_materials(material))
     body = parts[0]
     if mesh_island_count(body) != 1:

@@ -271,6 +271,10 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 		calm_timer = opening_caution_seconds(game_level)
 	decision_timer = fmod(float(actor_id) * 0.073, 0.33) + 0.05
 	wander_timer = 0.1
+	# Offset visual-LOD clocks so a 100-actor roster does not evaluate every
+	# skeleton in the same rendered frame. This changes presentation scheduling
+	# only; gameplay decisions and movement remain fixed-step and deterministic.
+	visual_lod_elapsed = fmod(float(actor_id) * 0.037, 0.36)
 	last_sample_position = global_position
 	ecology_trace_last_position = global_position
 	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
@@ -1721,6 +1725,15 @@ func _physics_process(delta: float) -> void:
 	_update_environment_state(delta)
 	_update_cover_state(delta)
 	_try_attack()
+
+
+func _process(delta: float) -> void:
+	if dead:
+		return
+	# Skeleton posing and health-bar presentation are visual work. Keeping them
+	# outside the fixed physics step prevents a dense 100-actor ecosystem from
+	# delaying movement, collision and AI decisions when several rigs update in
+	# the same frame. The existing distance LOD still controls update frequency.
 	_update_visual_lod(delta)
 	_update_health_bar_visibility(delta)
 
@@ -4372,29 +4385,32 @@ func _update_visual_lod(delta: float) -> void:
 	var update_interval := 0.0
 	var game_player := _game_player()
 	if not is_player and is_instance_valid(game_player):
-		var player_distance := global_position.distance_to(game_player.global_position)
+		var player_distance_squared := global_position.distance_squared_to(game_player.global_position)
 		var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
 		if quality == "low":
-			if player_distance > 36.0:
+			if player_distance_squared > 36.0 * 36.0:
 				update_interval = 0.32
-			elif player_distance > 22.0:
+			elif player_distance_squared > 22.0 * 22.0:
 				update_interval = 0.18
-			elif player_distance > 12.0:
+			elif player_distance_squared > 12.0 * 12.0:
 				update_interval = 0.09
 		elif quality == "high":
-			if player_distance > 54.0:
+			if player_distance_squared > 54.0 * 54.0:
 				update_interval = 0.18
-			elif player_distance > 36.0:
+			elif player_distance_squared > 36.0 * 36.0:
 				update_interval = 0.10
-			elif player_distance > 20.0:
+			elif player_distance_squared > 20.0 * 20.0:
 				update_interval = 0.05
 		else:
-			if player_distance > 44.0:
-				update_interval = 0.24
-			elif player_distance > 28.0:
-				update_interval = 0.12
-			elif player_distance > 16.0:
-				update_interval = 0.06
+			# At these distances an AI occupies only a few screen pixels on the
+			# target phone camera. Preserve full-rate motion nearby and spend the
+			# saved frame time on deterministic ecology simulation instead.
+			if player_distance_squared > 44.0 * 44.0:
+				update_interval = 0.36
+			elif player_distance_squared > 28.0 * 28.0:
+				update_interval = 0.18
+			elif player_distance_squared > 16.0 * 16.0:
+				update_interval = 0.08
 	if update_interval > 0.0 and visual_lod_elapsed < update_interval:
 		return
 	var animation_delta := visual_lod_elapsed

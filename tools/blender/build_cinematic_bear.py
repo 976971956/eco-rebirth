@@ -149,7 +149,10 @@ def build_bear_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, fl
 def tinted_fur_image(path: Path, name: str, tint: tuple[float, float, float], hero: bool) -> bpy.types.Image:
     source = bpy.data.images.load(str(path), check_existing=False)
     source.colorspace_settings.name = "sRGB"
-    size = 512 if hero else 256
+    # Mobile textures are only used by AI actors. At the normal gameplay camera
+    # distance a 128 px coat atlas retains the readable markings, while keeping
+    # the level-10 roster from retaining dozens of unique 256 px image sets.
+    size = 512 if hero else 64
     source.scale(size, size)
     pixels = list(source.pixels)
     for index in range(0, len(pixels), 4):
@@ -167,7 +170,8 @@ def tinted_fur_image(path: Path, name: str, tint: tuple[float, float, float], he
 
 def packed_image(path: Path, name: str, colorspace: str, hero: bool) -> bpy.types.Image:
     image = bpy.data.images.load(str(path), check_existing=False)
-    image.scale(512 if hero else 256, 512 if hero else 256)
+    size = 512 if hero else 64
+    image.scale(size, size)
     image.name = name
     image.colorspace_settings.name = colorspace
     image.pack()
@@ -177,8 +181,6 @@ def packed_image(path: Path, name: str, colorspace: str, hero: bool) -> bpy.type
 def coat_material(project_root: Path, hero: bool) -> bpy.types.Material:
     shared = project_root / "assets/textures/animals/shared"
     albedo = tinted_fur_image(shared / "quadruped_fur_atlas_albedo.png", "bear_fur_albedo", (0.31, 0.205, 0.125), hero)
-    normal = packed_image(shared / "quadruped_fur_atlas_normal.png", "bear_fur_normal", "Non-Color", hero)
-    roughness = packed_image(shared / "quadruped_fur_atlas_roughness.png", "bear_fur_roughness", "Non-Color", hero)
     material = bpy.data.materials.new("bear_cinematic_coat_pbr")
     material.use_nodes = True
     material.diffuse_color = (0.31, 0.205, 0.125, 1.0)
@@ -191,15 +193,23 @@ def coat_material(project_root: Path, hero: bool) -> bpy.types.Material:
     albedo_node = nodes.new("ShaderNodeTexImage")
     albedo_node.image = albedo
     links.new(albedo_node.outputs["Color"], principled.inputs["Base Color"])
-    normal_node = nodes.new("ShaderNodeTexImage")
-    normal_node.image = normal
-    normal_map = nodes.new("ShaderNodeNormalMap")
-    normal_map.inputs["Strength"].default_value = 0.48
-    links.new(normal_node.outputs["Color"], normal_map.inputs["Color"])
-    links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
-    roughness_node = nodes.new("ShaderNodeTexImage")
-    roughness_node.image = roughness
-    links.new(roughness_node.outputs["Color"], principled.inputs["Roughness"])
+    if hero:
+        normal = packed_image(shared / "quadruped_fur_atlas_normal.png", "bear_fur_normal", "Non-Color", hero)
+        roughness = packed_image(shared / "quadruped_fur_atlas_roughness.png", "bear_fur_roughness", "Non-Color", hero)
+        normal_node = nodes.new("ShaderNodeTexImage")
+        normal_node.image = normal
+        normal_map = nodes.new("ShaderNodeNormalMap")
+        normal_map.inputs["Strength"].default_value = 0.48
+        links.new(normal_node.outputs["Color"], normal_map.inputs["Color"])
+        links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
+        roughness_node = nodes.new("ShaderNodeTexImage")
+        roughness_node.image = roughness
+        links.new(roughness_node.outputs["Color"], principled.inputs["Roughness"])
+    else:
+        # Mobile models are seen as small AI silhouettes. A stable scalar
+        # roughness avoids two unique resident texture maps per species without
+        # changing their color markings or authored geometry.
+        material["mobile_surface_channels"] = "albedo_plus_scalar_roughness"
     material["eco_pbr_surface"] = "authored_brown_bear_fur"
     return material
 

@@ -185,7 +185,7 @@ def production_scale_images(source_dir: Path, texture_size: int) -> tuple[bpy.ty
     return images[0], images[1], images[2]
 
 
-def scale_material(images: tuple[bpy.types.Image, bpy.types.Image, bpy.types.Image]) -> bpy.types.Material:
+def scale_material(images: tuple[bpy.types.Image, bpy.types.Image, bpy.types.Image], hero: bool) -> bpy.types.Material:
     albedo_image, normal_image, roughness_image = images
     material = bpy.data.materials.new("snake_cinematic_scale_pbr")
     material.use_nodes = True
@@ -200,17 +200,21 @@ def scale_material(images: tuple[bpy.types.Image, bpy.types.Image, bpy.types.Ima
     albedo = nodes.new("ShaderNodeTexImage")
     albedo.image = albedo_image
     links.new(albedo.outputs["Color"], principled.inputs["Base Color"])
-    normal_texture = nodes.new("ShaderNodeTexImage")
-    normal_texture.image = normal_image
-    normal_texture.image.colorspace_settings.name = "Non-Color"
-    normal_map = nodes.new("ShaderNodeNormalMap")
-    normal_map.inputs["Strength"].default_value = 0.62
-    links.new(normal_texture.outputs["Color"], normal_map.inputs["Color"])
-    links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
-    roughness = nodes.new("ShaderNodeTexImage")
-    roughness.image = roughness_image
-    roughness.image.colorspace_settings.name = "Non-Color"
-    links.new(roughness.outputs["Color"], principled.inputs["Roughness"])
+    if hero:
+        normal_texture = nodes.new("ShaderNodeTexImage")
+        normal_texture.image = normal_image
+        normal_texture.image.colorspace_settings.name = "Non-Color"
+        normal_map = nodes.new("ShaderNodeNormalMap")
+        normal_map.inputs["Strength"].default_value = 0.62
+        links.new(normal_texture.outputs["Color"], normal_map.inputs["Color"])
+        links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
+        roughness = nodes.new("ShaderNodeTexImage")
+        roughness.image = roughness_image
+        roughness.image.colorspace_settings.name = "Non-Color"
+        links.new(roughness.outputs["Color"], principled.inputs["Roughness"])
+    else:
+        principled.inputs["Roughness"].default_value = 0.72
+        material["mobile_surface_channels"] = "albedo_plus_scalar_roughness"
     material["eco_pbr_surface"] = "cc0_authored_blue_ring_scales"
     return material
 
@@ -422,12 +426,12 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
     apply_subdivision(body, 3 if hero else 2)
     rig = create_rig()
     apply_axial_weights(body, rig)
-    texture_size = 512 if hero else 256
+    texture_size = 512 if hero else 128
     profile = "hero" if hero else "mobile"
     output_dir = output_root / "snake"
     output_dir.mkdir(parents=True, exist_ok=True)
     materials = {
-        "scale": scale_material(production_scale_images(source_dir, texture_size)),
+        "scale": scale_material(production_scale_images(source_dir, texture_size), hero),
         "eye": solid_material("snake_cinematic_eye_pbr", (0.76, 0.46, 0.08, 1.0), 0.15),
         "accent": solid_material("snake_cinematic_accent_pbr", (0.08, 0.30, 0.24, 1.0), 0.70),
         "mouth": solid_material("snake_cinematic_detail_pbr", (0.34, 0.025, 0.045, 1.0), 0.54),

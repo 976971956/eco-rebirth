@@ -1,0 +1,5 @@
+Gorilla by Poly by Google is licensed under CC BY 3.0.
+Terms: https://creativecommons.org/licenses/by/3.0/
+Attribution: "Gorilla" by Poly by Google, https://poly.pizza/m/bmfQ1j9CeO2
+Eco Rebirth redistributes only its project-authored mesh, rig and animations;
+the linked model is retained solely as an anatomical reference.

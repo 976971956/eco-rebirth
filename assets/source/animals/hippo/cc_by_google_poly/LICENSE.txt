@@ -1,0 +1,5 @@
+Hippopotamus by Poly by Google is licensed under CC BY 3.0.
+Terms: https://creativecommons.org/licenses/by/3.0/
+Attribution: "Hippopotamus" by Poly by Google, https://poly.pizza/m/4HNi8dZMdZa
+Eco Rebirth redistributes only its project-authored mesh, rig and animations;
+the linked model is retained solely as an anatomical reference.

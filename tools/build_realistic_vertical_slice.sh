@@ -97,8 +97,11 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/moose/cc_by_google_poly" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
-"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
-	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+for SPECIES_ID in turtle cheetah rhino gorilla eagle hippo hyena lion; do
+	"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_${SPECIES_ID}.py" -- \
+		--source-dir "$PROJECT_ROOT/assets/source/animals/${SPECIES_ID}/cc_by_google_poly" \
+		--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+done
 
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_forest_vertical_slice.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/biomes/forest"

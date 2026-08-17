@@ -307,10 +307,10 @@ def solid_material(name: str, color: tuple[float, float, float, float], roughnes
     return material
 
 
-def build_materials(texture_size: int) -> dict[str, bpy.types.Material]:
+def build_materials(texture_size: int, hero: bool) -> dict[str, bpy.types.Material]:
     body_albedo = packed_image("rabbot-skinn", texture_size, "sRGB")
     fur_albedo = packed_image("Fur-skin", texture_size, "sRGB")
-    normal = packed_image("rabbit-NORM", texture_size, "Non-Color")
+    normal = packed_image("rabbit-NORM", texture_size, "Non-Color") if hero else None
     return {
         "body": textured_material("rabbit_cinematic_body_coat_pbr", body_albedo, normal, 0.78, (0.62, 0.53, 0.43, 1.0)),
         "fur": textured_material("rabbit_cinematic_fur_detail_pbr", fur_albedo, None, 0.86, (0.66, 0.58, 0.49, 1.0), True),
@@ -570,7 +570,7 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
     rig, body, fur = load_source(source_dir)
     normalize_anatomy(rig, (body, fur))
     rebuild_runtime_rig(rig, (body, fur))
-    materials = build_materials(512 if hero else 256)
+    materials = build_materials(512 if hero else 128, hero)
     replace_material(body, materials["body"])
     replace_material(fur, materials["fur"])
     if hero:
