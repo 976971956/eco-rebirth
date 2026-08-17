@@ -45,6 +45,10 @@ fi
 	--source-dir "$PROJECT_ROOT/assets/source/animals/porcupine/cc_by_google_poly" \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 
+"$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_cinematic_crocodile.py" -- \
+	--source-dir "$PROJECT_ROOT/assets/source/animals/crocodile/cc0_br_n518" \
+	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
+
 "$BLENDER_BIN" --background --factory-startup --disable-autoexec --python-exit-code 1 --python "$PROJECT_ROOT/tools/blender/build_remaining_species.py" -- \
 	--output-root "$PROJECT_ROOT/assets/models_v2/animals"
 

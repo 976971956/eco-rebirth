@@ -1,0 +1,26 @@
+Crocodile reference asset
+=========================
+
+Title: Crocodile
+Author: br-n518
+Source page: https://opengameart.org/content/crocodile-0
+Original download: https://opengameart.org/sites/default/files/crocodile.7z
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-17
+crocodile.7z SHA-256: 3feb8186cf8fdcfe012aedf382cdcab53a77f9beebdd3d2a9375a7444eb98035
+crocodile.blend SHA-256: ad6f606d67259a65b5c253ab211e8e5616b7f420e48ca08b4650bb7f5caef021
+
+Eco Rebirth modifications
+-------------------------
+
+The source is retained as a public-domain crocodilian anatomy, scale texture
+and motion reference. Its 292-vertex production mesh is not shipped as the
+gameplay surface. Eco Rebirth authors a new continuous adult marsh-crocodile
+surface, exact 22-bone runtime rig, broad articulated jaws, scale PBR material,
+three rows of osteoderms, splayed feet and distinct crawl/swim/death-roll
+actions.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.

@@ -64,7 +64,7 @@ V1.48 重建灰狼之外 29 种动物的 Hero/Mobile GLB。25 种地面动物为
 
 V1.49 保留灰狼样板，完成其余 29 种 V5 实时近写实外观重建：逐物种调整躯干、头颈、吻部和四肢比例，使用薄片耳、渐细足、蹄爪/趾爪、贴体毛色/鳞纹与更克制的面部细节，同时继续使用 V1.48 的已验证骨架和八动作契约。58 份 GLB 已重建，30 种 Mobile 总顶点为 125,344 / 140,000。当前候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v149-rc`。
 
-V1.50 启动逐种外部写实替换；当前雪兔、赤狐、林鹿、青环蛇、棕熊、獠牙野猪、林地浣熊和针背豪猪已完成经审计的 CC0/CC-BY 来源记录、物种化 UV/PBR、项目骨架契约与八态烘焙动作。棕熊、野猪、浣熊与豪猪不直接采用审计后不满足当前质量线的旧拓扑，而是建立连续四足蒙皮与跨关节权重；豪猪另有黑—浅色—黑分段后掠长刺和竖刺防御动作。构建器使用 `--disable-autoexec` 安全审计来源，并生成 Hero/Mobile 双档；`./tools/build_realistic_vertical_slice.sh` 会先重建这八种和灰狼，再重建尚未替换的回退物种。当前 30 种 Mobile 总顶点为 132,192 / 140,000，候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v150-rc`。
+V1.50 启动逐种外部写实替换；当前雪兔、赤狐、林鹿、青环蛇、棕熊、獠牙野猪、林地浣熊、针背豪猪和沼泽鳄已完成经审计的 CC0/CC-BY 来源记录、物种化 UV/PBR、项目骨架契约与八态烘焙动作。鳄鱼使用扁宽吻部、三排骨板、低伏短肢、尾驱游泳和死亡翻滚；`./tools/build_realistic_vertical_slice.sh` 会先重建这九种和灰狼，再重建尚未替换的回退物种。当前 30 种 Mobile 总顶点为 134,270 / 140,000，候选运行 `./tools/build_release_candidate.sh /tmp/eco-rebirth-v150-rc`。
 
 本地有 Blender 5.2 LTS 时，可以重新生成并校验竖向切片资产：
 
