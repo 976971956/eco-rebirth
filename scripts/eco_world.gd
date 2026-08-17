@@ -12,10 +12,14 @@ signal ecology_event_ended(event: Dictionary)
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const FoodPatchScript = preload("res://scripts/food_patch.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
-const FOREST_GROUND_TEXTURE = preload("res://assets/textures/terrain/forest_floor_ai.jpg")
-const GRASSLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/grassland_ai.jpg")
-const WETLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/wetland_ai.jpg")
-const HIGHLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/highland_ai.jpg")
+const FOREST_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/forest_floor_real_v2.jpg")
+const GRASSLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/grassland_real_v2.jpg")
+const WETLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/wetland_real_v2.jpg")
+const HIGHLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/highland_real_v2.jpg")
+const FOREST_TREE_REAL_TEXTURE = preload("res://assets/textures/vegetation/realistic_v2/forest_tree_real_v2.png")
+const GRASSLAND_TREE_REAL_TEXTURE = preload("res://assets/textures/vegetation/realistic_v2/grassland_tree_real_v2.png")
+const WETLAND_TREE_REAL_TEXTURE = preload("res://assets/textures/vegetation/realistic_v2/wetland_tree_real_v2.png")
+const HIGHLAND_TREE_REAL_TEXTURE = preload("res://assets/textures/vegetation/realistic_v2/highland_tree_real_v2.png")
 
 const COLLAPSE_MIN_RADIUS_RATIO := 0.22
 const COLLAPSE_SHRINK_SECONDS := 90.0
@@ -184,10 +188,10 @@ func _build_environment() -> void:
 	var environment := Environment.new()
 	environment_resource = environment
 	var sky_material := ProceduralSkyMaterial.new()
-	var sky_top := Color("#17283a") if time_phase == "night" else Color("#6f9ca4")
-	var sky_horizon := Color("#627284") if time_phase == "night" else Color("#d5c99f")
-	var ground_horizon := Color("#28343b") if time_phase == "night" else Color("#4d6048")
-	var ground_bottom := Color("#0c151a") if time_phase == "night" else Color("#1a3025")
+	var sky_top := Color("#17283a") if time_phase == "night" else Color("#6f9bae")
+	var sky_horizon := Color("#627284") if time_phase == "night" else Color("#d9d4c1")
+	var ground_horizon := Color("#28343b") if time_phase == "night" else Color("#596752")
+	var ground_bottom := Color("#0c151a") if time_phase == "night" else Color("#263a2b")
 	if weather_id == "storm":
 		sky_top = sky_top.darkened(0.38)
 		sky_horizon = sky_horizon.darkened(0.30)
@@ -209,13 +213,13 @@ func _build_environment() -> void:
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.66
-	environment.ambient_light_energy = 0.32 if time_phase == "night" else 0.46
+	environment.ambient_light_sky_contribution = 0.72
+	environment.ambient_light_energy = 0.30 if time_phase == "night" else 0.39
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	environment.adjustment_enabled = true
-	environment.adjustment_brightness = 0.91
-	environment.adjustment_contrast = 1.11
-	environment.adjustment_saturation = 1.03
+	environment.adjustment_brightness = 0.96
+	environment.adjustment_contrast = 1.08
+	environment.adjustment_saturation = 0.94
 	environment.fog_enabled = true
 	environment.fog_light_color = Color("#65798b") if time_phase == "night" else Color("#b9cfb8")
 	environment.fog_light_energy = 0.55
@@ -233,11 +237,11 @@ func _build_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun_light = sun
 	sun.name = "Sun"
-	sun.light_color = Color("#afc9e9") if time_phase == "night" else Color("#ffe0aa")
-	sun.light_energy = (0.27 if time_phase == "night" else 0.76) * (0.58 if weather_id == "storm" else (0.76 if weather_id in ["rain", "fog"] else 1.0))
+	sun.light_color = Color("#afc9e9") if time_phase == "night" else Color("#fff0d1")
+	sun.light_energy = (0.27 if time_phase == "night" else 0.88) * (0.58 if weather_id == "storm" else (0.76 if weather_id in ["rain", "fog"] else 1.0))
 	base_sun_energy = sun.light_energy
 	sun.shadow_enabled = quality_preset != "low"
-	sun.shadow_opacity = 0.62
+	sun.shadow_opacity = 0.70
 	sun.directional_shadow_max_distance = minf(world_size * (0.82 if quality_preset == "high" else 0.55), 150.0 if quality_preset == "high" else 88.0)
 	sun.directional_shadow_fade_start = 0.78
 	sun.rotation_degrees = Vector3(-48.0, -38.0, 0.0)
@@ -248,7 +252,7 @@ func _build_environment() -> void:
 	sky_fill.light_color = Color("#9fc4cf")
 	# Compatibility/mobile renderers need a soft opposite-side fill so curved
 	# animal coats keep their volume instead of collapsing into near-black facets.
-	sky_fill.light_energy = 0.30 if time_phase == "day" else 0.14
+	sky_fill.light_energy = 0.23 if time_phase == "day" else 0.13
 	sky_fill.shadow_enabled = false
 	sky_fill.rotation_degrees = Vector3(62.0, 138.0, 0.0)
 	add_child(sky_fill)
@@ -321,10 +325,14 @@ func _build_ground() -> void:
 	# Render extra terrain outside the playable collision square so the camera
 	# never exposes a hard edge when the player reaches the perimeter.
 	plane.size = Vector2(world_size * 1.72, world_size * 1.72)
-	plane.subdivide_width = 1
-	plane.subdivide_depth = 1
+	var terrain_subdivisions: int = {"low": 12, "medium": 36, "high": 64}.get(quality_preset, 36)
+	var relief_amplitude: float = {"low": 0.0, "medium": 0.045, "high": 0.075}.get(quality_preset, 0.045)
+	plane.subdivide_width = terrain_subdivisions
+	plane.subdivide_depth = terrain_subdivisions
 	ground.mesh = plane
-	ground.material_override = Factory.biome_blend_material(FOREST_GROUND_TEXTURE, GRASSLAND_GROUND_TEXTURE, WETLAND_GROUND_TEXTURE, HIGHLAND_GROUND_TEXTURE, world_size * 0.5)
+	ground.material_override = Factory.biome_blend_material(FOREST_GROUND_TEXTURE, GRASSLAND_GROUND_TEXTURE, WETLAND_GROUND_TEXTURE, HIGHLAND_GROUND_TEXTURE, world_size * 0.5, relief_amplitude)
+	ground.set_meta("visual_relief_amplitude", relief_amplitude)
+	ground.set_meta("terrain_subdivisions", terrain_subdivisions)
 	decoration_root.add_child(ground)
 
 	var collision_body := StaticBody3D.new()
@@ -353,24 +361,10 @@ func _build_biome_regions() -> void:
 
 
 func _build_biome_transitions() -> void:
-	var transition_steps := 13
-	for step_index in range(transition_steps):
-		var ratio := float(step_index) / float(transition_steps - 1)
-		var axis_offset := lerpf(-world_size * 0.43, world_size * 0.43, ratio)
-		var vertical_tint := Color("#4a603c") if axis_offset < 0.0 else Color("#4c6350")
-		var vertical_pos := Vector3(rng.randf_range(-1.45, 1.45), 0.011 + step_index * 0.00004, axis_offset + rng.randf_range(-1.2, 1.2))
-		_add_transition_patch("VerticalBiomeBlend", vertical_pos, vertical_tint, rng.randf_range(2.0, 4.2), rng.randf_range(0.55, 1.10))
-		var horizontal_tint := Color("#3d5d45") if axis_offset < 0.0 else Color("#6a6843")
-		var horizontal_pos := Vector3(axis_offset + rng.randf_range(-1.2, 1.2), 0.012 + step_index * 0.00004, rng.randf_range(-1.45, 1.45))
-		_add_transition_patch("HorizontalBiomeBlend", horizontal_pos, horizontal_tint, rng.randf_range(2.0, 4.2), rng.randf_range(0.55, 1.10))
-
-
-func _add_transition_patch(node_name: String, pos: Vector3, tint: Color, radius: float, squash: float) -> void:
-	var patch := Factory.disc(node_name, tint, radius, 0.018, pos, rng.randi_range(9, 13))
-	patch.scale.z = squash
-	patch.rotation.y = rng.randf_range(0.0, TAU)
-	patch.material_override = Factory.terrain_material(tint.darkened(0.10), tint.lightened(0.04), rng.randf_range(5.0, 8.0))
-	decoration_root.add_child(patch)
+	# The world-space shader now owns the complete irregular ecotone.  Keeping
+	# transition paint out of separate discs removes the conspicuous coloured
+	# puddles and z-fighting seen in the old map without changing region logic.
+	pass
 
 
 func _build_region_marker(region_id: String, title: String, marker_position: Vector3, tint: Color) -> void:
@@ -437,69 +431,68 @@ func _build_landmark_motif(marker: Node3D, region_id: String, tint: Color) -> vo
 
 
 func _build_ground_details() -> void:
-	var patch_count := int(round(30.0 * density_scale))
-	for i in range(patch_count):
-		var radius := rng.randf_range(0.9, 3.1)
-		var pos := Vector3(rng.randf_range(-world_size * 0.44, world_size * 0.44), 0.008 + i * 0.00005, rng.randf_range(-world_size * 0.44, world_size * 0.44))
-		var patch_colors: Array[Color]
-		match region_id_at(pos):
-			"forest": patch_colors = [Color("#274937"), Color("#426341"), Color("#526746")]
-			"grassland": patch_colors = [Color("#80954d"), Color("#a29a50"), Color("#657b43")]
-			"wetland": patch_colors = [Color("#38685d"), Color("#4d7764"), Color("#315c58")]
-			_: patch_colors = [Color("#756b4b"), Color("#8a7650"), Color("#5f6248")]
-		var patch_tint: Color = patch_colors[rng.randi_range(0, patch_colors.size() - 1)]
-		var patch := Factory.disc("GroundMottle", patch_tint, radius, 0.018, pos, rng.randi_range(8, 12))
-		patch.material_override = Factory.terrain_material(patch_tint.darkened(0.10), patch_tint, rng.randf_range(4.0, 7.0))
-		patch.scale.z = rng.randf_range(0.48, 0.92)
-		patch.rotation.y = rng.randf_range(0.0, TAU)
-		decoration_root.add_child(patch)
+	# The new source textures already contain leaves, grass, mud and gravel at
+	# two shader scales.  Old flat mottle discs made the terrain look painted and
+	# added overdraw, so close-range depth is now supplied only by biome props.
+	pass
 
 
 func _build_paths_and_pond() -> void:
-	var trail_color := Color("#655844")
+	var trail_color := Color("#5c5143")
 	migration_routes = migration_routes_for_size(world_size)
 	var east_west_points := _packed_route_to_array(migration_routes[0])
 	var north_south_points := _packed_route_to_array(migration_routes[1])
-	_add_winding_trail("EastWestMainTrail", east_west_points, 4.1, trail_color.lightened(0.035), 0.022)
-	_add_winding_trail("NorthSouthMainTrail", north_south_points, 4.1, trail_color, 0.023)
-	_add_winding_trail("EastWestFootwear", east_west_points, 1.55, trail_color.darkened(0.11), 0.026)
-	_add_winding_trail("NorthSouthFootwear", north_south_points, 1.55, trail_color.darkened(0.13), 0.027)
+	_add_winding_trail("EastWestMainTrail", east_west_points, 3.55, trail_color.lightened(0.025), 0.022)
+	_add_winding_trail("NorthSouthMainTrail", north_south_points, 3.55, trail_color, 0.023)
+	_add_winding_trail("EastWestFootwear", east_west_points, 1.22, trail_color.darkened(0.13), 0.026)
+	_add_winding_trail("NorthSouthFootwear", north_south_points, 1.22, trail_color.darkened(0.15), 0.027)
 	var side_trail_count := int(level_profile_data.get("side_trails", 3))
 	for trail_index in range(side_trail_count):
 		var angle := -0.55 + trail_index * TAU / maxf(float(side_trail_count), 1.0) + rng.randf_range(-0.18, 0.18)
 		var previous := Vector2(rng.randf_range(-2.0, 2.0), rng.randf_range(-2.0, 2.0))
+		var side_points: Array[Vector2] = [previous]
 		for segment_index in range(6):
 			var distance := world_size * 0.068 + segment_index * world_size * 0.010
 			angle += rng.randf_range(-0.20, 0.20)
 			var next := previous + Vector2(cos(angle), sin(angle)) * distance
-			_add_ground_strip("ForestTrail", previous, next, rng.randf_range(2.5, 3.7), trail_color.lightened(rng.randf_range(-0.035, 0.035)), 0.018 + trail_index * 0.002)
+			side_points.append(next)
 			previous = next
+		var side_color := trail_color.lightened(rng.randf_range(-0.035, 0.035))
+		var side_material := Factory.terrain_material(side_color.darkened(0.10), side_color.lightened(0.025), 8.0, FOREST_GROUND_TEXTURE, 2.8, 0.42)
+		_add_ground_ribbon("ForestTrail", side_points, rng.randf_range(2.05, 2.85), 0.018 + trail_index * 0.002, side_material)
 
 	var stream_points: Array[Vector2] = [
-		Vector2(-16.0, -12.0), Vector2(-9.0, -9.4), Vector2(-2.0, -10.2),
-		Vector2(5.0, -7.6), Vector2(12.0, -8.5), Vector2(18.0, -5.2)
+		Vector2(-world_size * 0.48, -world_size * 0.17),
+		Vector2(-world_size * 0.31, -world_size * 0.13),
+		Vector2(-world_size * 0.14, -world_size * 0.14),
+		Vector2(world_size * 0.04, -world_size * 0.09),
+		Vector2(world_size * 0.24, -world_size * 0.10),
+		Vector2(world_size * 0.48, -world_size * 0.055),
 	]
 	var water_scale := float(level_profile_data.get("water", 1.0))
-	for i in range(stream_points.size() - 1):
-		_add_ground_strip("StreamBank", stream_points[i], stream_points[i + 1], 7.6 * water_scale, Color("#657b57"), 0.030)
-		var stream := _add_ground_strip("ShallowStream", stream_points[i], stream_points[i + 1], 5.4 * water_scale, Color(0.20, 0.56, 0.60, 0.90), 0.044)
-		stream.material_override = Factory.water_material(Color("#62b8ac"), Color("#236b70"), 0.82)
+	var bank_material := Factory.terrain_material(Color("#3f5643"), Color("#6d775a"), 7.0, WETLAND_GROUND_TEXTURE, 2.7, 0.38)
+	_add_ground_ribbon("StreamBank", stream_points, 7.6 * water_scale, 0.030, bank_material, true)
+	var stream_material := Factory.water_material(Color("#527f75"), Color("#183f46"), 0.78)
+	_add_ground_ribbon("ShallowStream", stream_points, 5.4 * water_scale, 0.044, stream_material, true)
+	var crossing_center := stream_points[2].lerp(stream_points[3], 0.52)
+	var crossing_tangent := (stream_points[3] - stream_points[2]).normalized()
+	var crossing_normal := Vector2(-crossing_tangent.y, crossing_tangent.x)
 	for stone_index in range(9):
 		var t := float(stone_index) / 8.0
-		var stone_pos := Vector3(lerpf(-4.2, 2.6, t), 0.10, lerpf(-10.0, -8.35, t) + sin(t * TAU) * 0.28)
+		var stone_point := crossing_center + crossing_normal * lerpf(-2.25 * water_scale, 2.25 * water_scale, t) + crossing_tangent * sin(t * TAU) * 0.18
+		var stone_pos := Vector3(stone_point.x, 0.10, stone_point.y)
 		var stone := Factory.sphere("SteppingStone", Color("#818a79").lightened(rng.randf_range(-0.05, 0.08)), Vector3(0.72, 0.20, 0.58), stone_pos, 8, 4)
 		stone.rotation.y = rng.randf_range(-0.5, 0.5)
 		decoration_root.add_child(stone)
 
 	var basin_center := Vector3(-world_size * 0.25, 0.052, world_size * 0.25)
-	var basin := Factory.disc("WetlandBasin", Color(0.17, 0.55, 0.58, 0.74), world_size * 0.145 * water_scale, 0.026, basin_center, 18)
-	basin.scale.z = 0.72
-	basin.material_override = Factory.water_material(Color("#62b9a8"), Color("#225f67"), 0.78)
-	decoration_root.add_child(basin)
-	var deep_center := Factory.disc("DeepWaterBand", Color(0.11, 0.42, 0.49, 0.82), world_size * 0.075 * water_scale, 0.028, basin_center + Vector3.UP * 0.004, 16)
-	deep_center.scale.z = 0.68
-	deep_center.material_override = Factory.water_material(Color("#438f8e"), Color("#174d5d"), 0.86)
-	decoration_root.add_child(deep_center)
+	var basin_radius_x := world_size * 0.145 * water_scale
+	var basin_radius_z := basin_radius_x * 0.72
+	var shore_material := Factory.terrain_material(Color("#3e5546"), Color("#62705a"), 7.0, WETLAND_GROUND_TEXTURE, 2.5, 0.40)
+	_add_irregular_ground_patch("WetlandShore", basin_center - Vector3.UP * 0.012, basin_radius_x * 1.08, basin_radius_z * 1.10, shore_material, 0.35)
+	_add_irregular_ground_patch("WetlandBasin", basin_center, basin_radius_x, basin_radius_z, Factory.water_material(Color("#527f75"), Color("#173f47"), 0.76), 1.15)
+	var deep_position := basin_center + Vector3(basin_radius_x * 0.09, 0.004, -basin_radius_z * 0.07)
+	_add_irregular_ground_patch("DeepWaterBand", deep_position, basin_radius_x * 0.55, basin_radius_z * 0.52, Factory.water_material(Color("#3e6f70"), Color("#12343f"), 0.82), 2.40)
 
 
 func _build_level_signature() -> void:
@@ -539,32 +532,81 @@ func _build_level_signature() -> void:
 
 
 func _add_winding_trail(node_name: String, points: Array[Vector2], width: float, color: Color, height: float) -> void:
-	for point_index in range(points.size() - 1):
-		_add_ground_strip(node_name, points[point_index], points[point_index + 1], width, color.lightened(sin(float(point_index) * 1.7) * 0.018), height + point_index * 0.00008)
-	for point_index in range(1, points.size() - 1):
-		var point := points[point_index]
-		var joint := Factory.disc("%sJoint" % node_name, color, width * 0.49, 0.018, Vector3(point.x, height - 0.006, point.y), 12)
-		joint.material_override = Factory.terrain_material(color.darkened(0.055), color.lightened(0.045), 8.0)
-		decoration_root.add_child(joint)
+	var trail_material := Factory.terrain_material(color.darkened(0.10), color.lightened(0.025), 8.0, FOREST_GROUND_TEXTURE, 2.8, 0.42)
+	_add_ground_ribbon(node_name, points, width, height, trail_material)
 
 
-func _add_ground_strip(node_name: String, start: Vector2, finish: Vector2, width: float, color: Color, height: float) -> MeshInstance3D:
-	var delta := finish - start
-	var strip := MeshInstance3D.new()
-	strip.name = node_name
-	var mesh := PlaneMesh.new()
-	mesh.size = Vector2(delta.length() + 0.3, width)
-	strip.mesh = mesh
-	if color.a < 0.999:
-		var strip_material := Factory.material(color, 0.72)
-		strip_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		strip.material_override = strip_material
-	else:
-		strip.material_override = Factory.terrain_material(color.darkened(0.055), color.lightened(0.045), 8.0)
-	strip.position = Vector3((start.x + finish.x) * 0.5, height, (start.y + finish.y) * 0.5)
-	strip.rotation.y = -atan2(delta.y, delta.x)
-	decoration_root.add_child(strip)
-	return strip
+func _add_ground_ribbon(node_name: String, points: Array[Vector2], width: float, height: float, material_override: Material, taper_ends: bool = false) -> MeshInstance3D:
+	var ribbon := MeshInstance3D.new()
+	ribbon.name = node_name
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var cumulative_distance := 0.0
+	for point_index in range(points.size()):
+		if point_index > 0:
+			cumulative_distance += points[point_index].distance_to(points[point_index - 1])
+		var previous_index := maxi(point_index - 1, 0)
+		var next_index := mini(point_index + 1, points.size() - 1)
+		var tangent := (points[next_index] - points[previous_index]).normalized()
+		var local_width := width
+		if taper_ends and point_index in [0, points.size() - 1]:
+			local_width *= 0.16
+		elif taper_ends and point_index in [1, points.size() - 2]:
+			local_width *= 0.82
+		var side := Vector2(-tangent.y, tangent.x) * local_width * 0.5
+		var left := points[point_index] + side
+		var right := points[point_index] - side
+		surface.set_normal(Vector3.UP)
+		surface.set_uv(Vector2(0.0, cumulative_distance / 4.0))
+		surface.add_vertex(Vector3(left.x, height, left.y))
+		surface.set_normal(Vector3.UP)
+		surface.set_uv(Vector2(1.0, cumulative_distance / 4.0))
+		surface.add_vertex(Vector3(right.x, height, right.y))
+	for segment_index in range(points.size() - 1):
+		var left_start := segment_index * 2
+		var right_start := left_start + 1
+		var left_finish := left_start + 2
+		var right_finish := left_start + 3
+		surface.add_index(left_start)
+		surface.add_index(right_start)
+		surface.add_index(left_finish)
+		surface.add_index(right_start)
+		surface.add_index(right_finish)
+		surface.add_index(left_finish)
+	surface.generate_tangents()
+	ribbon.mesh = surface.commit()
+	ribbon.material_override = material_override
+	decoration_root.add_child(ribbon)
+	return ribbon
+
+
+func _add_irregular_ground_patch(node_name: String, center: Vector3, radius_x: float, radius_z: float, material_override: Material, phase: float) -> MeshInstance3D:
+	var patch := MeshInstance3D.new()
+	patch.name = node_name
+	patch.position = center
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_normal(Vector3.UP)
+	surface.set_uv(Vector2(0.5, 0.5))
+	surface.add_vertex(Vector3.ZERO)
+	var segment_count := 28
+	for segment_index in range(segment_count + 1):
+		var angle := TAU * float(segment_index % segment_count) / float(segment_count)
+		var edge_noise := 1.0 + sin(float(segment_index) * 2.17 + phase) * 0.075 + sin(float(segment_index) * 0.83 + phase * 1.71) * 0.045
+		var edge := Vector3(cos(angle) * radius_x * edge_noise, 0.0, sin(angle) * radius_z * edge_noise)
+		surface.set_normal(Vector3.UP)
+		surface.set_uv(Vector2(0.5 + cos(angle) * 0.5 * edge_noise, 0.5 + sin(angle) * 0.5 * edge_noise))
+		surface.add_vertex(edge)
+	for segment_index in range(segment_count):
+		surface.add_index(0)
+		surface.add_index(segment_index + 1)
+		surface.add_index(segment_index + 2)
+	surface.generate_tangents()
+	patch.mesh = surface.commit()
+	patch.material_override = material_override
+	patch.set_meta("visual_only", true)
+	decoration_root.add_child(patch)
+	return patch
 
 
 func _build_trees() -> void:
@@ -615,6 +657,8 @@ func _build_trees() -> void:
 
 
 func _decorate_forest_tree(tree: Node3D, radius: float, height: float) -> void:
+	if quality_preset != "low" and _add_realistic_tree_card(tree, "forest", radius, height):
+		return
 	if quality_preset != "low" and _instantiate_forest_tree_v2(tree, radius, height):
 		return
 	var trunk_color := Color("#4a372b").lightened(rng.randf_range(-0.035, 0.055))
@@ -659,6 +703,8 @@ func _instantiate_forest_tree_v2(tree: Node3D, radius: float, height: float) -> 
 
 
 func _decorate_grassland_tree(tree: Node3D, radius: float, height: float) -> void:
+	if quality_preset != "low" and _add_realistic_tree_card(tree, "grassland", radius, height):
+		return
 	var trunk_color := Color("#66503a").lightened(rng.randf_range(-0.04, 0.06))
 	tree.add_child(Factory.tapered_cylinder("SunTrunk", trunk_color, radius * 0.50, radius * 0.28, height, Vector3(0.0, height * 0.5, 0.0), 8))
 	var canopy_color := Color.from_hsv(rng.randf_range(0.20, 0.27), rng.randf_range(0.50, 0.66), rng.randf_range(0.46, 0.60))
@@ -673,6 +719,8 @@ func _decorate_grassland_tree(tree: Node3D, radius: float, height: float) -> voi
 
 
 func _decorate_wetland_tree(tree: Node3D, radius: float, height: float) -> void:
+	if quality_preset != "low" and _add_realistic_tree_card(tree, "wetland", radius, height):
+		return
 	var trunk_color := Color("#51483b").lightened(rng.randf_range(-0.035, 0.045))
 	tree.add_child(Factory.tapered_cylinder("WetlandTrunk", trunk_color, radius * 0.52, radius * 0.25, height, Vector3(0.0, height * 0.5, 0.0), 8))
 	for knee_index in range(3):
@@ -687,6 +735,8 @@ func _decorate_wetland_tree(tree: Node3D, radius: float, height: float) -> void:
 
 
 func _decorate_highland_tree(tree: Node3D, radius: float, height: float) -> void:
+	if quality_preset != "low" and _add_realistic_tree_card(tree, "highland", radius, height):
+		return
 	var trunk_color := Color("#493e34").lightened(rng.randf_range(-0.035, 0.045))
 	tree.add_child(Factory.tapered_cylinder("PineTrunk", trunk_color, radius * 0.44, radius * 0.22, height, Vector3(0.0, height * 0.5, 0.0), 8))
 	var needle_color := Color.from_hsv(rng.randf_range(0.31, 0.37), rng.randf_range(0.46, 0.62), rng.randf_range(0.27, 0.39))
@@ -695,6 +745,40 @@ func _decorate_highland_tree(tree: Node3D, radius: float, height: float) -> void
 		var crown := Factory.cone("PineTier", needle_color.lightened(layer * 0.028), crown_radius, 2.75, Vector3(0.0, height * 0.50 + layer * 1.12, 0.0), 10)
 		crown.rotation.y = layer * 0.51
 		tree.add_child(crown)
+
+
+func _add_realistic_tree_card(tree: Node3D, region_id: String, radius: float, height: float) -> bool:
+	var texture: Texture2D
+	var aspect := 0.78
+	var total_height := height + 2.0
+	match region_id:
+		"forest":
+			texture = FOREST_TREE_REAL_TEXTURE
+			aspect = 0.833
+			total_height = height + 2.55
+		"grassland":
+			texture = GRASSLAND_TREE_REAL_TEXTURE
+			aspect = 1.50
+			total_height = height + 1.65
+		"wetland":
+			texture = WETLAND_TREE_REAL_TEXTURE
+			aspect = 0.666
+			total_height = height + 2.35
+		_:
+			texture = HIGHLAND_TREE_REAL_TEXTURE
+			aspect = 0.666
+			total_height = height + 2.15
+	if texture == null:
+		return false
+	var silhouette_variation := rng.randf_range(0.92, 1.08)
+	var card_width := total_height * aspect * silhouette_variation
+	# Keep small trees from becoming huge photographic walls while retaining
+	# each biome's characteristic canopy width.
+	card_width = clampf(card_width, radius * 3.4, radius * (9.4 if region_id == "grassland" else 7.2))
+	var card := Factory.foliage_card("RealisticTreeCard", texture, Vector2(card_width, total_height), Vector3(0.0, total_height * 0.5, 0.0))
+	card.rotation.y = rng.randf_range(-0.18, 0.18)
+	tree.add_child(card)
+	return true
 
 
 func _add_branch_segment(parent: Node3D, node_name: String, color: Color, start: Vector3, finish: Vector3, radius: float) -> void:
@@ -886,30 +970,32 @@ func _random_level_food_position() -> Vector3:
 
 func _build_visible_border() -> void:
 	var edge := world_size * 0.5
-	var north_centers: Array[Vector3] = []
-	var south_centers: Array[Vector3] = []
-	var west_centers: Array[Vector3] = []
-	var east_centers: Array[Vector3] = []
-	var north_radii: Array[Vector2] = []
-	var south_radii: Array[Vector2] = []
-	var west_radii: Array[Vector2] = []
-	var east_radii: Array[Vector2] = []
-	for point_index in range(11):
-		var offset := lerpf(-edge - 1.0, edge + 1.0, float(point_index) / 10.0)
-		var ridge_height := rng.randf_range(0.46, 0.82)
-		var ridge_width := rng.randf_range(0.72, 1.12)
-		north_centers.append(Vector3(offset, ridge_height * 0.55, -edge))
-		south_centers.append(Vector3(offset, ridge_height * 0.55, edge))
-		west_centers.append(Vector3(-edge, ridge_height * 0.55, offset))
-		east_centers.append(Vector3(edge, ridge_height * 0.55, offset))
-		north_radii.append(Vector2(ridge_width, ridge_height))
-		south_radii.append(Vector2(ridge_width * rng.randf_range(0.88, 1.10), ridge_height * rng.randf_range(0.90, 1.16)))
-		west_radii.append(Vector2(ridge_width * rng.randf_range(0.90, 1.12), ridge_height * rng.randf_range(0.88, 1.12)))
-		east_radii.append(Vector2(ridge_width * rng.randf_range(0.86, 1.08), ridge_height * rng.randf_range(0.92, 1.18)))
-	decoration_root.add_child(Factory.loft("NorthNaturalRidge", Color("#354c39"), north_centers, north_radii, 8))
-	decoration_root.add_child(Factory.loft("SouthNaturalRidge", Color("#4e5a42"), south_centers, south_radii, 8))
-	decoration_root.add_child(Factory.loft("WestNaturalRidge", Color("#304c42"), west_centers, west_radii, 8))
-	decoration_root.add_child(Factory.loft("EastNaturalRidge", Color("#5f5942"), east_centers, east_radii, 8))
+	var segments_per_edge: int = {"low": 7, "medium": 10, "high": 12}.get(quality_preset, 10)
+	for side in range(4):
+		for segment_index in range(segments_per_edge):
+			if (segment_index + side * 3) % 5 == 2:
+				continue
+			var ratio := (float(segment_index) + 0.5) / float(segments_per_edge)
+			var along := lerpf(-edge, edge, ratio) + rng.randf_range(-1.2, 1.2)
+			var inward := rng.randf_range(-0.25, 0.45)
+			var ridge_position := Vector3.ZERO
+			match side:
+				0: ridge_position = Vector3(along, 0.0, -edge + inward)
+				1: ridge_position = Vector3(edge - inward, 0.0, along)
+				2: ridge_position = Vector3(along, 0.0, edge - inward)
+				_: ridge_position = Vector3(-edge + inward, 0.0, along)
+			var ridge_scale := Vector3(rng.randf_range(1.55, 2.85), rng.randf_range(0.82, 1.48), rng.randf_range(1.25, 2.25))
+			if side in [1, 3]:
+				ridge_scale = Vector3(ridge_scale.z, ridge_scale.y, ridge_scale.x)
+			var region_id := region_id_at(ridge_position)
+			var ridge_color: Color = {
+				"forest": Color("#4b574a"), "grassland": Color("#666349"),
+				"wetland": Color("#4d5c57"), "highland": Color("#666158"),
+			}.get(region_id, Color("#5c6256"))
+			var ridge := Factory.sphere("NaturalBoundaryRidge", ridge_color.lightened(rng.randf_range(-0.06, 0.06)), ridge_scale, Vector3(ridge_position.x, ridge_scale.y * 0.88 - 0.04, ridge_position.z), 9, 5)
+			ridge.rotation = Vector3(rng.randf_range(-0.08, 0.08), rng.randf_range(0.0, TAU), rng.randf_range(-0.06, 0.06))
+			ridge.set_meta("visual_only", true)
+			decoration_root.add_child(ridge)
 
 
 func _build_distant_landscape() -> void:

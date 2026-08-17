@@ -6,6 +6,7 @@ static var _biome_blend_shader: Shader
 static var _water_shader: Shader
 static var _shared_faceted_material: StandardMaterial3D
 static var _faceted_sphere_cache: Dictionary = {}
+static var _foliage_card_material_cache: Dictionary = {}
 
 const FACETED_SPHERE_CACHE_LIMIT := 384
 
@@ -38,10 +39,10 @@ static func faceted_material(roughness: float = 0.79) -> StandardMaterial3D:
 	return mat
 
 
-## Blends the four painted biome textures on one continuous world-space surface.
-## The warped boundaries remove the visible quadrant seams without adding
-## collision or extra draw-call layers, so navigation remains unchanged.
-static func biome_blend_material(forest_texture: Texture2D, grassland_texture: Texture2D, wetland_texture: Texture2D, highland_texture: Texture2D, world_extent: float) -> ShaderMaterial:
+## Blends the four scanned-style biome textures on one continuous world-space
+## surface.  Macro variation, restrained colour grading and a cheap procedural
+## detail normal keep the ground natural without normal-map memory on Web/mobile.
+static func biome_blend_material(forest_texture: Texture2D, grassland_texture: Texture2D, wetland_texture: Texture2D, highland_texture: Texture2D, world_extent: float, relief_amplitude: float = 0.0) -> ShaderMaterial:
 	if _biome_blend_shader == null:
 		_biome_blend_shader = Shader.new()
 		_biome_blend_shader.code = """
@@ -53,7 +54,9 @@ uniform sampler2D grassland_texture : source_color, filter_linear_mipmap_anisotr
 uniform sampler2D wetland_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D highland_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float world_extent = 43.0;
-uniform float texture_world_scale = 15.0;
+uniform float texture_world_scale = 7.6;
+uniform float relief_amplitude = 0.0;
+uniform float micro_normal_strength = 0.44;
 varying vec3 world_position;
 
 float biome_hash(vec2 point) {
@@ -73,13 +76,17 @@ float biome_noise(vec2 point) {
 	return mix(mix(a, b, local.x), mix(c, d, local.x), local.y);
 }
 
-vec3 tint_painted(vec3 painted, vec3 tint) {
+vec3 grade_surface(vec3 painted, vec3 tint, float strength) {
 	float luminance = dot(painted, vec3(0.299, 0.587, 0.114));
-	vec3 colored_detail = painted * tint * 1.34;
-	return mix(tint * mix(0.70, 1.05, luminance), colored_detail, 0.38);
+	vec3 graded = tint * mix(0.74, 1.18, luminance);
+	return mix(painted, graded, strength);
 }
 
 void vertex() {
+	vec3 base_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float relief_a = biome_noise(base_world.xz * 0.028 + vec2(8.2, 3.7));
+	float relief_b = biome_noise(base_world.zx * 0.063 + vec2(1.4, 11.8));
+	VERTEX.y += ((relief_a - 0.5) * 0.72 + (relief_b - 0.5) * 0.28) * relief_amplitude;
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -89,22 +96,35 @@ void fragment() {
 	float broad_b = biome_noise(world_position.zx * 0.071 + vec2(17.2, 6.4));
 	float warp_x = (broad_a - 0.5) * world_extent * 0.115 + (broad_b - 0.5) * world_extent * 0.045;
 	float warp_z = (broad_b - 0.5) * world_extent * 0.105 - (broad_a - 0.5) * world_extent * 0.040;
-	float blend_width = max(world_extent * 0.055, 2.6);
+	float blend_width = max(world_extent * 0.075, 4.2);
 	float east_mix = smoothstep(-blend_width, blend_width, world_position.x + warp_x);
 	float south_mix = smoothstep(-blend_width, blend_width, world_position.z + warp_z);
 
-	vec3 forest = tint_painted(texture(forest_texture, sample_uv).rgb, vec3(0.30, 0.44, 0.27));
-	vec3 grassland = tint_painted(texture(grassland_texture, sample_uv * 0.92 + vec2(0.17, 0.31)).rgb, vec3(0.31, 0.37, 0.17));
-	vec3 wetland = tint_painted(texture(wetland_texture, sample_uv * 1.06 + vec2(0.43, 0.12)).rgb, vec3(0.27, 0.43, 0.37));
-	vec3 highland = tint_painted(texture(highland_texture, sample_uv * 0.88 + vec2(0.24, 0.57)).rgb, vec3(0.49, 0.43, 0.30));
+	vec2 detail_uv = vec2(-sample_uv.y, sample_uv.x) * 0.57 + vec2(0.37, 0.61);
+	vec3 forest_raw = mix(texture(forest_texture, sample_uv).rgb, texture(forest_texture, detail_uv).rgb, 0.18);
+	vec3 grass_raw = mix(texture(grassland_texture, sample_uv * 0.94 + vec2(0.17, 0.31)).rgb, texture(grassland_texture, detail_uv * 1.07 + vec2(0.42, 0.13)).rgb, 0.16);
+	vec3 wetland_raw = mix(texture(wetland_texture, sample_uv * 1.04 + vec2(0.43, 0.12)).rgb, texture(wetland_texture, detail_uv * 0.91 + vec2(0.08, 0.48)).rgb, 0.18);
+	vec3 highland_raw = mix(texture(highland_texture, sample_uv * 0.90 + vec2(0.24, 0.57)).rgb, texture(highland_texture, detail_uv * 1.12 + vec2(0.66, 0.21)).rgb, 0.16);
+	vec3 forest = grade_surface(forest_raw, vec3(0.25, 0.31, 0.20), 0.13);
+	vec3 grassland = grade_surface(grass_raw * vec3(0.60, 0.64, 0.52), vec3(0.27, 0.31, 0.16), 0.30);
+	vec3 wetland = grade_surface(wetland_raw, vec3(0.22, 0.31, 0.27), 0.14);
+	vec3 highland = grade_surface(highland_raw * vec3(0.82, 0.80, 0.74), vec3(0.39, 0.36, 0.29), 0.16);
 	vec3 north = mix(forest, grassland, east_mix);
 	vec3 south = mix(wetland, highland, east_mix);
 	vec3 terrain = mix(north, south, south_mix);
 	float macro = biome_noise(world_position.xz * 0.018 + vec2(3.1, 8.7));
-	float grain = biome_noise(world_position.xz * 0.22);
-	ALBEDO = terrain * mix(0.79, 1.06, macro) * mix(0.95, 1.04, grain);
-	ROUGHNESS = mix(0.89, 0.98, grain);
-	SPECULAR = 0.12;
+	float grain = biome_noise(world_position.xz * 0.38);
+	ALBEDO = terrain * mix(0.88, 1.08, macro) * mix(0.965, 1.035, grain);
+
+	float bump = biome_noise(world_position.xz * 1.32);
+	float bump_x = biome_noise(world_position.xz * 1.32 + vec2(0.055, 0.0));
+	float bump_z = biome_noise(world_position.xz * 1.32 + vec2(0.0, 0.055));
+	vec3 detail_normal = normalize(vec3((bump - bump_x) * 7.2 * micro_normal_strength, 1.0, (bump - bump_z) * 7.2 * micro_normal_strength));
+	NORMAL_MAP = detail_normal * 0.5 + 0.5;
+	NORMAL_MAP_DEPTH = 0.48;
+	float wetland_weight = south_mix * (1.0 - east_mix);
+	ROUGHNESS = mix(mix(0.84, 0.94, grain), 0.69, wetland_weight * 0.72);
+	SPECULAR = mix(0.16, 0.34, wetland_weight);
 }
 """
 	var mat := ShaderMaterial.new()
@@ -114,7 +134,8 @@ void fragment() {
 	mat.set_shader_parameter("wetland_texture", wetland_texture)
 	mat.set_shader_parameter("highland_texture", highland_texture)
 	mat.set_shader_parameter("world_extent", maxf(world_extent, 1.0))
-	mat.set_shader_parameter("texture_world_scale", clampf(world_extent * 0.17, 12.0, 34.0))
+	mat.set_shader_parameter("texture_world_scale", 7.6)
+	mat.set_shader_parameter("relief_amplitude", clampf(relief_amplitude, 0.0, 0.08))
 	return mat
 
 
@@ -188,15 +209,19 @@ uniform vec4 deep_color : source_color;
 uniform float opacity = 0.82;
 
 void fragment() {
-	vec2 wave_uv = UV * vec2(8.0, 11.0);
-	float wave_a = sin(wave_uv.x + wave_uv.y * 0.46 + TIME * 1.25);
-	float wave_b = sin(wave_uv.y * 1.55 - wave_uv.x * 0.32 - TIME * 0.92);
-	float ripple = wave_a * 0.5 + wave_b * 0.5;
-	float edge_glint = smoothstep(0.62, 0.96, abs(ripple));
-	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, 0.48 + ripple * 0.12) * 0.72;
-	EMISSION = shallow_color.rgb * edge_glint * 0.055;
-	ROUGHNESS = 0.17 + (1.0 - edge_glint) * 0.10;
-	SPECULAR = 0.78;
+	vec2 wave_uv = UV * vec2(10.0, 13.0);
+	float wave_a = sin(wave_uv.x + wave_uv.y * 0.52 + TIME * 1.08);
+	float wave_b = sin(wave_uv.y * 1.47 - wave_uv.x * 0.38 - TIME * 0.79);
+	float wave_c = sin((wave_uv.x - wave_uv.y) * 0.43 + TIME * 0.46);
+	float ripple = wave_a * 0.38 + wave_b * 0.37 + wave_c * 0.25;
+	float edge_glint = smoothstep(0.68, 0.98, abs(ripple));
+	vec3 ripple_normal = normalize(vec3(cos(wave_uv.x + TIME * 1.08) * 0.15, 1.0, cos(wave_uv.y * 1.47 - TIME * 0.79) * 0.12));
+	NORMAL_MAP = ripple_normal * 0.5 + 0.5;
+	NORMAL_MAP_DEPTH = 0.62;
+	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, 0.43 + ripple * 0.075) * 0.66;
+	EMISSION = shallow_color.rgb * edge_glint * 0.022;
+	ROUGHNESS = 0.13 + (1.0 - edge_glint) * 0.12;
+	SPECULAR = 0.86;
 	ALPHA = opacity;
 }
 """
@@ -206,6 +231,38 @@ void fragment() {
 	mat.set_shader_parameter("deep_color", deep_color)
 	mat.set_shader_parameter("opacity", opacity)
 	return mat
+
+
+## A camera-facing alpha-scissored vegetation card.  The visual has no physics;
+## EcoWorld keeps its existing trunk collider and clearance radius authoritative.
+## One shared material per texture keeps the realistic canopy layer inexpensive.
+static func foliage_card(name_text: String, texture: Texture2D, size_value: Vector2, position_value: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = name_text
+	var mesh := QuadMesh.new()
+	mesh.size = size_value
+	mesh.orientation = PlaneMesh.FACE_Z
+	var texture_key := texture.resource_path if not texture.resource_path.is_empty() else str(texture.get_rid())
+	var card_material: StandardMaterial3D
+	if _foliage_card_material_cache.has(texture_key):
+		card_material = _foliage_card_material_cache[texture_key] as StandardMaterial3D
+	else:
+		card_material = StandardMaterial3D.new()
+		card_material.albedo_texture = texture
+		card_material.roughness = 0.92
+		card_material.metallic_specular = 0.08
+		card_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		card_material.alpha_scissor_threshold = 0.34
+		card_material.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+		card_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		card_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_foliage_card_material_cache[texture_key] = card_material
+	mesh.material = card_material
+	node.mesh = mesh
+	node.position = position_value
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.set_meta("visual_only", true)
+	return node
 
 
 static func sphere(name_text: String, color: Color, scale_value: Vector3, position_value: Vector3 = Vector3.ZERO, radial: int = 8, rings: int = 5) -> MeshInstance3D:

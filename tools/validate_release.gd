@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.50 发布候选校验通过：逐种写实替换 29/29、30 种 Hero/Mobile 来源/PBR/连续蒙皮/骨架动作/挂点、移动端预算与三端发布契约正常")
+		print("[release] V1.51 发布候选校验通过：四生态区写实地表/树木/河道/边界、30 种 Hero/Mobile、移动端预算与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.50.0\"") and presets.contains("application/short_version=\"1.50.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=600") and presets.contains("application/version=\"600\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.50.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.51.0\"") and presets.contains("application/short_version=\"1.51.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=610") and presets.contains("application/version=\"610\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.51.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -341,13 +341,15 @@ func _validate_web_audio_contract() -> void:
 
 func _validate_visual_kit_contract() -> void:
 	var texture_paths := [
-		"res://assets/textures/terrain/forest_floor_ai.jpg",
-		"res://assets/textures/terrain/grassland_ai.jpg",
-		"res://assets/textures/terrain/wetland_ai.jpg",
-		"res://assets/textures/terrain/highland_ai.jpg",
+		"res://assets/textures/terrain/realistic_v2/forest_floor_real_v2.jpg",
+		"res://assets/textures/terrain/realistic_v2/grassland_real_v2.jpg",
+		"res://assets/textures/terrain/realistic_v2/wetland_real_v2.jpg",
+		"res://assets/textures/terrain/realistic_v2/highland_real_v2.jpg",
 	]
 	for texture_path in texture_paths:
 		_expect(ResourceLoader.exists(texture_path), "V2 地表材质缺失：%s" % texture_path)
+		var texture_import := FileAccess.get_file_as_string(texture_path + ".import")
+		_expect(texture_import.contains("compress/mode=2") and texture_import.contains("mipmaps/generate=true"), "V4 地表没有启用三端 VRAM 压缩和 mipmap：%s" % texture_path)
 	var forest_texture := load(texture_paths[0]) as Texture2D
 	var grassland_texture := load(texture_paths[1]) as Texture2D
 	var wetland_texture := load(texture_paths[2]) as Texture2D
@@ -356,9 +358,24 @@ func _validate_visual_kit_contract() -> void:
 	var terrain := Factory.terrain_material(Color("#244833"), Color("#3b603d"), 12.0, forest_texture, 5.0, 0.24)
 	_expect(terrain.shader != null, "V2 地表着色器没有创建")
 	_expect(is_equal_approx(float(terrain.get_shader_parameter("texture_strength")), 0.24), "AI 地表混合强度没有传入着色器")
-	var biome_blend := Factory.biome_blend_material(forest_texture, grassland_texture, wetland_texture, highland_texture, 70.0)
-	_expect(biome_blend.shader != null, "V3 连续生态地表着色器没有创建")
-	_expect(is_equal_approx(float(biome_blend.get_shader_parameter("world_extent")), 70.0), "V3 地表没有按地图尺度弯曲生态边界")
+	var biome_blend := Factory.biome_blend_material(forest_texture, grassland_texture, wetland_texture, highland_texture, 70.0, 0.06)
+	_expect(biome_blend.shader != null, "V4 写实连续生态地表着色器没有创建")
+	_expect(is_equal_approx(float(biome_blend.get_shader_parameter("world_extent")), 70.0), "V4 地表没有按地图尺度弯曲生态边界")
+	_expect(is_equal_approx(float(biome_blend.get_shader_parameter("relief_amplitude")), 0.06), "V4 地表微起伏没有按画质档传入")
+	_expect(is_equal_approx(float(biome_blend.get_shader_parameter("texture_world_scale")), 7.6), "V4 写实地表没有保持稳定的世界纹理尺度")
+	var tree_texture_paths := [
+		"res://assets/textures/vegetation/realistic_v2/forest_tree_real_v2.png",
+		"res://assets/textures/vegetation/realistic_v2/grassland_tree_real_v2.png",
+		"res://assets/textures/vegetation/realistic_v2/wetland_tree_real_v2.png",
+		"res://assets/textures/vegetation/realistic_v2/highland_tree_real_v2.png",
+	]
+	for tree_texture_path in tree_texture_paths:
+		_expect(ResourceLoader.exists(tree_texture_path), "V4 写实树木卡缺失：%s" % tree_texture_path)
+		var tree_import := FileAccess.get_file_as_string(tree_texture_path + ".import")
+		_expect(tree_import.contains("compress/mode=2") and tree_import.contains("mipmaps/generate=true"), "V4 写实树木卡没有启用三端 VRAM 压缩和 mipmap：%s" % tree_texture_path)
+	var foliage_texture := load(tree_texture_paths[0]) as Texture2D
+	var foliage_card := Factory.foliage_card("FoliageContract", foliage_texture, Vector2(4.0, 6.0))
+	_expect(foliage_card.mesh is QuadMesh and foliage_card.get_meta("visual_only", false) == true, "V4 写实树木没有使用无碰撞共享植被卡")
 	var faceted := Factory.sphere("VisualContract", Color("#a86f43"), Vector3.ONE, Vector3.ZERO, 8, 5)
 	_expect(faceted.mesh is ArrayMesh, "V3 物种基础体没有使用程序曲面网格")
 	if faceted.mesh is ArrayMesh:
@@ -380,7 +397,7 @@ func _validate_visual_kit_contract() -> void:
 				normals_by_vertex[vertex] = normals[vertex_index]
 		_expect(shared_vertex_count > 0 and minimum_shared_normal_dot > 0.98, "V3 物种相邻曲面仍使用割裂的逐面法线")
 	var factory_source := FileAccess.get_file_as_string("res://scripts/low_poly_factory.gd")
-	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material"), "V3 有机曲面或连续生态地表实现缺失")
+	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material") and factory_source.contains("foliage_card"), "V4 有机曲面、连续生态地表或写实植被卡实现缺失")
 	var loft := Factory.loft("LoftWindingContract", Color("#7f6248"), [Vector3(0.0, 0.7, 0.9), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 1.25, -1.0)], [Vector2(0.42, 0.36), Vector2(0.66, 0.58), Vector2(0.28, 0.25)], 8)
 	if loft.mesh is ArrayMesh:
 		var loft_arrays := (loft.mesh as ArrayMesh).surface_get_arrays(0)
@@ -399,6 +416,7 @@ func _validate_visual_kit_contract() -> void:
 	_expect(actor_source.contains("game.get(\"batch_mode\") == true"), "缺少 batch_mode 字段的预览/工具场景仍会对 null 调用 bool 构造")
 	faceted.free()
 	loft.free()
+	foliage_card.free()
 
 
 func _validate_level_identity_contract() -> void:

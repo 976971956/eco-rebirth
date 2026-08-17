@@ -14,7 +14,7 @@ func _render() -> void:
 	scene.add_child(world)
 	world.setup(24681357, 86.0, 8, true, "clear", "day", "high")
 	for child in world.decoration_root.get_children():
-		if child.name.begins_with("RegionMarker_"):
+		if child.name.begins_with("RegionLandmark_") or child.name.begins_with("LevelSignature_"):
 			child.visible = false
 
 	var camera := Camera3D.new()
@@ -29,7 +29,7 @@ func _render() -> void:
 
 	for _frame in range(32):
 		await process_frame
-	var output_path := "res://docs/images/v27-organic-biome-v3.png"
+	var output_path := "res://docs/images/v70-realistic-biome-v2.png"
 	var result := root.get_texture().get_image().save_png(output_path)
 	if result == OK:
 		print("BIOME_KIT_PREVIEW_OK: %s" % ProjectSettings.globalize_path(output_path))
