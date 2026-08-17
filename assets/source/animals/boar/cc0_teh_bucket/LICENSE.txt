@@ -1,0 +1,23 @@
+Wild boar reference asset
+=========================
+
+Title: Boar
+Author: Teh_Bucket
+Source page: https://opengameart.org/content/boar
+Original download: https://opengameart.org/sites/default/files/boar_0.blend
+License: CC0 1.0 Universal
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded: 2026-08-17
+boar_0.blend SHA-256: c16625680d056f0402d1be209c41d16a63394aec94b082a63ad32f562e9f2d2d
+
+Eco Rebirth modifications
+-------------------------
+
+The source is retained as a public-domain anatomy and motion reference. Its
+legacy 313-vertex mesh is not shipped as the gameplay surface. Eco Rebirth
+authors a new continuous adult wild-boar body, exact 22-bone runtime rig, PBR
+bristle surface, split hooves, tusks, articulated actions and gameplay sockets.
+
+The original source and Eco Rebirth modifications in this directory may be
+used under CC0 1.0. Attribution is not required; this notice is retained for
+asset provenance and reproducible builds.

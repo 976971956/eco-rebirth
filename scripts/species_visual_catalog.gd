@@ -17,7 +17,7 @@ const EXTERNAL_SPECIES := [
 	"rhino", "gorilla", "eagle", "hippo", "hyena", "lion",
 ]
 const V2_SPECIES := EXTERNAL_SPECIES
-const AUTHORED_SOURCE_SPECIES := ["rabbit", "wolf", "fox", "deer", "snake", "bear"]
+const AUTHORED_SOURCE_SPECIES := ["rabbit", "wolf", "fox", "deer", "snake", "bear", "boar"]
 const THIRD_BATCH_SPECIES := ["lion", "tiger", "lynx", "elephant", "rhino", "hippo", "bison", "moose", "goat", "monkey", "gorilla"]
 const FOURTH_BATCH_SPECIES := ["raccoon", "porcupine", "capybara", "otter", "wolverine", "zebra", "owl", "turtle", "cheetah", "hyena"]
 const SKELETAL_SPECIES := [
