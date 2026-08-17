@@ -308,8 +308,61 @@ def customize_bison(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accen
             parts.append(fringe)
 
 
+def customize_zebra(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Extend flush torso stripes over the articulated equine silhouette."""
+    remove_named(parts, ("ManeQuillDetail", "V5TailBaseSilhouette", "V5TailTipSilhouette"))
+    for obj in parts:
+        if not obj.name.startswith(("V3UpperLimb", "V4LowerLimb", "V4Metapodial")):
+            continue
+        dark_index = PIPELINE.append_material(obj, detail)
+        z_values = [vertex.co.z for vertex in obj.data.vertices]
+        minimum = min(z_values)
+        span = max(max(z_values) - minimum, 0.001)
+        for polygon in obj.data.polygons:
+            centre = sum(obj.data.vertices[index].co.z for index in polygon.vertices) / len(polygon.vertices)
+            band = int((centre - minimum) / span * (4 if hero else 3))
+            if band % 2 == 1:
+                polygon.material_index = dark_index
+        obj["eco_stripe_contract"] = "flush_articulated_leg_bands"
+
+    mane_points = [
+        (0.0, layout["head_y"] + cfg["head"] * 0.50, layout["head_z"] + cfg["head"] * 0.18),
+        (0.0, (layout["head_y"] + layout["shoulder_y"]) * 0.62 + cfg["head"] * 0.28, (layout["head_z"] + layout["front_z"]) * 0.58),
+        (0.0, layout["shoulder_y"] + cfg["height"] * 0.54, layout["front_z"] + cfg["length"] * 0.12),
+        (0.0, layout["body_y"] + cfg["height"] * 0.54, layout["front_z"] + cfg["length"] * 0.32),
+    ]
+    for index in range(len(mane_points) - 1):
+        mane = PIPELINE.ellipsoid_between(
+            f"ZebraUprightManeSilhouette_{index}", mane_points[index], mane_points[index + 1],
+            cfg["head"] * (0.12 - index * 0.012), detail, hero, 0.20,
+        )
+        PIPELINE.rigid_skin(mane, rig, "Neck" if index < 2 else "Chest")
+        parts.append(mane)
+
+    tail_start = (0.0, layout["body_y"], cfg["length"] * 0.62)
+    tail_end = (0.0, max(0.18, layout["body_y"] - cfg["tail"] * 0.48), cfg["length"] * 0.62 + cfg["tail"] * 1.04)
+    tail = connected_tail(
+        "ZebraConnectedTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 0.78, cfg["paw"] * 0.36, coat, 0.74,
+    )
+    parts.append(tail)
+    switch = PIPELINE.ellipsoid_between(
+        "ZebraBlackTailSwitchDetail",
+        tuple(Vector(tail_start).lerp(Vector(tail_end), 0.74)), tail_end,
+        cfg["paw"] * 0.74, detail, hero, 0.58,
+    )
+    PIPELINE.rigid_skin(switch, rig, "TailTip")
+    parts.append(switch)
+
+    for obj in parts:
+        if obj.name.startswith("V5FootDetail"):
+            obj.scale.y *= 0.64
+            obj.scale.x *= 0.82
+            obj["eco_hoof_contract"] = "compact_single_equine_hoof"
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat", "wolverine", "bison"):
+    if species not in ("lynx", "goat", "wolverine", "bison", "zebra"):
         return
     rig.animation_data_create()
 
@@ -356,7 +409,7 @@ def customize_actions(species: str, rig) -> None:
             for suffix in ("LH", "RH"):
                 insert("skill", f"Leg_{suffix}", frame, (0.22 * abs(amount), 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.34 * abs(amount), 0.0, 0.0))
-        else:
+        elif species == "bison":
             # A bison drops the head behind the shoulder mass, braces the
             # forequarters, then drives and hooks upward through both horns.
             drive = max(amount, 0.0)
@@ -372,6 +425,22 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, (0.36 * drive, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, (0.42 * drive, 0.0, 0.0))
             insert("skill", "Tail", frame, (0.0, 0.0, 0.18 * amount))
+        else:
+            # The zebra shifts onto both forelegs, gathers the hocks, then
+            # extends both hind hooves in a compact defensive double kick.
+            kick = max(amount, 0.0)
+            insert("skill", "Spine", frame, (-0.18 * kick, 0.0, 0.0))
+            insert("skill", "Chest", frame, (0.14 * kick, 0.0, 0.0))
+            insert("skill", "Neck", frame, (-0.12 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (0.08 * amount, 0.0, 0.0))
+            for suffix in ("LF", "RF"):
+                insert("skill", f"Leg_{suffix}", frame, (0.20 * kick, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (-0.18 * kick, 0.0, 0.0))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (-0.88 * amount, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.64 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.30 * abs(amount), 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, 0.24 * amount))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -437,6 +506,8 @@ def export_species(
         customize_wolverine(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "bison":
         customize_bison(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "zebra":
+        customize_zebra(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6

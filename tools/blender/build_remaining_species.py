@@ -14,8 +14,8 @@ LIMBS = ("LF", "RF", "LH", "RH")
 BIRDS = ("owl", "eagle")
 LONG_BODY = ("snake", "crocodile")
 REMAINING_SPECIES = (
-    "zebra", "elephant", "tiger", "monkey", "owl", "moose",
-    "turtle", "cheetah", "rhino", "gorilla",
+    "elephant", "tiger", "monkey", "owl", "moose", "turtle",
+    "cheetah", "rhino", "gorilla",
     "eagle", "hippo", "hyena", "lion",
 )
 
@@ -341,9 +341,14 @@ def paint_ground_surface(
         if underside and cfg["family"] not in ("primate", "chelonian"):
             material_index = accent_index
         if "stripes" in features:
-            wave = math.sin(normalized_z * math.pi * (8.6 if species == "tiger" else 10.8) + y * 2.8 + normalized_x * 1.9)
-            if abs(wave) > (0.67 if species == "tiger" else 0.54) and y > body_y - cfg["height"] * 0.34:
-                material_index = dark_index
+            if species == "zebra":
+                wave = math.sin(normalized_z * math.pi * 7.0 + y * 2.2 + normalized_x * 1.4)
+                if wave > 0.58 and y > body_y - cfg["height"] * 0.38:
+                    material_index = dark_index
+            else:
+                wave = math.sin(normalized_z * math.pi * 8.6 + y * 2.8 + normalized_x * 1.9)
+                if abs(wave) > 0.67 and y > body_y - cfg["height"] * 0.34:
+                    material_index = dark_index
         elif "spots" in features:
             spot_field = math.sin(x * 18.7 + z * 8.9) * math.cos(y * 15.1 - z * 5.7)
             if spot_field > (0.48 if species == "cheetah" else 0.56) and normalized_x > 0.34:
