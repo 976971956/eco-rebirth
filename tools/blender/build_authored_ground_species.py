@@ -170,8 +170,33 @@ def customize_lynx(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent
             obj["eco_paw_contract"] = "wide_furred_snowshoe_paw"
 
 
+def customize_goat(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    remove_named(parts, ("HornDetail", "BeardDetail"))
+    for side in (-1.0, 1.0):
+        points = [
+            (side * cfg["head"] * 0.34, layout["head_y"] + cfg["head"] * 0.38, layout["head_z"] + 0.04),
+            (side * cfg["head"] * 0.58, layout["head_y"] + cfg["head"] * 0.76, layout["head_z"] + cfg["head"] * 0.12),
+            (side * cfg["head"] * 0.66, layout["head_y"] + cfg["head"] * 1.02, layout["head_z"] + cfg["head"] * 0.34),
+            (side * cfg["head"] * 0.56, layout["head_y"] + cfg["head"] * 1.08, layout["head_z"] + cfg["head"] * 0.62),
+        ]
+        for index in range(3):
+            horn = PIPELINE.cone_between(
+                f"GoatSweptHornDetail_{side:+.0f}_{index}", points[index], points[index + 1],
+                cfg["head"] * (0.105 - index * 0.022), detail, hero,
+            )
+            PIPELINE.rigid_skin(horn, rig, "Head")
+            parts.append(horn)
+    beard_top = (0.0, layout["head_y"] - cfg["head"] * 0.40, layout["head_z"] - cfg["head"] * 0.12)
+    beard_mid = (0.0, beard_top[1] - cfg["head"] * 0.28, beard_top[2] + cfg["head"] * 0.06)
+    beard_tip = (0.0, beard_top[1] - cfg["head"] * 0.54, beard_top[2] + cfg["head"] * 0.13)
+    for index, (start, end, radius) in enumerate(((beard_top, beard_mid, 0.105), (beard_mid, beard_tip, 0.070))):
+        beard = PIPELINE.ellipsoid_between(f"GoatTaperedBeardDetail_{index}", start, end, cfg["head"] * radius, detail, hero, 0.62)
+        PIPELINE.rigid_skin(beard, rig, "Head")
+        parts.append(beard)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species != "lynx":
+    if species not in ("lynx", "goat"):
         return
     rig.animation_data_create()
 
@@ -183,15 +208,26 @@ def customize_actions(species: str, rig) -> None:
         bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone_name)
 
     for frame, amount in ((1, 0.0), (6, 0.28), (11, 1.0), (16, -0.52), (24, 0.0)):
-        insert("skill", "Spine", frame, (-0.22 * abs(amount), 0.0, 0.06 * amount))
-        insert("skill", "Chest", frame, (0.16 * abs(amount), 0.0, -0.04 * amount))
-        insert("skill", "Neck", frame, (-0.18 * amount, 0.0, 0.0))
-        insert("skill", "Tail", frame, (0.0, 0.0, 0.24 * amount))
-        for suffix in LIMBS:
-            rear = suffix.endswith("H")
-            insert("skill", f"Leg_{suffix}", frame, ((-0.48 if rear else 0.34) * amount, 0.0, 0.0))
-            insert("skill", f"Lower_{suffix}", frame, ((0.72 if rear else -0.48) * abs(amount), 0.0, 0.0))
-            insert("skill", f"Paw_{suffix}", frame, (-0.26 * abs(amount), 0.0, 0.0))
+        if species == "lynx":
+            insert("skill", "Spine", frame, (-0.22 * abs(amount), 0.0, 0.06 * amount))
+            insert("skill", "Chest", frame, (0.16 * abs(amount), 0.0, -0.04 * amount))
+            insert("skill", "Neck", frame, (-0.18 * amount, 0.0, 0.0))
+            insert("skill", "Tail", frame, (0.0, 0.0, 0.24 * amount))
+            for suffix in LIMBS:
+                rear = suffix.endswith("H")
+                insert("skill", f"Leg_{suffix}", frame, ((-0.48 if rear else 0.34) * amount, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, ((0.72 if rear else -0.48) * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.26 * abs(amount), 0.0, 0.0))
+        else:
+            insert("skill", "Spine", frame, (-0.12 * abs(amount), 0.0, 0.0))
+            insert("skill", "Chest", frame, (0.20 * amount, 0.0, 0.0))
+            insert("skill", "Neck", frame, (-0.48 * amount, 0.0, 0.0))
+            insert("skill", "Head", frame, (-0.34 * amount, 0.0, 0.0))
+            for suffix in LIMBS:
+                rear = suffix.endswith("H")
+                insert("skill", f"Leg_{suffix}", frame, ((-0.56 if rear else 0.28) * amount, 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, ((0.78 if rear else -0.34) * abs(amount), 0.0, 0.0))
+                insert("skill", f"Paw_{suffix}", frame, (-0.24 * abs(amount), 0.0, 0.0))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -234,6 +270,8 @@ def export_species(
     BEAR.smart_uv(organic_body)
     if species == "lynx":
         customize_lynx(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "goat":
+        customize_goat(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6
