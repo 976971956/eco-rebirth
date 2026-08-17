@@ -10,7 +10,7 @@ const FOOD_DATA := {
 	"mushroom": {"name": "林地蘑菇", "amount": 30.0, "regrow": 22.0, "nutrition": 1.08, "diets": ["herbivore", "omnivore"]},
 	"fruit": {"name": "落果", "amount": 48.0, "regrow": 24.0, "nutrition": 1.18, "diets": ["herbivore", "omnivore"]},
 	"roots": {"name": "块根", "amount": 44.0, "regrow": 26.0, "nutrition": 1.15, "diets": ["herbivore", "omnivore"]},
-	"fish": {"name": "浅滩鱼群", "amount": 40.0, "regrow": 28.0, "nutrition": 1.28, "diets": ["carnivore", "omnivore"]},
+	"fish": {"name": "活鱼群", "amount": 48.0, "regrow": 25.0, "nutrition": 1.45, "diets": ["carnivore", "omnivore"]},
 }
 
 var amount: float = 45.0
@@ -23,6 +23,7 @@ var visual_root: Node3D
 var food_kind: String = "grass"
 var ecology_hotspot: bool = false
 var ecology_event_id: int = -1
+var fish_animation_time: float = 0.0
 
 
 func setup(kind: String, rng: RandomNumberGenerator) -> void:
@@ -64,11 +65,20 @@ func _build_visual(rng: RandomNumberGenerator) -> void:
 				root.rotation.y = -angle
 				visual_root.add_child(root)
 		"fish":
-			visual_root.add_child(Factory.disc("ShallowPool", Color(0.19, 0.58, 0.63, 0.72), 1.12, 0.025, Vector3(0.0, 0.025, 0.0), 12))
-			for i in range(4):
-				var fish := Factory.sphere("Fish", Color("#6e9ca3").lightened(i * 0.05), Vector3(0.36, 0.09, 0.15), Vector3((i - 1.5) * 0.38, 0.11, (-1.0 if i % 2 == 0 else 1.0) * 0.28), 7, 4)
-				fish.rotation.y = 0.35 if i % 2 == 0 else -0.45
-				visual_root.add_child(fish)
+			for i in range(6):
+				var swimmer := Node3D.new()
+				swimmer.name = "LiveFish_%02d" % i
+				var school_center := Vector3(rng.randf_range(-0.78, 0.78), 0.07 + float(i % 2) * 0.025, rng.randf_range(-0.60, 0.60))
+				swimmer.set_meta("school_center", school_center)
+				swimmer.set_meta("phase", rng.randf_range(0.0, TAU))
+				swimmer.set_meta("orbit", rng.randf_range(0.10, 0.24))
+				swimmer.set_meta("swim_rate", rng.randf_range(0.72, 1.20))
+				var fish_color := Color("#7faeb1").lightened(rng.randf_range(-0.06, 0.11))
+				swimmer.add_child(Factory.sphere("FishBody", fish_color, Vector3(0.34, 0.085, 0.14), Vector3.ZERO, 8, 4))
+				var tail := Factory.cone("FishTail", fish_color.darkened(0.12), 0.13, 0.23, Vector3(0.0, 0.0, 0.24), 6)
+				tail.rotation.x = PI * 0.5
+				swimmer.add_child(tail)
+				visual_root.add_child(swimmer)
 		_:
 			for i in range(8):
 				var angle := TAU * float(i) / 8.0
@@ -103,6 +113,8 @@ func consume(requested: float) -> float:
 
 
 func _process(delta: float) -> void:
+	if food_kind == "fish" and active:
+		_animate_fish_school(delta)
 	if active or not regrow_enabled:
 		return
 	empty_time += delta
@@ -110,6 +122,23 @@ func _process(delta: float) -> void:
 		amount = max_amount
 		active = true
 		_update_visual()
+
+
+func _animate_fish_school(delta: float) -> void:
+	if visual_root == null:
+		return
+	fish_animation_time += delta
+	for child in visual_root.get_children():
+		if not child is Node3D or not child.has_meta("school_center"):
+			continue
+		var swimmer := child as Node3D
+		var center: Vector3 = swimmer.get_meta("school_center", Vector3.ZERO)
+		var phase := float(swimmer.get_meta("phase", 0.0))
+		var orbit := float(swimmer.get_meta("orbit", 0.16))
+		var rate := float(swimmer.get_meta("swim_rate", 1.0))
+		var angle := fish_animation_time * rate + phase
+		swimmer.position = center + Vector3(cos(angle) * orbit, sin(angle * 1.7) * 0.018, sin(angle) * orbit)
+		swimmer.rotation.y = -angle + PI * 0.5
 
 
 func boost(multiplier: float) -> void:

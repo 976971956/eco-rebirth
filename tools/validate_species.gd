@@ -65,7 +65,7 @@ class ValidationGame:
 	func get_available_corpses() -> Array[Node3D]:
 		return corpses.filter(func(corpse: Node3D) -> bool: return is_instance_valid(corpse) and float(corpse.food_amount) > 0.0)
 
-	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "", _include_hotspots: bool = true, _excluded_instance_id: int = 0) -> Node3D:
+	func nearest_food(_origin: Vector3, _max_distance: float, _eater_species: String = "", _include_hotspots: bool = true, _excluded_instance_id: int = 0, _breath_ratio: float = 1.0, _hunger_value: float = 0.0) -> Node3D:
 		return null
 
 
@@ -95,6 +95,31 @@ func _run_validation() -> void:
 		failures.append("饥饿伤害不是每 3 秒最大生命 1%")
 	if not is_zero_approx(ActorScript.starvation_health_after(1.2, 100.0, 6.0)):
 		failures.append("饱腹耗尽后生命仍被锁在 1 点，无法触发饥饿死亡")
+	if not is_equal_approx(ActorScript.drowning_health_after(100.0, 100.0, 1.0), 94.0) or not is_zero_approx(ActorScript.drowning_health_after(3.0, 100.0, 1.0)):
+		failures.append("屏息耗尽后的溺水伤害没有按最大生命 6%/秒结算")
+	if Catalog.WATER_PROFILES.size() != Catalog.ORDER.size():
+		failures.append("30 种动物没有全部配置独立水性")
+	var breath_values := {}
+	for species_id in Catalog.ORDER:
+		var water_profile := Catalog.water_profile(species_id)
+		for required_key in ["name", "grade", "wade_depth", "comfort_depth", "breath", "swim_speed", "fish_catch"]:
+			if not water_profile.has(required_key):
+				failures.append("%s 水性缺少字段 %s" % [species_id, required_key])
+		breath_values[Catalog.water_breath_seconds(species_id)] = true
+		if Catalog.water_comfort_depth(species_id) < Catalog.water_wade_depth(species_id):
+			failures.append("%s 的 AI 舒适水深低于安全涉水深度" % species_id)
+		if Catalog.water_speed_multiplier(species_id) < 0.35 or Catalog.water_speed_multiplier(species_id) > 1.55:
+			failures.append("%s 的游泳速度倍率越界" % species_id)
+	if breath_values.size() < 12:
+		failures.append("30 种动物的屏息时间区分不足")
+	if Catalog.water_breath_seconds("rabbit") >= Catalog.water_breath_seconds("otter") or Catalog.water_speed_multiplier("rabbit") >= Catalog.water_speed_multiplier("otter"):
+		failures.append("雪兔与水獭没有形成明确的水性差距")
+	if Catalog.ai_water_entry_depth("rabbit", 90.0, 1.0, false) > 0.20 or Catalog.ai_water_entry_depth("otter", 40.0, 1.0, false) < 1.20:
+		failures.append("弱/强水性 AI 没有选择不同深度路线")
+	if not is_equal_approx(Catalog.ai_water_entry_depth("fox", 80.0, 0.20, true), Catalog.water_wade_depth("fox")):
+		failures.append("低屏息 AI 仍会为鱼群进入深水")
+	if Catalog.fish_catch_multiplier("otter") <= Catalog.fish_catch_multiplier("fox") or Catalog.fish_catch_multiplier("rabbit") > 0.0:
+		failures.append("捕鱼效率没有体现物种食性和水性")
 	var satiated_bear_motivation := ActorScript.hunting_motivation(18.0, 0.55, "omnivore", 4, 0)
 	var hungry_bear_motivation := ActorScript.hunting_motivation(68.0, 0.55, "omnivore", 4, 0)
 	var coordinated_wolf_motivation := ActorScript.hunting_motivation(18.0, 0.68, "carnivore", 3, 1)
@@ -341,13 +366,43 @@ func _run_validation() -> void:
 	game_stub.corpses = [distant_corpse]
 	game_stub.actors = [snake_actor]
 	snake_actor.habit_rewarded_sources[str(fish_patch.get_instance_id())] = true
+	snake_actor.health = snake_actor.max_health * 0.50
+	snake_actor.hunger = 78.0
+	var snake_health_before_fish := snake_actor.health
+	var snake_hunger_before_fish := snake_actor.hunger
 	var fish_before := fish_patch.amount
 	if not snake_actor.try_consume_nearby() or fish_patch.amount >= fish_before:
 		failures.append("远处尸体抢占了手动进食目标，脚边鱼群无法被吃到")
+	if snake_actor.health <= snake_health_before_fish or snake_actor.hunger >= snake_hunger_before_fish or snake_actor.fish_catches != 1:
+		failures.append("捕获活鱼没有同时恢复生命、饱腹并计入捕鱼次数")
 	snake_actor.free()
 	fish_patch.free()
 	distant_corpse.free()
 	game_stub.corpses.clear()
+	guidance_world.level_profile_data = {"water": 1.0, "water_depth": 1.0}
+	guidance_world.weather_id = "clear"
+	var rabbit_water_actor: EcoActor = ActorScript.new()
+	rabbit_water_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(rabbit_water_actor)
+	rabbit_water_actor.setup(game_stub, 72, "rabbit", false, Vector3(-25.0, 0.0, 25.0), 0)
+	rabbit_water_actor._update_water_survival(5.5)
+	if rabbit_water_actor.breath_remaining > 0.0 or rabbit_water_actor.health >= rabbit_water_actor.max_health or rabbit_water_actor.drowning_seconds <= 0.0:
+		failures.append("怕水雪兔在深水耗尽屏息后没有开始溺水")
+	if not rabbit_water_actor.water_status_is_dangerous() or not rabbit_water_actor.water_status_text().contains("溺水"):
+		failures.append("深水屏息耗尽后 HUD 状态没有进入溺水警告")
+	rabbit_water_actor.position = Vector3(40.0, 0.0, 40.0)
+	rabbit_water_actor._update_water_survival(1.0)
+	if rabbit_water_actor.breath_remaining <= 0.0:
+		failures.append("动物离开水域后没有恢复屏息")
+	var otter_water_actor: EcoActor = ActorScript.new()
+	otter_water_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(otter_water_actor)
+	otter_water_actor.setup(game_stub, 73, "otter", false, Vector3(-25.0, 0.0, 25.0), 0)
+	otter_water_actor._update_water_survival(5.5)
+	if otter_water_actor.breath_remaining <= otter_water_actor.max_breath * 0.85 or otter_water_actor.health < otter_water_actor.max_health:
+		failures.append("水獭在短时深水活动中被错误按弱水性动物结算")
+	rabbit_water_actor.free()
+	otter_water_actor.free()
 	foraging_actor.free()
 	food_patch.free()
 	fruit_patch.free()
@@ -840,7 +895,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, distinct water profiles/breath/drowning/fishing, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

@@ -98,6 +98,44 @@ const TRAITS := {
 	"lion": ["pack_hunter", "finisher", "flanker", "leader"],
 }
 
+# Water adaptation is explicit for every playable species.  `wade_depth` is
+# safe standing water, `comfort_depth` is the deepest route AI will normally
+# choose, and `breath` is gameplay-scaled submersion endurance in seconds.
+# Flying animals still use these values when forced to land; normal flight is
+# above the water surface and does not consume breath.
+const WATER_PROFILES := {
+	"rabbit": {"name": "怕水", "grade": 0, "wade_depth": 0.14, "comfort_depth": 0.18, "breath": 6.0, "swim_speed": 0.44, "fish_catch": 0.0},
+	"fox": {"name": "短距泅渡", "grade": 1, "wade_depth": 0.18, "comfort_depth": 0.30, "breath": 14.0, "swim_speed": 0.68, "fish_catch": 0.38},
+	"deer": {"name": "长程泅渡", "grade": 2, "wade_depth": 0.34, "comfort_depth": 0.62, "breath": 38.0, "swim_speed": 0.92, "fish_catch": 0.0},
+	"wolf": {"name": "稳定泅渡", "grade": 2, "wade_depth": 0.24, "comfort_depth": 0.58, "breath": 34.0, "swim_speed": 0.96, "fish_catch": 0.58},
+	"snake": {"name": "水面蜿行", "grade": 3, "wade_depth": 0.08, "comfort_depth": 0.82, "breath": 52.0, "swim_speed": 1.12, "fish_catch": 0.92},
+	"bear": {"name": "强力游泳", "grade": 3, "wade_depth": 0.42, "comfort_depth": 0.78, "breath": 56.0, "swim_speed": 1.05, "fish_catch": 0.78},
+	"boar": {"name": "耐力泅渡", "grade": 2, "wade_depth": 0.32, "comfort_depth": 0.52, "breath": 32.0, "swim_speed": 0.86, "fish_catch": 0.30},
+	"raccoon": {"name": "浅水捕食", "grade": 2, "wade_depth": 0.20, "comfort_depth": 0.48, "breath": 28.0, "swim_speed": 0.90, "fish_catch": 0.66},
+	"porcupine": {"name": "谨慎涉水", "grade": 1, "wade_depth": 0.22, "comfort_depth": 0.26, "breath": 12.0, "swim_speed": 0.60, "fish_catch": 0.0},
+	"crocodile": {"name": "水域统治", "grade": 4, "wade_depth": 0.10, "comfort_depth": 1.35, "breath": 105.0, "swim_speed": 1.30, "fish_catch": 1.30},
+	"capybara": {"name": "半水栖", "grade": 4, "wade_depth": 0.24, "comfort_depth": 1.15, "breath": 82.0, "swim_speed": 1.24, "fish_catch": 0.0},
+	"otter": {"name": "潜水猎手", "grade": 4, "wade_depth": 0.12, "comfort_depth": 1.35, "breath": 96.0, "swim_speed": 1.45, "fish_catch": 1.48},
+	"lynx": {"name": "短距泅渡", "grade": 1, "wade_depth": 0.20, "comfort_depth": 0.34, "breath": 16.0, "swim_speed": 0.72, "fish_catch": 0.44},
+	"goat": {"name": "怕深水", "grade": 0, "wade_depth": 0.18, "comfort_depth": 0.20, "breath": 7.0, "swim_speed": 0.48, "fish_catch": 0.0},
+	"wolverine": {"name": "寒水泅渡", "grade": 2, "wade_depth": 0.24, "comfort_depth": 0.56, "breath": 36.0, "swim_speed": 0.92, "fish_catch": 0.56},
+	"bison": {"name": "重体渡水", "grade": 2, "wade_depth": 0.48, "comfort_depth": 0.62, "breath": 30.0, "swim_speed": 0.80, "fish_catch": 0.0},
+	"zebra": {"name": "迁徙泅渡", "grade": 1, "wade_depth": 0.34, "comfort_depth": 0.44, "breath": 20.0, "swim_speed": 0.74, "fish_catch": 0.0},
+	"elephant": {"name": "长鼻渡水", "grade": 3, "wade_depth": 0.72, "comfort_depth": 1.08, "breath": 74.0, "swim_speed": 1.02, "fish_catch": 0.0},
+	"tiger": {"name": "强力游泳", "grade": 3, "wade_depth": 0.26, "comfort_depth": 0.88, "breath": 58.0, "swim_speed": 1.15, "fish_catch": 0.82},
+	"monkey": {"name": "谨慎泅渡", "grade": 1, "wade_depth": 0.18, "comfort_depth": 0.32, "breath": 16.0, "swim_speed": 0.70, "fish_catch": 0.30},
+	"owl": {"name": "贴水掠食", "grade": 1, "wade_depth": 0.08, "comfort_depth": 0.22, "breath": 9.0, "swim_speed": 0.52, "fish_catch": 0.72},
+	"moose": {"name": "深水迁徙", "grade": 3, "wade_depth": 0.58, "comfort_depth": 0.90, "breath": 54.0, "swim_speed": 1.04, "fish_catch": 0.0},
+	"turtle": {"name": "持久浮游", "grade": 3, "wade_depth": 0.16, "comfort_depth": 1.02, "breath": 90.0, "swim_speed": 0.86, "fish_catch": 0.0},
+	"cheetah": {"name": "畏水", "grade": 0, "wade_depth": 0.16, "comfort_depth": 0.19, "breath": 7.0, "swim_speed": 0.46, "fish_catch": 0.24},
+	"rhino": {"name": "重体涉水", "grade": 2, "wade_depth": 0.66, "comfort_depth": 0.76, "breath": 40.0, "swim_speed": 0.82, "fish_catch": 0.0},
+	"gorilla": {"name": "短距泅渡", "grade": 1, "wade_depth": 0.36, "comfort_depth": 0.42, "breath": 14.0, "swim_speed": 0.64, "fish_catch": 0.0},
+	"eagle": {"name": "水面擒鱼", "grade": 1, "wade_depth": 0.08, "comfort_depth": 0.24, "breath": 8.0, "swim_speed": 0.50, "fish_catch": 1.12},
+	"hippo": {"name": "水陆霸主", "grade": 4, "wade_depth": 0.76, "comfort_depth": 1.35, "breath": 100.0, "swim_speed": 1.32, "fish_catch": 0.0},
+	"hyena": {"name": "谨慎渡水", "grade": 1, "wade_depth": 0.24, "comfort_depth": 0.38, "breath": 18.0, "swim_speed": 0.76, "fish_catch": 0.34},
+	"lion": {"name": "耐力泅渡", "grade": 2, "wade_depth": 0.30, "comfort_depth": 0.52, "breath": 30.0, "swim_speed": 0.86, "fish_catch": 0.32},
+}
+
 const REPEAT_WEIGHT := {
 	"rabbit": 3,
 	"bear": 1, "bison": 1, "crocodile": 1, "tiger": 1,
@@ -1175,6 +1213,54 @@ const DATA: Dictionary = {
 
 static func get_data(species_id: String) -> Dictionary:
 	return DATA.get(species_id, DATA["rabbit"]).duplicate(true)
+
+
+static func water_profile(species_id: String) -> Dictionary:
+	return WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).duplicate(true)
+
+
+static func water_grade(species_id: String) -> int:
+	return clampi(int(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("grade", 0)), 0, 4)
+
+
+static func water_wade_depth(species_id: String) -> float:
+	return maxf(float(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("wade_depth", 0.14)), 0.05)
+
+
+static func water_comfort_depth(species_id: String) -> float:
+	return maxf(float(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("comfort_depth", 0.18)), water_wade_depth(species_id))
+
+
+static func water_breath_seconds(species_id: String) -> float:
+	return maxf(float(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("breath", 6.0)), 1.0)
+
+
+static func water_speed_multiplier(species_id: String) -> float:
+	return clampf(float(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("swim_speed", 0.5)), 0.35, 1.55)
+
+
+static func fish_catch_multiplier(species_id: String) -> float:
+	return clampf(float(WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"]).get("fish_catch", 0.0)), 0.0, 1.60)
+
+
+static func ai_water_entry_depth(species_id: String, hunger_value: float = 0.0, breath_ratio: float = 1.0, pursuing_fish: bool = false, escape_advantage: bool = false) -> float:
+	var wade_depth := water_wade_depth(species_id)
+	if breath_ratio <= 0.34:
+		return wade_depth
+	var limit := water_comfort_depth(species_id)
+	if pursuing_fish and fish_catch_multiplier(species_id) > 0.0 and hunger_value >= 76.0 and breath_ratio >= 0.68:
+		limit += 0.16
+	if escape_advantage and breath_ratio >= 0.56:
+		limit += 0.22
+	return clampf(limit, wade_depth, 1.35)
+
+
+static func water_description(species_id: String) -> String:
+	var profile: Dictionary = WATER_PROFILES.get(species_id, WATER_PROFILES["rabbit"])
+	var fish_text := " · 捕鱼效率 %.0f%%" % (fish_catch_multiplier(species_id) * 100.0) if fish_catch_multiplier(species_id) > 0.0 else ""
+	return "水性：%s（%d/4）· 安全涉水 %.2fm · 屏息 %.0fs · 游速 %.0f%%%s" % [
+		str(profile.get("name", "怕水")), water_grade(species_id), water_wade_depth(species_id), water_breath_seconds(species_id), water_speed_multiplier(species_id) * 100.0, fish_text,
+	]
 
 
 static func growth_archetype(species_id: String) -> String:

@@ -41,6 +41,8 @@ const ECOLOGY_TRACE_INVESTIGATION_SECONDS := 5.2
 const DANGER_MEMORY_AVOID_SECONDS := 2.6
 const STAMINA_REGEN_COMBAT_DELAY := 0.8
 const STARVATION_DAMAGE_PER_SECOND := 0.01 / 3.0
+const DROWNING_DAMAGE_PER_SECOND := 0.06
+const WATER_ESCAPE_BREATH_RATIO := 0.32
 const AI_PACK_SHARE_RADIUS := 20.0
 const AI_HERD_SHARE_RADIUS := 18.0
 const AI_GROUP_ALERT_RANGE := 42.0
@@ -142,6 +144,16 @@ var avoid_timer: float = 0.0
 var avoid_direction := Vector3.ZERO
 var state_commit_timer: float = 0.0
 var starvation_warning_timer: float = 0.0
+var water_warning_timer: float = 0.0
+var current_water_depth: float = 0.0
+var water_sample_timer: float = 0.0
+var water_steering_timer: float = 0.0
+var cached_water_input_direction := Vector3.ZERO
+var cached_water_safe_direction := Vector3.ZERO
+var breath_remaining: float = 0.0
+var max_breath: float = 0.0
+var water_escape_position := Vector3(INF, 0.0, INF)
+var last_death_cause: String = ""
 var movement_sample_timer: float = 0.0
 var stuck_duration: float = 0.0
 var last_sample_position := Vector3.ZERO
@@ -182,6 +194,8 @@ var state_switches: int = 0
 var stuck_recoveries: int = 0
 var route_replans: int = 0
 var food_bites: int = 0
+var fish_catches: int = 0
+var drowning_seconds: float = 0.0
 var distance_travelled: float = 0.0
 var damage_dealt: float = 0.0
 var damage_taken: float = 0.0
@@ -248,6 +262,8 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	health = max_health
 	max_stamina = float(data["stamina"])
 	stamina = max_stamina
+	max_breath = Catalog.water_breath_seconds(species_id)
+	breath_remaining = max_breath
 	position = spawn_position
 	if Catalog.has_trait(species_id, "flying"):
 		flight_target_height = float(data.get("flight_height", 4.2))
@@ -292,6 +308,12 @@ static func starvation_health_after(current_health: float, maximum_health: float
 	if current_health <= 0.0:
 		return 0.0
 	return maxf(current_health - maximum_health * STARVATION_DAMAGE_PER_SECOND * delta, 0.0)
+
+
+static func drowning_health_after(current_health: float, maximum_health: float, delta: float) -> float:
+	if current_health <= 0.0:
+		return 0.0
+	return maxf(current_health - maximum_health * DROWNING_DAMAGE_PER_SECOND * delta, 0.0)
 
 
 static func hunting_motivation(hunger_value: float, aggression: float, diet: String, size_level: int, pack_support: int = 0) -> float:
@@ -345,6 +367,8 @@ static func evaluate_prey_utility(context: Dictionary) -> float:
 	var target_pressure := clampf(float(context.get("target_pressure", 0.0)), 0.0, 4.0)
 	var habitat_delta := clampf(float(context.get("habitat_delta", 0.0)), -1.0, 1.0)
 	var threat_gap := maxi(int(context.get("threat_gap", 0)), 0)
+	var water_advantage := clampf(float(context.get("water_advantage", 0.0)), -1.0, 1.0)
+	var water_risk := maxf(float(context.get("water_risk", 0.0)), 0.0)
 	var target_exposed := bool(context.get("target_exposed", false))
 	if hunter_health <= 0.18:
 		return 0.0
@@ -367,6 +391,9 @@ static func evaluate_prey_utility(context: Dictionary) -> float:
 		result *= 1.26
 	if bool(context.get("aerial_small_prey", false)):
 		result *= 1.16
+	result *= 1.0 + water_advantage * 0.24
+	if water_risk > 0.0:
+		result *= maxf(0.12, 1.0 - water_risk * 1.65)
 	if threat_gap > 0 and not target_exposed:
 		result *= maxf(0.22, 0.58 - float(threat_gap) * 0.08)
 	if hunter_stamina < 0.25 and distance > float(context.get("attack_range", 2.0)) * 1.8:
@@ -1793,6 +1820,8 @@ func _update_timers(delta: float) -> void:
 	alert_cooldown = maxf(alert_cooldown - delta, 0.0)
 	state_commit_timer = maxf(state_commit_timer - delta, 0.0)
 	starvation_warning_timer = maxf(starvation_warning_timer - delta, 0.0)
+	water_warning_timer = maxf(water_warning_timer - delta, 0.0)
+	water_steering_timer = maxf(water_steering_timer - delta, 0.0)
 	recovery_timer = maxf(recovery_timer - delta, 0.0)
 	blocked_route_timer = maxf(blocked_route_timer - delta, 0.0)
 	if blocked_route_timer <= 0.0:
@@ -2006,13 +2035,173 @@ func _update_needs(delta: float) -> void:
 		health_changed.emit(health, max_health)
 		_update_health_bar()
 		if health <= 0.0:
+			last_death_cause = "starvation"
 			die(null)
 			return
 		if is_player and starvation_warning_timer <= 0.0:
 			starvation_warning_timer = 5.0
 			game.show_hint("饱腹值耗尽，正在持续失去生命！快寻找食物")
-	if is_player:
+	_update_water_survival(delta)
+	if not dead and is_player:
 		hunger_changed.emit(hunger)
+
+
+func _update_water_survival(delta: float) -> void:
+	if game == null or game.world == null or not game.world.has_method("water_depth_at"):
+		current_water_depth = 0.0
+		water_sample_timer = 0.0
+		breath_remaining = minf(breath_remaining + max_breath * 0.30 * delta, max_breath)
+		return
+	water_sample_timer -= delta
+	if water_sample_timer <= 0.0:
+		current_water_depth = maxf(float(game.world.water_depth_at(global_position)), 0.0)
+		# Water changes continuously but much more slowly than a physics frame.
+		# Staggered sampling keeps 100 actors from repeating the same river-segment
+		# distance queries every tick while retaining a generous forward probe.
+		water_sample_timer = 0.055 if is_player else 0.12 + fmod(float(actor_id) * 0.013, 0.06)
+	var wade_depth := Catalog.water_wade_depth(species_id)
+	var swimming := current_water_depth > wade_depth and not is_airborne()
+	if not swimming:
+		var recovery_rate := 0.34 if current_water_depth <= 0.01 else 0.22
+		breath_remaining = minf(breath_remaining + max_breath * recovery_rate * delta, max_breath)
+		if current_water_depth <= wade_depth:
+			water_escape_position = Vector3(INF, 0.0, INF)
+		return
+	var depth_pressure := lerpf(0.82, 1.34, clampf((current_water_depth - wade_depth) / 0.85, 0.0, 1.0))
+	if wants_sprint or dash_timer > 0.0:
+		depth_pressure *= 1.24
+	if exhausted:
+		depth_pressure *= 1.12
+	var breath_before_drain := breath_remaining
+	var drowning_delta := maxf(delta - breath_before_drain / maxf(depth_pressure, 0.01), 0.0)
+	breath_remaining = maxf(breath_remaining - delta * depth_pressure, 0.0)
+	var water_grade := Catalog.water_grade(species_id)
+	var stamina_drain_ratio := 0.002 + float(4 - water_grade) * 0.001
+	stamina = maxf(stamina - max_stamina * stamina_drain_ratio * delta, 0.0)
+	if breath_remaining <= 0.0 and drowning_delta > 0.0:
+		var health_before_drowning := health
+		health = drowning_health_after(health, max_health, drowning_delta)
+		var water_damage := maxf(health_before_drowning - health, 0.0)
+		damage_taken += water_damage
+		drowning_seconds += drowning_delta
+		health_changed.emit(health, max_health)
+		_update_health_bar()
+		if health <= 0.0:
+			last_death_cause = "drowning"
+			die(null)
+			return
+	if is_player and water_warning_timer <= 0.0 and water_breath_ratio() <= WATER_ESCAPE_BREATH_RATIO:
+		water_warning_timer = 4.0
+		game.show_hint("屏息只剩 %.0f 秒！停止冲刺并尽快返回浅滩，否则会溺水" % breath_remaining)
+
+
+func water_breath_ratio() -> float:
+	return clampf(breath_remaining / maxf(max_breath, 1.0), 0.0, 1.0)
+
+
+func is_swimming() -> bool:
+	return not is_airborne() and current_water_depth > Catalog.water_wade_depth(species_id)
+
+
+func water_status_text() -> String:
+	if current_water_depth <= 0.01:
+		return ""
+	var zone_name := "浅滩"
+	if current_water_depth > 0.58:
+		zone_name = "深水"
+	elif current_water_depth > 0.22:
+		zone_name = "中水"
+	if not is_swimming():
+		return "%s %.2fm · 安全涉水" % [zone_name, current_water_depth]
+	if breath_remaining <= 0.0:
+		return "%s %.2fm · 正在溺水！" % [zone_name, current_water_depth]
+	return "%s %.2fm · 屏息 %.0f/%.0fs" % [zone_name, current_water_depth, breath_remaining, max_breath]
+
+
+func water_status_is_dangerous() -> bool:
+	return is_swimming() and water_breath_ratio() <= WATER_ESCAPE_BREATH_RATIO
+
+
+func _needs_water_escape() -> bool:
+	return not is_airborne() and current_water_depth > Catalog.water_wade_depth(species_id) and water_breath_ratio() <= WATER_ESCAPE_BREATH_RATIO
+
+
+func _begin_water_escape() -> void:
+	if game.world == null or not game.world.has_method("nearest_safe_water_position"):
+		return
+	var escape_search_radius := maxf(20.0, float(game.world.world_size) * 0.22) if game.world is EcoWorld else 20.0
+	water_escape_position = game.world.nearest_safe_water_position(global_position, Catalog.water_wade_depth(species_id), escape_search_radius)
+	ai_state = "water_escape"
+	ai_target = null
+	resource_target = null
+	state_commit_timer = 1.2
+
+
+func _ai_water_entry_limit() -> float:
+	var pursuing_fish: bool = ai_state == "food" and is_instance_valid(resource_target) and resource_target is FoodPatch and resource_target.food_kind == "fish"
+	var escape_advantage := false
+	if ai_state == "flee" and is_instance_valid(ai_target):
+		escape_advantage = Catalog.water_grade(species_id) >= Catalog.water_grade(ai_target.species_id) + 2
+	var limit := Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), pursuing_fish, escape_advantage)
+	if _collapse_competition_active() and water_breath_ratio() > 0.60:
+		limit += 0.10
+	return minf(limit, 1.35)
+
+
+func _water_resource_is_safe(resource: Node3D) -> bool:
+	if not is_instance_valid(resource) or game.world == null or not game.world.has_method("water_depth_at"):
+		return is_instance_valid(resource)
+	var resource_position: Vector3 = resource.global_position if resource.is_inside_tree() else resource.position
+	var resource_depth := float(game.world.water_depth_at(resource_position))
+	if resource_depth <= Catalog.water_wade_depth(species_id):
+		return true
+	var pursuing_fish: bool = resource is FoodPatch and resource.food_kind == "fish"
+	return resource_depth <= Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), pursuing_fish, false)
+
+
+func _steer_for_water_safety(direction: Vector3) -> Vector3:
+	if is_player or is_airborne() or direction.length() <= 0.05 or game.world == null or not game.world.has_method("water_depth_at"):
+		return direction
+	var normalized_direction := direction.normalized()
+	if water_steering_timer > 0.0 and cached_water_input_direction.dot(normalized_direction) >= 0.86:
+		return cached_water_safe_direction
+	var entry_limit := _ai_water_entry_limit()
+	var probe_distance := 1.9 + float(int(data["size"])) * 0.12
+	var probe := global_position + normalized_direction * probe_distance
+	var probe_depth := float(game.world.water_depth_at(probe))
+	var safe_direction := direction
+	if probe_depth <= entry_limit:
+		safe_direction = direction
+	elif current_water_depth > entry_limit:
+		if water_escape_position.x == INF and game.world.has_method("nearest_safe_water_position"):
+			var escape_search_radius := maxf(20.0, float(game.world.world_size) * 0.22) if game.world is EcoWorld else 20.0
+			water_escape_position = game.world.nearest_safe_water_position(global_position, Catalog.water_wade_depth(species_id), escape_search_radius)
+		var escape_offset := water_escape_position - global_position
+		safe_direction = Vector3(escape_offset.x, 0.0, escape_offset.z).normalized() if escape_offset.length() > 0.1 else direction
+	elif game.world.has_method("water_body_at") and game.world.water_body_at(probe) == "stream" and game.world.has_method("nearest_ford_position"):
+		var ford_offset: Vector3 = game.world.nearest_ford_position(global_position) - global_position
+		if Vector2(ford_offset.x, ford_offset.z).length() > 1.2:
+			safe_direction = Vector3(ford_offset.x, 0.0, ford_offset.z).normalized()
+		else:
+			safe_direction = _safest_water_alternative(direction, probe_distance, entry_limit)
+	else:
+		safe_direction = _safest_water_alternative(direction, probe_distance, entry_limit)
+	cached_water_input_direction = normalized_direction
+	cached_water_safe_direction = safe_direction
+	water_steering_timer = 0.10 + fmod(float(actor_id) * 0.011, 0.055)
+	return safe_direction
+
+
+func _safest_water_alternative(direction: Vector3, probe_distance: float, entry_limit: float) -> Vector3:
+	var best_direction := Vector3.ZERO
+	var best_depth := INF
+	for angle in [0.82, -0.82, 1.32, -1.32]:
+		var alternative := direction.rotated(Vector3.UP, float(angle)).normalized()
+		var alternative_depth := float(game.world.water_depth_at(global_position + alternative * probe_distance))
+		if alternative_depth < best_depth:
+			best_depth = alternative_depth
+			best_direction = alternative
+	return best_direction if best_depth <= entry_limit else Vector3.ZERO
 
 
 func _update_health_bar_visibility(delta: float) -> void:
@@ -2127,6 +2316,15 @@ func _update_ai(delta: float) -> void:
 	attack_intent = false
 	wants_sprint = false
 	match ai_state:
+		"water_escape":
+			if current_water_depth <= Catalog.water_wade_depth(species_id) or water_escape_position.x == INF:
+				ai_state = "wander"
+				water_escape_position = Vector3(INF, 0.0, INF)
+				desired_direction = Vector3.ZERO
+			else:
+				var water_exit_offset := water_escape_position - global_position
+				desired_direction = Vector3(water_exit_offset.x, 0.0, water_exit_offset.z).normalized()
+				wants_sprint = stamina > max_stamina * 0.12 and breath_remaining > 0.0
 		"flee":
 			if is_instance_valid(ai_target) and not ai_target.dead:
 				var away := (global_position - ai_target.global_position).normalized()
@@ -2277,6 +2475,14 @@ func _update_ai(delta: float) -> void:
 					wants_sprint = false
 		"food":
 			if is_instance_valid(resource_target) and (not resource_target is FoodPatch or resource_target.active):
+				if not _water_resource_is_safe(resource_target):
+					if _needs_water_escape():
+						_begin_water_escape()
+					else:
+						ai_state = "wander"
+						resource_target = null
+					desired_direction = Vector3.ZERO
+					return
 				var to_food := resource_target.global_position - global_position
 				desired_direction = Vector3(to_food.x, 0.0, to_food.z).normalized()
 				if Catalog.has_trait(species_id, "flying") and Vector2(to_food.x, to_food.z).length() < 5.5:
@@ -2309,6 +2515,9 @@ func _update_ai(delta: float) -> void:
 
 func _think() -> void:
 	think_cycles += 1
+	if _needs_water_escape():
+		_begin_water_escape()
+		return
 	var living_actors: Array[EcoActor] = game.get_living_actors()
 	var nearest_threat: EcoActor
 	var threat_distance := INF
@@ -2775,6 +2984,8 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 			continue
 		if not patch.active or patch.food_kind not in favored_foods or not patch.can_be_eaten_by(species_id):
 			continue
+		if not _water_resource_is_safe(patch):
+			continue
 		if not _habit_resource_inside_active_area(patch):
 			continue
 		if habit_rewarded_sources.has(_habit_source_key(patch)):
@@ -2807,7 +3018,7 @@ func _best_habit_corpse(search_range: float, living_actors: Array[EcoActor]) -> 
 			continue
 		if blocked_route_timer > 0.0 and corpse.get_instance_id() == blocked_route_instance_id:
 			continue
-		if not _habit_resource_inside_active_area(corpse) or habit_rewarded_sources.has(_habit_source_key(corpse)) or not _corpse_is_safe(corpse, living_actors):
+		if not _habit_resource_inside_active_area(corpse) or habit_rewarded_sources.has(_habit_source_key(corpse)) or not _water_resource_is_safe(corpse) or not _corpse_is_safe(corpse, living_actors):
 			continue
 		var distance := origin.distance_to(corpse.global_position)
 		if distance > search_range:
@@ -2838,6 +3049,8 @@ func _habit_resource_inside_active_area(resource: Node3D) -> bool:
 
 
 func _corpse_is_safe(corpse: Node3D, living_actors: Array[EcoActor]) -> bool:
+	if not _water_resource_is_safe(corpse):
+		return false
 	var danger_count := 0
 	var nearby_pack := 0
 	var own_presence := _ecology_combat_presence(self)
@@ -2860,14 +3073,14 @@ func _corpse_is_safe(corpse: Node3D, living_actors: Array[EcoActor]) -> bool:
 func _best_wild_food(search_range: float) -> Node3D:
 	var origin := global_position if is_inside_tree() else position
 	var excluded_id := blocked_route_instance_id if blocked_route_timer > 0.0 else 0
-	var candidate: Node3D = game.nearest_food(origin, search_range, species_id, true, excluded_id)
+	var candidate: Node3D = game.nearest_food(origin, search_range, species_id, true, excluded_id, water_breath_ratio(), hunger)
 	if not is_instance_valid(candidate) or not candidate is FoodPatch or not candidate.ecology_hotspot:
 		return candidate
 	var risk := str(game.ecology_hotspot_risk_level()) if game.has_method("ecology_hotspot_risk_level") else "平稳"
 	var risk_averse := int(data["size"]) <= 3 and float(data["courage"]) < 0.50 and hunger < 78.0
 	if risk != "高危" or not risk_averse:
 		return candidate
-	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false, excluded_id)
+	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false, excluded_id, water_breath_ratio(), hunger)
 	return safer_food if is_instance_valid(safer_food) else null
 
 
@@ -2902,6 +3115,8 @@ func _best_nearby_food(search_range: float, living_actors: Array[EcoActor] = [])
 			continue
 		var patch := candidate_node as FoodPatch
 		if not patch.active or not patch.can_be_eaten_by(species_id):
+			continue
+		if not _water_resource_is_safe(patch):
 			continue
 		var distance := origin.distance_to(patch.global_position)
 		if distance <= search_range and distance < patch_distance:
@@ -3040,6 +3255,12 @@ func _prey_utility(target: EcoActor, pack_support: int = 0, target_pressure: int
 	var habitat_delta := 0.0
 	if target_region != "":
 		habitat_delta = Catalog.habitat_affinity(species_id, target_region) - Catalog.habitat_affinity(target.species_id, target_region)
+	var target_water_depth := float(game.world.water_depth_at(target.global_position)) if game.world != null and game.world.has_method("water_depth_at") else 0.0
+	var water_advantage := 0.0
+	var water_risk := 0.0
+	if target_water_depth > 0.01:
+		water_advantage = float(Catalog.water_grade(species_id) - Catalog.water_grade(target.species_id)) / 4.0
+		water_risk = maxf(target_water_depth - Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), false, false), 0.0)
 	var context := {
 		"hunter_health": health / maxf(max_health, 1.0),
 		"hunter_stamina": stamina / maxf(max_stamina, 1.0),
@@ -3061,6 +3282,8 @@ func _prey_utility(target: EcoActor, pack_support: int = 0, target_pressure: int
 		"scavenger": Catalog.has_trait(species_id, "scavenger"),
 		"ambush_ready": has_cover_ambush(),
 		"aerial_small_prey": Catalog.has_trait(species_id, "flying") and int(target.data["size"]) <= 2,
+		"water_advantage": water_advantage,
+		"water_risk": water_risk,
 		"attack_range": float(data["attack_range"]),
 	}
 	return evaluate_prey_utility(context)
@@ -3087,6 +3310,8 @@ func _apply_movement(delta: float) -> void:
 			steering_radius *= 0.80
 		var look_ahead_scale := 1.72 if species_id == "cheetah" else 1.0
 		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale)
+	if not is_player and flat_direction.length() > 0.05 and (not uses_height_domain or global_position.y < 1.35):
+		flat_direction = _steer_for_water_safety(flat_direction)
 	if avoid_timer > 0.0 and not is_player:
 		avoid_timer -= delta
 		flat_direction = (flat_direction + avoid_direction * 1.3).normalized()
@@ -3129,17 +3354,16 @@ func _apply_movement(delta: float) -> void:
 	if shell_guard_timer > 0.0:
 		flat_direction = Vector3.ZERO
 		wants_sprint = false
-	var water_depth: float = game.world.water_depth_at(global_position) if game.world != null and game.world.has_method("water_depth_at") else 0.0
+	var water_depth := current_water_depth
 	var in_wetland: bool = water_depth > 0.01
+	var swimming_water := not uses_height_domain and water_depth > Catalog.water_wade_depth(species_id)
 	var speed := float(data["speed"])
 	if game.world != null and game.world.has_method("movement_multiplier"):
 		speed *= game.world.movement_multiplier(species_id, global_position)
-	if not uses_height_domain and in_wetland and Catalog.has_trait(species_id, "wetland_swimmer"):
-		speed *= float(data.get("wetland_speed", 1.0))
-	elif not uses_height_domain and water_depth > 0.45:
-		speed *= 0.68 if not Catalog.has_trait(species_id, "giant") else 0.84
+	if swimming_water:
+		speed *= Catalog.water_speed_multiplier(species_id)
 	elif not uses_height_domain and in_wetland:
-		speed *= 0.90
+		speed *= 0.91 + float(Catalog.water_grade(species_id)) * 0.015
 	if forage_speed_timer > 0.0:
 		speed *= 1.16
 	if has_habit_buff("escape"):
@@ -3164,10 +3388,8 @@ func _apply_movement(delta: float) -> void:
 			sprint_cost *= 0.82
 		if has_habit_buff("escape"):
 			sprint_cost *= 0.82
-		if not uses_height_domain and in_wetland and Catalog.has_trait(species_id, "wetland_swimmer"):
-			sprint_cost *= 0.70
-		elif not uses_height_domain and water_depth > 0.45:
-			sprint_cost *= 1.25
+		if swimming_water:
+			sprint_cost *= lerpf(1.34, 0.70, float(Catalog.water_grade(species_id)) / 4.0)
 		if is_flying and game.world != null and game.world.has_method("flight_stamina_multiplier"):
 			sprint_cost *= game.world.flight_stamina_multiplier()
 		if game.world != null and game.world.has_method("stamina_cost_multiplier"):
@@ -3183,7 +3405,8 @@ func _apply_movement(delta: float) -> void:
 		flat_direction = dash_direction
 		var dash_factor := 2.85 if species_id == "cheetah" else (2.55 if is_flying else 2.25)
 		var environment_factor: float = game.world.movement_multiplier(species_id, global_position) if game.world != null and game.world.has_method("movement_multiplier") else 1.0
-		speed = float(data["speed"]) * dash_factor * environment_factor * (float(data.get("wetland_speed", 1.0)) if in_wetland and not is_flying else 1.0)
+		var water_dash_factor := Catalog.water_speed_multiplier(species_id) if swimming_water else (0.94 if in_wetland and not is_flying else 1.0)
+		speed = float(data["speed"]) * dash_factor * environment_factor * water_dash_factor
 	velocity.x = move_toward(velocity.x, flat_direction.x * speed, delta * speed * 8.0)
 	velocity.z = move_toward(velocity.z, flat_direction.z * speed, delta * speed * 8.0)
 	if uses_height_domain:
@@ -4178,14 +4401,28 @@ func try_consume_resource(resource: Node3D) -> bool:
 	if resource is FoodPatch and not resource.can_be_eaten_by(species_id):
 		return false
 	var bite_size := 22.0 if Catalog.has_trait(species_id, "giant") else 14.0
+	var caught_fish: bool = resource is FoodPatch and resource.food_kind == "fish"
+	var catch_multiplier := Catalog.fish_catch_multiplier(species_id) if caught_fish else 1.0
+	if caught_fish and catch_multiplier <= 0.0:
+		if is_player:
+			game.show_hint("你的物种不会捕鱼，应寻找其他食物")
+		return false
+	if caught_fish:
+		bite_size *= catch_multiplier
 	var eaten: float = resource.consume(bite_size)
 	if eaten <= 0.0:
 		return false
 	food_bites += 1
+	if caught_fish:
+		fish_catches += 1
 	eat_timer = 1.0
 	var nutrition_multiplier: float = resource.get_nutrition_multiplier() if resource is FoodPatch else 1.0
 	var satiety_efficiency := 0.55 if Catalog.has_trait(species_id, "giant") else 0.85
-	var healing_efficiency := 0.08 if Catalog.has_trait(species_id, "giant") else (0.28 if is_corpse else 0.12)
+	if caught_fish:
+		satiety_efficiency *= 1.12
+	var healing_efficiency := 0.08 if Catalog.has_trait(species_id, "giant") else (0.28 if is_corpse else ((0.22 + minf(catch_multiplier, 1.2) * 0.04) if caught_fish else 0.12))
+	var health_before_food := health
+	var hunger_before_food := hunger
 	hunger = maxf(hunger - eaten * satiety_efficiency * nutrition_multiplier, 0.0)
 	health = minf(health + eaten * healing_efficiency * nutrition_multiplier, max_health)
 	var habit_result := _apply_food_habit(resource, "corpse" if is_corpse else str(resource.food_kind))
@@ -4211,6 +4448,8 @@ func try_consume_resource(resource: Node3D) -> bool:
 			game.show_hint("进食%s触发「%s」：生命 +%d、耐力 +%d、适应经验 +%d · %s" % [
 				food_name, str(habit_result["name"]), ceili(float(habit_result["health"])), ceili(float(habit_result["stamina"])), int(habit_result.get("xp", 0)), Catalog.habit_buff_display_name(str(habit_result["buff"])),
 			])
+		elif caught_fish:
+			game.show_hint("捕获%s：生命 +%d、饱腹 +%d · 捕鱼效率 %.0f%%" % [food_name, ceili(health - health_before_food), ceili(hunger_before_food - hunger), catch_multiplier * 100.0])
 		else:
 			game.show_hint("进食%s，恢复了生命与饱腹" % food_name)
 	return true
@@ -4328,6 +4567,8 @@ func _level_up() -> void:
 func die(killer: EcoActor) -> void:
 	if dead:
 		return
+	if is_instance_valid(killer):
+		last_death_cause = "combat"
 	dead = true
 	health = 0.0
 	velocity = Vector3.ZERO
@@ -4503,7 +4744,7 @@ func _update_visual_motion(delta: float) -> void:
 				var hit_progress := 1.0 - clampf(external_hit_animation_timer / FlightRig.HIT_DURATION, 0.0, 1.0)
 				FlightRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, dive_progress, hit_progress, float(actor_id) * 0.47, delta)
 		elif CrocodileRig.supports(species_id):
-			var swimming: bool = game.world != null and game.world.has_method("water_depth_at") and float(game.world.water_depth_at(global_position)) > 0.01
+			var swimming: bool = is_swimming()
 			external_animation_state = CrocodileRig.resolve_state(gait_blend, external_attack_animation_timer, external_skill_animation_timer, external_hit_animation_timer, swimming)
 			baked_animation_updated = _play_external_baked_animation(external_animation_state, speed_ratio)
 			if not baked_animation_updated:
@@ -4511,6 +4752,9 @@ func _update_visual_motion(delta: float) -> void:
 				var roll_progress := 1.0 - clampf(external_skill_animation_timer / CrocodileRig.ROLL_DURATION, 0.0, 1.0)
 				var hit_progress := 1.0 - clampf(external_hit_animation_timer / CrocodileRig.HIT_DURATION, 0.0, 1.0)
 				CrocodileRig.apply_pose(external_skeleton, external_animation_state, move_time, speed_ratio, attack_progress, roll_progress, hit_progress, float(actor_id) * 0.47, delta)
+		elif is_swimming() and is_instance_valid(external_animation_player) and external_animation_player.has_animation("swim") and external_attack_animation_timer <= 0.0 and external_skill_animation_timer <= 0.0 and external_hit_animation_timer <= 0.0 and eat_timer <= 0.0:
+			external_animation_state = "swim"
+			baked_animation_updated = _play_external_baked_animation(external_animation_state, speed_ratio)
 		else:
 			external_animation_state = SkeletonRig.resolve_state(
 				gait_blend,

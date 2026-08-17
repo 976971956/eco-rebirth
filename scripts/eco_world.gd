@@ -56,16 +56,16 @@ const REGION_LANDMARK_PROFILES := {
 }
 
 const LEVEL_WORLD_PROFILES := [
-	{"id": "newborn_grove", "title": "新生林地", "rule": "落果丰足 · 林间掩体 · 晴朗白昼", "focus": ["forest"], "tree": 1.14, "rock": 0.72, "cover": 1.14, "props": 1.04, "food": 1.18, "water": 0.72, "side_trails": 2, "event": 1.00, "collapse": 0.24, "phases": ["day"], "weather": ["clear"], "accent": "#9fd99a", "signature": 3},
-	{"id": "split_canopy", "title": "裂冠森林", "rule": "密林争食 · 多重绕路 · 防御反制", "focus": ["forest", "grassland"], "tree": 1.24, "rock": 0.92, "cover": 1.32, "props": 1.10, "food": 1.06, "water": 0.80, "side_trails": 4, "event": 0.94, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#d2be73", "signature": 4},
-	{"id": "river_food_chain", "title": "河谷食链", "rule": "浅滩交汇 · 两栖路线 · 补给竞争", "focus": ["wetland", "forest"], "tree": 0.94, "rock": 0.76, "cover": 1.08, "props": 1.12, "food": 1.20, "water": 1.34, "side_trails": 3, "event": 0.92, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#65d3cf", "signature": 5},
-	{"id": "mountain_passes", "title": "群山暗穴", "rule": "岩径捷道 · 窄口伏击 · 高地反制", "focus": ["highland", "forest"], "tree": 0.84, "rock": 1.28, "cover": 0.96, "props": 1.08, "food": 1.00, "water": 0.62, "side_trails": 5, "event": 0.90, "collapse": 0.22, "phases": ["day"], "weather": ["clear", "fog"], "accent": "#d6bd86", "signature": 6},
-	{"id": "giant_prairie", "title": "巨兽草原", "rule": "开阔迁徙 · 巨兽冲突 · 水源汇聚", "focus": ["grassland"], "tree": 0.58, "rock": 0.74, "cover": 0.82, "props": 1.08, "food": 1.14, "water": 0.82, "side_trails": 4, "event": 0.84, "collapse": 0.21, "phases": ["day"], "weather": ["clear"], "accent": "#e2c269", "signature": 7},
-	{"id": "twilight_wetland", "title": "暮夜湿地", "rule": "暗夜感知 · 深浅水路 · 芦苇潜行", "focus": ["wetland"], "tree": 1.02, "rock": 0.68, "cover": 1.28, "props": 1.16, "food": 1.10, "water": 1.46, "side_trails": 4, "event": 0.82, "collapse": 0.21, "phases": ["night"], "weather": ["clear", "fog"], "accent": "#91aee2", "signature": 8},
-	{"id": "storm_frontier", "title": "风暴边境", "rule": "恶劣天气 · 避风路线 · 适应竞争", "focus": ["highland", "grassland"], "tree": 0.82, "rock": 1.20, "cover": 1.00, "props": 1.02, "food": 0.96, "water": 1.06, "side_trails": 5, "event": 0.78, "collapse": 0.20, "phases": ["day", "night"], "weather": ["rain", "fog", "storm"], "accent": "#83b9dd", "signature": 9},
-	{"id": "many_realms", "title": "万境群岛", "rule": "四境并存 · 长途迁徙 · 跨区抉择", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 1.00, "rock": 1.00, "cover": 1.04, "props": 1.20, "food": 1.04, "water": 1.14, "side_trails": 6, "event": 0.74, "collapse": 0.20, "phases": ["day", "night"], "weather": ["clear", "rain", "fog"], "accent": "#b8d88c", "signature": 10},
-	{"id": "predator_basin", "title": "猎王盆地", "rule": "资源稀缺 · 顶级猎手 · 环线周旋", "focus": ["grassland", "highland"], "tree": 0.72, "rock": 1.08, "cover": 1.12, "props": 0.94, "food": 0.80, "water": 0.92, "side_trails": 5, "event": 0.72, "collapse": 0.19, "phases": ["day", "night"], "weather": ["clear", "fog"], "accent": "#dc8e68", "signature": 11},
-	{"id": "ultimate_biosphere", "title": "终极生物圈", "rule": "全域开放 · 高频生态潮 · 最终收束", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 0.90, "rock": 1.02, "cover": 0.94, "props": 1.12, "food": 0.90, "water": 1.18, "side_trails": 6, "event": 0.66, "collapse": 0.18, "phases": ["day", "night"], "weather": ["clear", "rain", "fog", "storm"], "accent": "#e4c76d", "signature": 12},
+	{"id": "newborn_grove", "title": "新生林地", "rule": "落果丰足 · 安全浅滩 · 晴朗白昼", "focus": ["forest"], "tree": 1.14, "rock": 0.72, "cover": 1.14, "props": 1.04, "food": 1.18, "water": 0.72, "water_depth": 0.68, "side_trails": 2, "event": 1.00, "collapse": 0.24, "phases": ["day"], "weather": ["clear"], "accent": "#9fd99a", "signature": 3},
+	{"id": "split_canopy", "title": "裂冠森林", "rule": "密林争食 · 多重绕路 · 浅水反制", "focus": ["forest", "grassland"], "tree": 1.24, "rock": 0.92, "cover": 1.32, "props": 1.10, "food": 1.06, "water": 0.80, "water_depth": 0.76, "side_trails": 4, "event": 0.94, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#d2be73", "signature": 4},
+	{"id": "river_food_chain", "title": "河谷食链", "rule": "深浅水路 · 鱼群争夺 · 两栖伏击", "focus": ["wetland", "forest"], "tree": 0.94, "rock": 0.76, "cover": 1.08, "props": 1.12, "food": 1.20, "water": 1.34, "water_depth": 1.04, "side_trails": 3, "event": 0.92, "collapse": 0.23, "phases": ["day"], "weather": ["clear"], "accent": "#65d3cf", "signature": 5},
+	{"id": "mountain_passes", "title": "群山暗穴", "rule": "岩径捷道 · 窄口伏击 · 浅溪过渡", "focus": ["highland", "forest"], "tree": 0.84, "rock": 1.28, "cover": 0.96, "props": 1.08, "food": 1.00, "water": 0.62, "water_depth": 0.72, "side_trails": 5, "event": 0.90, "collapse": 0.22, "phases": ["day"], "weather": ["clear", "fog"], "accent": "#d6bd86", "signature": 6},
+	{"id": "giant_prairie", "title": "巨兽草原", "rule": "开阔迁徙 · 巨兽冲突 · 水源汇聚", "focus": ["grassland"], "tree": 0.58, "rock": 0.74, "cover": 0.82, "props": 1.08, "food": 1.14, "water": 0.82, "water_depth": 0.90, "side_trails": 4, "event": 0.84, "collapse": 0.21, "phases": ["day"], "weather": ["clear"], "accent": "#e2c269", "signature": 7},
+	{"id": "twilight_wetland", "title": "暮夜湿地", "rule": "暗夜感知 · 深水屏息 · 芦苇潜行", "focus": ["wetland"], "tree": 1.02, "rock": 0.68, "cover": 1.28, "props": 1.16, "food": 1.10, "water": 1.46, "water_depth": 1.18, "side_trails": 4, "event": 0.82, "collapse": 0.21, "phases": ["night"], "weather": ["clear", "fog"], "accent": "#91aee2", "signature": 8},
+	{"id": "storm_frontier", "title": "风暴边境", "rule": "恶劣天气 · 涨水路线 · 适应竞争", "focus": ["highland", "grassland"], "tree": 0.82, "rock": 1.20, "cover": 1.00, "props": 1.02, "food": 0.96, "water": 1.06, "water_depth": 1.08, "side_trails": 5, "event": 0.78, "collapse": 0.20, "phases": ["day", "night"], "weather": ["rain", "fog", "storm"], "accent": "#83b9dd", "signature": 9},
+	{"id": "many_realms", "title": "万境群岛", "rule": "四境并存 · 跨水迁徙 · 路线抉择", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 1.00, "rock": 1.00, "cover": 1.04, "props": 1.20, "food": 1.04, "water": 1.14, "water_depth": 1.10, "side_trails": 6, "event": 0.74, "collapse": 0.20, "phases": ["day", "night"], "weather": ["clear", "rain", "fog"], "accent": "#b8d88c", "signature": 10},
+	{"id": "predator_basin", "title": "猎王盆地", "rule": "资源稀缺 · 深潭诱饵 · 顶级猎手", "focus": ["grassland", "highland"], "tree": 0.72, "rock": 1.08, "cover": 1.12, "props": 0.94, "food": 0.80, "water": 0.92, "water_depth": 1.06, "side_trails": 5, "event": 0.72, "collapse": 0.19, "phases": ["day", "night"], "weather": ["clear", "fog"], "accent": "#dc8e68", "signature": 11},
+	{"id": "ultimate_biosphere", "title": "终极生物圈", "rule": "全域开放 · 深浅水网 · 最终收束", "focus": ["forest", "grassland", "wetland", "highland"], "tree": 0.90, "rock": 1.02, "cover": 0.94, "props": 1.12, "food": 0.90, "water": 1.18, "water_depth": 1.16, "side_trails": 6, "event": 0.66, "collapse": 0.18, "phases": ["day", "night"], "weather": ["clear", "rain", "fog", "storm"], "accent": "#e4c76d", "signature": 12},
 ]
 
 var world_size: float = 86.0
@@ -461,19 +461,14 @@ func _build_paths_and_pond() -> void:
 		var side_material := Factory.terrain_material(side_color.darkened(0.10), side_color.lightened(0.025), 8.0, FOREST_GROUND_TEXTURE, 2.8, 0.42)
 		_add_ground_ribbon("ForestTrail", side_points, rng.randf_range(2.05, 2.85), 0.018 + trail_index * 0.002, side_material)
 
-	var stream_points: Array[Vector2] = [
-		Vector2(-world_size * 0.48, -world_size * 0.17),
-		Vector2(-world_size * 0.31, -world_size * 0.13),
-		Vector2(-world_size * 0.14, -world_size * 0.14),
-		Vector2(world_size * 0.04, -world_size * 0.09),
-		Vector2(world_size * 0.24, -world_size * 0.10),
-		Vector2(world_size * 0.48, -world_size * 0.055),
-	]
+	var stream_points := stream_points_for_size(world_size)
 	var water_scale := float(level_profile_data.get("water", 1.0))
 	var bank_material := Factory.terrain_material(Color("#3f5643"), Color("#6d775a"), 7.0, WETLAND_GROUND_TEXTURE, 2.7, 0.38)
 	_add_ground_ribbon("StreamBank", stream_points, 7.6 * water_scale, 0.030, bank_material, true)
 	var stream_material := Factory.water_material(Color("#527f75"), Color("#183f46"), 0.78)
 	_add_ground_ribbon("ShallowStream", stream_points, 5.4 * water_scale, 0.044, stream_material, true)
+	var deep_stream_material := Factory.water_material(Color("#355f62"), Color("#102f3b"), 0.84)
+	_add_ground_ribbon("StreamDeepChannel", stream_points, 2.15 * water_scale, 0.047, deep_stream_material, true)
 	var crossing_center := stream_points[2].lerp(stream_points[3], 0.52)
 	var crossing_tangent := (stream_points[3] - stream_points[2]).normalized()
 	var crossing_normal := Vector2(-crossing_tangent.y, crossing_tangent.x)
@@ -951,9 +946,22 @@ func _build_food() -> void:
 			"grassland": food_pool = ["grass", "grass", "berries", "fruit"]
 			"wetland": food_pool = ["fish", "fish", "mushroom", "grass"]
 			_: food_pool = ["roots", "roots", "grass", "mushroom"]
-		patch.setup(food_pool[rng.randi_range(0, food_pool.size() - 1)], rng)
+		var food_kind := food_pool[rng.randi_range(0, food_pool.size() - 1)]
+		if food_kind == "fish":
+			patch.position = _random_fish_position(i % 3 == 0)
+		patch.setup(food_kind, rng)
 		add_child(patch)
 		food_patches.append(patch)
+	# Fish are a guaranteed water resource rather than a lucky replacement for
+	# an ordinary plant roll. Later levels add a few more schools but keep the
+	# count small enough for mobile/Web ecology simulations.
+	var guaranteed_fish := 2 + int(floor(float(campaign_level - 1) / 3.0))
+	for fish_index in range(guaranteed_fish):
+		var fish_patch := FoodPatchScript.new()
+		fish_patch.position = _random_fish_position(fish_index % 2 == 1)
+		fish_patch.setup("fish", rng)
+		add_child(fish_patch)
+		food_patches.append(fish_patch)
 
 
 func _random_level_food_position() -> Vector3:
@@ -966,6 +974,22 @@ func _random_level_food_position() -> Vector3:
 		if region_id_at(candidate) == desired_region:
 			return candidate
 	return _random_valid_position(3.0)
+
+
+func _random_fish_position(prefer_deep: bool) -> Vector3:
+	for attempt in range(90):
+		var candidate := _random_valid_position(2.2)
+		var depth := water_depth_at(candidate)
+		if prefer_deep:
+			if depth >= 0.48 and depth <= 1.30:
+				return candidate
+		elif depth >= 0.13 and depth <= 0.58:
+			return candidate
+	var stream_points := stream_points_for_size(world_size)
+	if prefer_deep:
+		return Vector3(-world_size * 0.25, 0.0, world_size * 0.25)
+	var fallback := stream_points[1].lerp(stream_points[2], 0.42)
+	return Vector3(fallback.x, 0.0, fallback.y)
 
 
 func _build_visible_border() -> void:
@@ -1567,18 +1591,117 @@ func region_name_at(pos: Vector3) -> String:
 	return str(REGION_NAMES[region_id_at(pos)])
 
 
+static func stream_points_for_size(size_value: float) -> Array[Vector2]:
+	return [
+		Vector2(-size_value * 0.48, -size_value * 0.17),
+		Vector2(-size_value * 0.31, -size_value * 0.13),
+		Vector2(-size_value * 0.14, -size_value * 0.14),
+		Vector2(size_value * 0.04, -size_value * 0.09),
+		Vector2(size_value * 0.24, -size_value * 0.10),
+		Vector2(size_value * 0.48, -size_value * 0.055),
+	]
+
+
 func water_depth_at(pos: Vector3) -> float:
-	if region_id_at(pos) != "wetland":
-		return 0.0
+	var point := Vector2(pos.x, pos.z)
+	var water_scale := float(level_profile_data.get("water", 1.0))
+	var depth_scale := float(level_profile_data.get("water_depth", 1.0))
+	if weather_id == "rain":
+		depth_scale *= 1.06
+	elif weather_id == "storm":
+		depth_scale *= 1.12
+	var result := 0.0
+
 	var basin_center := Vector2(-world_size * 0.25, world_size * 0.25)
-	var basin_radius := world_size * 0.145 * float(level_profile_data.get("water", 1.0))
+	var basin_radius := world_size * 0.145 * water_scale
 	var normalized := Vector2(
 		(pos.x - basin_center.x) / maxf(basin_radius, 0.1),
 		(pos.z - basin_center.y) / maxf(basin_radius * 0.72, 0.1)
 	).length()
 	if normalized <= 1.0:
-		return lerpf(0.68, 0.28, normalized)
-	return 0.16
+		var basin_depth := lerpf(1.08, 0.10, smoothstep(0.0, 1.0, normalized)) * depth_scale
+		result = maxf(result, basin_depth)
+
+	var stream_points := stream_points_for_size(world_size)
+	var stream_distance := INF
+	for point_index in range(stream_points.size() - 1):
+		stream_distance = minf(stream_distance, point_segment_distance_2d(point, stream_points[point_index], stream_points[point_index + 1]))
+	var channel_half_width := 2.70 * water_scale
+	if stream_distance <= channel_half_width:
+		var channel_ratio := clampf(stream_distance / maxf(channel_half_width, 0.1), 0.0, 1.0)
+		var stream_depth := lerpf(0.66, 0.08, smoothstep(0.0, 1.0, channel_ratio)) * depth_scale
+		# The visible stepping stones mark a genuine shallow ford. Even species
+		# with poor water adaptation retain one readable route across the river.
+		var ford_center := stream_points[2].lerp(stream_points[3], 0.52)
+		var ford_ratio := clampf(point.distance_to(ford_center) / maxf(4.8 * water_scale, 0.1), 0.0, 1.0)
+		if ford_ratio < 1.0:
+			stream_depth = minf(stream_depth, lerpf(0.14, stream_depth, smoothstep(0.0, 1.0, ford_ratio)))
+		result = maxf(result, stream_depth)
+	return maxf(result, 0.0)
+
+
+func water_zone_at(pos: Vector3) -> String:
+	var depth := water_depth_at(pos)
+	if depth <= 0.01:
+		return "dry"
+	if depth <= 0.22:
+		return "shallow"
+	if depth <= 0.58:
+		return "medium"
+	return "deep"
+
+
+func water_zone_display_name(pos: Vector3) -> String:
+	return {"dry": "陆地", "shallow": "浅滩", "medium": "中水", "deep": "深水"}.get(water_zone_at(pos), "陆地")
+
+
+func water_body_at(pos: Vector3) -> String:
+	var point := Vector2(pos.x, pos.z)
+	var water_scale := float(level_profile_data.get("water", 1.0))
+	var basin_center := Vector2(-world_size * 0.25, world_size * 0.25)
+	var basin_radius := world_size * 0.145 * water_scale
+	var basin_normalized := Vector2(
+		(point.x - basin_center.x) / maxf(basin_radius, 0.1),
+		(point.y - basin_center.y) / maxf(basin_radius * 0.72, 0.1)
+	).length()
+	if basin_normalized <= 1.0:
+		return "basin"
+	var points := stream_points_for_size(world_size)
+	for point_index in range(points.size() - 1):
+		if point_segment_distance_2d(point, points[point_index], points[point_index + 1]) <= 2.70 * water_scale:
+			return "stream"
+	return "dry"
+
+
+func nearest_ford_position(_origin: Vector3 = Vector3.ZERO) -> Vector3:
+	var points := stream_points_for_size(world_size)
+	var ford := points[2].lerp(points[3], 0.52)
+	return Vector3(ford.x, 0.0, ford.y)
+
+
+func nearest_safe_water_position(origin: Vector3, safe_depth: float, search_radius: float = 18.0) -> Vector3:
+	if water_depth_at(origin) <= safe_depth:
+		return Vector3(origin.x, 0.0, origin.z)
+	var best := Vector3(origin.x, 0.0, origin.z)
+	var best_score := water_depth_at(origin) * 10.0
+	for ring in range(1, 7):
+		var distance := search_radius * float(ring) / 6.0
+		for direction_index in range(16):
+			var angle := TAU * float(direction_index) / 16.0
+			var candidate := Vector3(origin.x + cos(angle) * distance, 0.0, origin.z + sin(angle) * distance)
+			var edge := world_size * 0.5 - 2.0
+			candidate.x = clampf(candidate.x, -edge, edge)
+			candidate.z = clampf(candidate.z, -edge, edge)
+			if not is_landing_clear(candidate, 0.45):
+				continue
+			var candidate_depth := water_depth_at(candidate)
+			var score := candidate_depth * 10.0 + distance * 0.018
+			if candidate_depth <= safe_depth:
+				return candidate
+			if score < best_score:
+				best_score = score
+				best = candidate
+	return best
 
 
 func condition_summary() -> String:

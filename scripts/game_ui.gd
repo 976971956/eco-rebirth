@@ -986,10 +986,10 @@ func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> v
 		level_prefix = "第%d关 · %s" % [int(level_profile.get("level", 1)), str(level_profile.get("title", "随机生态"))]
 	intro_title.text = "%s%s · %s" % [(level_prefix + "　|　") if level_prefix != "" else "", data["name"], data["subtitle"]]
 	var level_rule := ("本关生态：%s\n" % str(level_profile.get("rule", ""))) if not level_profile.is_empty() else ""
-	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
-	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
+	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n水域生存：浅滩可安全涉水；进入超过自身高度的水域会消耗屏息，鱼群可回血与补充饱腹\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
+	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
-		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
+		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.water_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
 	]
 	intro_panel.modulate = Color.WHITE
 	intro_panel.move_to_front()
@@ -1024,7 +1024,8 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
 	xp_value_label.text = ("最高等级" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
 	remaining_label.text = "存活个体　%d / %d" % [remaining, total]
-	region_label.text = "当前位置 · %s" % current_region
+	var water_status := player_actor.water_status_text()
+	region_label.text = "当前位置 · %s%s" % [current_region, (" · " + water_status) if water_status != "" else ""]
 	ecology_event_label.text = ecology_event_status
 	ecology_activity_label.text = ecology_activity_status
 	var activity_color := Color("#ef7d68") if ecology_activity_status.contains("高危") else (Color("#f0cf78") if ecology_activity_status.contains("警戒") else Color("#9bd69b"))
@@ -1050,7 +1051,10 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	var ecology_status := player_actor.ecology_leverage_status_text()
 	var chain_status := player_actor.counterplay_chain_status_text()
 	var habit_status := player_actor.habit_status_text()
-	if player_actor.exhausted:
+	if player_actor.water_status_is_dangerous():
+		tactical_status = player_actor.water_status_text()
+		tactical_color = Color("#70cfe8") if player_actor.breath_remaining > 0.0 else Color("#ef7d68")
+	elif player_actor.exhausted:
 		tactical_status = "力竭破绽"
 		tactical_color = Color("#f1d46b")
 	elif player_actor.eat_timer > 0.0:
@@ -1303,6 +1307,8 @@ func _refresh_enemy_health() -> void:
 		status_parts.append("受惊")
 	if enemy_target.is_cover_concealed():
 		status_parts.append("草丛隐蔽")
+	if enemy_target.current_water_depth > 0.01:
+		status_parts.append(enemy_target.water_status_text())
 	if is_instance_valid(player_actor):
 		var chain_status := player_actor.counterplay_chain_status_text(enemy_target)
 		if chain_status != "":

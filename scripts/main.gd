@@ -9,8 +9,8 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
-const SAVE_VERSION := 4
-const RELEASE_VERSION := "1.51.0"
+const SAVE_VERSION := 5
+const RELEASE_VERSION := "1.52.0"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -18,7 +18,7 @@ const TUTORIAL_STEPS := [
 	{"id": "sprint", "title": "学会控制耐力", "desktop": "移动时按住 Shift 冲刺。冲刺、攻击和技能都会消耗耐力。", "touch": "移动时按住右侧“冲刺”。冲刺、攻击和技能都会消耗耐力。"},
 	{"id": "attack", "title": "自动接敌", "desktop": "靠近其他动物并按住 J 或鼠标左键，进入距离后会自动攻击。", "touch": "靠近其他动物并按住右侧“攻击”，进入距离后会自动攻击。"},
 	{"id": "skill", "title": "释放物种技能", "desktop": "按空格释放本物种的专属技能。技能效果会随物种改变。", "touch": "点击右侧绿色技能按钮。每种动物都有不同的专属能力。"},
-	{"id": "eat", "title": "寻找食物", "desktop": "靠近尸体或可食用资源后按 E 进食。饱腹归零会持续损失生命。", "touch": "靠近尸体或可食用资源后点击“进食”。饱腹归零会持续损失生命。"},
+	{"id": "eat", "title": "寻找食物与鱼群", "desktop": "靠近尸体、野外食物或水中鱼群后按 E 进食。鱼能回血与补充饱腹；进入深水会消耗屏息。", "touch": "靠近尸体、野外食物或水中鱼群后点击“进食”。鱼能回血与补充饱腹；进入深水会消耗屏息。"},
 ]
 
 var game_root: Node3D
@@ -167,10 +167,10 @@ func _ready() -> void:
 		Engine.time_scale = 8.0
 		batch_log_file = _open_report_file(batch_results_filename(batch_level))
 		if batch_log_file != null:
-			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,stuck_recoveries,route_replans,food_bites,habit_activations,distance_m,starvation_deaths,outcome")
+			batch_log_file.store_line("run,level,world_seed,winner,duration_s,death_count,deaths_30s,deaths_60s,first_death_s,event_count,hunter_peak,trace_hunts,danger_avoids,stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations,distance_m,starvation_deaths,drowning_deaths,outcome")
 		batch_death_log_file = _open_report_file(batch_deaths_filename(batch_level))
 		if batch_death_log_file != null:
-			batch_death_log_file.store_line("run,time_s,victim,killer,food_bites,habit_activations,stuck_recoveries,route_replans,distance_m")
+			batch_death_log_file.store_line("run,time_s,victim,killer,cause,food_bites,fish_catches,habit_activations,stuck_recoveries,route_replans,distance_m")
 		_start_batch_run.call_deferred()
 	elif "--autoplay" in OS.get_cmdline_user_args():
 		_start_new_world.call_deferred()
@@ -527,7 +527,9 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 			"time": level_elapsed,
 			"victim": actor.species_id,
 			"killer": (killer.species_id if is_instance_valid(killer) else ""),
+			"cause": actor.last_death_cause,
 			"food_bites": actor.food_bites,
+			"fish_catches": actor.fish_catches,
 			"habit_activations": actor.habit_activation_count,
 			"stuck_recoveries": actor.stuck_recoveries,
 			"route_replans": actor.route_replans,
@@ -544,6 +546,11 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 				actor.level, ("你·" if actor == player else ""), victim_name,
 				killer.kills, remaining_count,
 			], "击杀", "#ecc89d")
+		elif actor.last_death_cause == "drowning":
+			ui.add_event("%s 在深水中溺亡" % victim_name, "#78b9d4")
+			ui.add_battle_report("Lv.%d %s%s 因屏息耗尽而溺亡 · 剩余%d" % [
+				actor.level, ("你·" if actor == player else ""), victim_name, remaining_count,
+			], "水域", "#78b9d4")
 		else:
 			ui.add_event("%s 没能熬过饥饿" % victim_name, "#c7c7aa")
 			ui.add_battle_report("Lv.%d %s%s 因饥饿倒下 · 剩余%d" % [
@@ -574,7 +581,7 @@ func _finish_loss(killer: EcoActor) -> void:
 	await get_tree().create_timer(0.75).timeout
 	if state != "ending":
 		return
-	var cause := "饥饿吞噬了你"
+	var cause := "你在深水中耗尽屏息" if is_instance_valid(player) and player.last_death_cause == "drowning" else "饥饿吞噬了你"
 	if is_instance_valid(killer):
 		cause = "%s结束了你的这次生命" % Catalog.display_name(killer.species_id)
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
@@ -582,7 +589,7 @@ func _finish_loss(killer: EcoActor) -> void:
 	var recap := _record_completed_run(false, cause, killer_species, seconds)
 	_save_progress()
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		current_level,
@@ -593,6 +600,7 @@ func _finish_loss(killer: EcoActor) -> void:
 		player.assists if is_instance_valid(player) else 0,
 		player.tactical_actions if is_instance_valid(player) else 0,
 		player.food_bites if is_instance_valid(player) else 0,
+		player.fish_catches if is_instance_valid(player) else 0,
 		roundi(player.damage_dealt) if is_instance_valid(player) else 0,
 		roundi(player.damage_taken) if is_instance_valid(player) else 0,
 		_format_time(player.sprint_seconds if is_instance_valid(player) else 0.0),
@@ -621,7 +629,7 @@ func _finish_victory() -> void:
 	var recap := _record_completed_run(true, "成为最后的存活物种", "", seconds)
 	_save_progress()
 	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % campaign_level)
-	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		current_level,
 		_format_time(seconds),
@@ -631,6 +639,7 @@ func _finish_victory() -> void:
 		player.assists,
 		player.tactical_actions,
 		player.food_bites,
+		player.fish_catches,
 		roundi(player.damage_dealt),
 		roundi(player.damage_taken),
 		_format_time(player.sprint_seconds),
@@ -939,9 +948,9 @@ func _quit_after_benchmark_cleanup() -> void:
 
 
 func _collect_batch_actor_metrics(living: Array[EcoActor]) -> Dictionary:
-	var totals := {"stuck_recoveries": 0, "route_replans": 0, "food_bites": 0, "habit_activations": 0, "distance": 0.0}
+	var totals := {"stuck_recoveries": 0, "route_replans": 0, "food_bites": 0, "fish_catches": 0, "habit_activations": 0, "distance": 0.0}
 	for death in batch_deaths:
-		for key in ["stuck_recoveries", "route_replans", "food_bites", "habit_activations"]:
+		for key in ["stuck_recoveries", "route_replans", "food_bites", "fish_catches", "habit_activations"]:
 			totals[key] = int(totals[key]) + int(death.get(key, 0))
 		totals["distance"] = float(totals["distance"]) + float(death.get("distance", 0.0))
 	for actor in living:
@@ -950,6 +959,7 @@ func _collect_batch_actor_metrics(living: Array[EcoActor]) -> Dictionary:
 		totals["stuck_recoveries"] = int(totals["stuck_recoveries"]) + actor.stuck_recoveries
 		totals["route_replans"] = int(totals["route_replans"]) + actor.route_replans
 		totals["food_bites"] = int(totals["food_bites"]) + actor.food_bites
+		totals["fish_catches"] = int(totals["fish_catches"]) + actor.fish_catches
 		totals["habit_activations"] = int(totals["habit_activations"]) + actor.habit_activation_count
 		totals["distance"] = float(totals["distance"]) + actor.distance_travelled
 	return totals
@@ -967,8 +977,11 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 	var first_death_s := float(batch_deaths[0].get("time", -1.0)) if not batch_deaths.is_empty() else -1.0
 	var actor_metrics := _collect_batch_actor_metrics(living)
 	var starvation_deaths := 0
+	var drowning_deaths := 0
 	for death in batch_deaths:
-		if str(death.get("killer", "")) == "":
+		if str(death.get("cause", "")) == "drowning":
+			drowning_deaths += 1
+		elif str(death.get("cause", "")) == "starvation":
 			starvation_deaths += 1
 	batch_results.append({
 		"world_seed": world_seed,
@@ -985,18 +998,20 @@ func _finish_batch_run(living: Array[EcoActor]) -> void:
 		"stuck_recoveries": int(actor_metrics["stuck_recoveries"]),
 		"route_replans": int(actor_metrics["route_replans"]),
 		"food_bites": int(actor_metrics["food_bites"]),
+		"fish_catches": int(actor_metrics["fish_catches"]),
 		"habit_activations": int(actor_metrics["habit_activations"]),
 		"distance": float(actor_metrics["distance"]),
 		"starvation_deaths": starvation_deaths,
+		"drowning_deaths": drowning_deaths,
 		"timeout": timed_out,
 	})
 	if batch_log_file != null:
-		batch_log_file.store_line("%d,%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%s" % [run_index, batch_level, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["habit_activations"]), float(actor_metrics["distance"]), starvation_deaths, "timeout" if timed_out else "ok"])
+		batch_log_file.store_line("%d,%d,%d,%s,%.1f,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%d,%s" % [run_index, batch_level, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["fish_catches"]), int(actor_metrics["habit_activations"]), float(actor_metrics["distance"]), starvation_deaths, drowning_deaths, "timeout" if timed_out else "ok"])
 	if batch_death_log_file != null:
 		for death in batch_deaths:
-			batch_death_log_file.store_line("%d,%.1f,%s,%s,%d,%d,%d,%d,%.1f" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"], int(death.get("food_bites", 0)), int(death.get("habit_activations", 0)), int(death.get("stuck_recoveries", 0)), int(death.get("route_replans", 0)), float(death.get("distance", 0.0))])
-	print("[batch] run %d/%d done — seed=%d winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d stuck=%d/replans=%d food=%d/habits=%d%s" % [
-		run_index, batch_total_runs, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["habit_activations"]), " (超时)" if timed_out else ""
+			batch_death_log_file.store_line("%d,%.1f,%s,%s,%s,%d,%d,%d,%d,%d,%.1f" % [run_index, float(death.get("time", -1.0)), death["victim"], death["killer"], str(death.get("cause", "")), int(death.get("food_bites", 0)), int(death.get("fish_catches", 0)), int(death.get("habit_activations", 0)), int(death.get("stuck_recoveries", 0)), int(death.get("route_replans", 0)), float(death.get("distance", 0.0))])
+	print("[batch] run %d/%d done — seed=%d winner=%s duration=%.1fs deaths=%d early=30s:%d/60s:%d first=%.1fs events=%d hunter_peak=%d trace_hunts=%d danger_avoids=%d stuck=%d/replans=%d food=%d/fish=%d/habits=%d%s" % [
+		run_index, batch_total_runs, world_seed, winner, level_elapsed, batch_deaths.size(), deaths_30s, deaths_60s, first_death_s, ecology_events_started, ecology_hunter_peak, ecology_trace_investigations, danger_memory_avoidances, int(actor_metrics["stuck_recoveries"]), int(actor_metrics["route_replans"]), int(actor_metrics["food_bites"]), int(actor_metrics["fish_catches"]), int(actor_metrics["habit_activations"]), " (超时)" if timed_out else ""
 	])
 	if timed_out:
 		var survivor_details: Array[String] = []
@@ -1030,6 +1045,7 @@ func _print_batch_report() -> void:
 	var win_counts: Dictionary = {}
 	var death_counts: Dictionary = {}
 	var starvation_deaths := 0
+	var drowning_deaths := 0
 	var combat_deaths := 0
 	var total_duration := 0.0
 	var total_events := 0
@@ -1039,6 +1055,7 @@ func _print_batch_report() -> void:
 	var total_stuck_recoveries := 0
 	var total_route_replans := 0
 	var total_food_bites := 0
+	var total_fish_catches := 0
 	var total_habit_activations := 0
 	var total_distance := 0.0
 	var total_deaths_30s := 0
@@ -1057,6 +1074,7 @@ func _print_batch_report() -> void:
 		total_stuck_recoveries += int(result.get("stuck_recoveries", 0))
 		total_route_replans += int(result.get("route_replans", 0))
 		total_food_bites += int(result.get("food_bites", 0))
+		total_fish_catches += int(result.get("fish_catches", 0))
 		total_habit_activations += int(result.get("habit_activations", 0))
 		total_distance += float(result.get("distance", 0.0))
 		total_deaths_30s += int(result.get("deaths_30s", 0))
@@ -1070,7 +1088,9 @@ func _print_batch_report() -> void:
 		for death in result["deaths"]:
 			var victim: String = death["victim"]
 			death_counts[victim] = int(death_counts.get(victim, 0)) + 1
-			if death["killer"] == "":
+			if str(death.get("cause", "")) == "drowning":
+				drowning_deaths += 1
+			elif str(death.get("cause", "")) == "starvation":
 				starvation_deaths += 1
 			else:
 				combat_deaths += 1
@@ -1084,8 +1104,8 @@ func _print_batch_report() -> void:
 	print("平均热点猎手峰值：%.1f" % [float(total_hunter_peak) / maxf(float(batch_results.size()), 1.0)])
 	print("平均踪迹追踪：%.1f　平均危险绕行：%.1f" % [float(total_trace_hunts) / maxf(float(batch_results.size()), 1.0), float(total_danger_avoids) / maxf(float(batch_results.size()), 1.0)])
 	print("AI路径：平均脱困 %.1f　改道 %.1f　总移动 %.0fm/局" % [float(total_stuck_recoveries) / maxf(float(batch_results.size()), 1.0), float(total_route_replans) / maxf(float(batch_results.size()), 1.0), total_distance / maxf(float(batch_results.size()), 1.0)])
-	print("生存行为：平均进食 %.1f 次/局　习性触发 %.1f 次/局" % [float(total_food_bites) / maxf(float(batch_results.size()), 1.0), float(total_habit_activations) / maxf(float(batch_results.size()), 1.0)])
-	print("死因：战斗击杀 %d　饥饿 %d" % [combat_deaths, starvation_deaths])
+	print("生存行为：平均进食 %.1f 次/局　捕鱼 %.1f 次/局　习性触发 %.1f 次/局" % [float(total_food_bites) / maxf(float(batch_results.size()), 1.0), float(total_fish_catches) / maxf(float(batch_results.size()), 1.0), float(total_habit_activations) / maxf(float(batch_results.size()), 1.0)])
+	print("死因：战斗击杀 %d　饥饿 %d　溺水 %d" % [combat_deaths, starvation_deaths, drowning_deaths])
 	print("胜率（按物种）：")
 	for species_id in win_counts.keys():
 		print("  %s: %d/%d (%.0f%%)" % [species_id, win_counts[species_id], batch_total_runs, 100.0 * win_counts[species_id] / batch_total_runs])
@@ -1213,7 +1233,7 @@ func get_available_corpses() -> Array[Node3D]:
 	return available
 
 
-func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true, excluded_instance_id: int = 0) -> Node3D:
+func nearest_food(origin: Vector3, max_distance: float, eater_species: String = "", include_hotspots: bool = true, excluded_instance_id: int = 0, breath_ratio: float = 1.0, hunger_value: float = 0.0) -> Node3D:
 	if not is_instance_valid(world):
 		return null
 	var nearest: Node3D
@@ -1228,6 +1248,11 @@ func nearest_food(origin: Vector3, max_distance: float, eater_species: String = 
 		if eater_species != "" and not patch.can_be_eaten_by(eater_species):
 			continue
 		var patch_position: Vector3 = patch.global_position if patch.is_inside_tree() else patch.position
+		if eater_species != "" and world.has_method("water_depth_at"):
+			var patch_depth := float(world.water_depth_at(patch_position))
+			var pursuing_fish: bool = patch.food_kind == "fish"
+			if patch_depth > Catalog.ai_water_entry_depth(eater_species, hunger_value, breath_ratio, pursuing_fish, false):
+				continue
 		var distance := origin.distance_to(patch_position)
 		var search_distance := world.ecology_event_attraction_radius() if patch.ecology_hotspot else max_distance
 		if distance <= search_distance and distance < nearest_distance:
@@ -1492,8 +1517,8 @@ func _record_completed_run(won: bool, cause: String, killer_species: String, sec
 	record["most_assists"] = maxi(int(record.get("most_assists", 0)), player.assists)
 	record["most_tactical_actions"] = maxi(int(record.get("most_tactical_actions", 0)), player.tactical_actions)
 	species_records[species_id] = record
-	var starvation := killer_species == "" and not won
-	var advice := _run_advice(species_id, killer_species, starvation, won)
+	var environmental_cause := player.last_death_cause if not won else ""
+	var advice := _run_advice(species_id, killer_species, environmental_cause, won)
 	var summary := {
 		"species_id": species_id,
 		"level": current_level,
@@ -1506,6 +1531,7 @@ func _record_completed_run(won: bool, cause: String, killer_species: String, sec
 		"assists": player.assists,
 		"tactical_actions": player.tactical_actions,
 		"food_bites": player.food_bites,
+		"fish_catches": player.fish_catches,
 		"damage_dealt": player.damage_dealt,
 		"damage_taken": player.damage_taken,
 		"sprint_seconds": player.sprint_seconds,
@@ -1521,10 +1547,12 @@ func _record_completed_run(won: bool, cause: String, killer_species: String, sec
 	return summary
 
 
-func _run_advice(species_id: String, killer_species: String, starvation: bool, won: bool) -> String:
+func _run_advice(species_id: String, killer_species: String, environmental_cause: String, won: bool) -> String:
 	if won:
 		return "%s 下次可尝试更高压力或不同反制路线。" % Catalog.victory_guide(species_id)
-	if starvation:
+	if environmental_cause == "drowning":
+		return "你的%s。先沿河岸确认浅滩和踏石位置；屏息低于三成时停止捕鱼或追击，立即返回 %.2fm 以内的安全水深。" % [Catalog.water_description(species_id).trim_prefix("水性："), Catalog.water_wade_depth(species_id)]
+	if environmental_cause == "starvation":
 		return "饱腹归零后会持续掉血。优先沿%s寻找%s，并在生命低于习性阈值前脱离战斗。" % [
 			Catalog.habitat_description(species_id).trim_prefix("环境适应："), Catalog.habit_foods_display_text(species_id),
 		]
@@ -1770,6 +1798,7 @@ func _sanitize_recent_runs(value: Variant) -> Array[Dictionary]:
 			"assists": maxi(int(raw.get("assists", 0)), 0),
 			"tactical_actions": maxi(int(raw.get("tactical_actions", 0)), 0),
 			"food_bites": maxi(int(raw.get("food_bites", 0)), 0),
+			"fish_catches": maxi(int(raw.get("fish_catches", 0)), 0),
 			"damage_dealt": maxf(float(raw.get("damage_dealt", 0.0)), 0.0),
 			"damage_taken": maxf(float(raw.get("damage_taken", 0.0)), 0.0),
 			"sprint_seconds": clampf(float(raw.get("sprint_seconds", 0.0)), 0.0, 86400.0),

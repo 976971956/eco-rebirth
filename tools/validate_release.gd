@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.51 发布候选校验通过：四生态区写实地表/树木/河道/边界、30 种 Hero/Mobile、移动端预算与三端发布契约正常")
+		print("[release] V1.52 发布候选校验通过：深浅水、水性/屏息/溺水、动态鱼群、AI 水域决策、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -105,7 +105,7 @@ func _validate_save_migration() -> void:
 	main.selected_free_species = "eagle"
 	main.discovered_species = ["rabbit", "eagle"]
 	main.species_records = {"rabbit": {"runs": 3, "wins": 1, "best_level": 4, "best_survival": 123.0, "best_player_level": 3, "most_kills": 2}}
-	main.recent_runs = [{"species_id": "rabbit", "level": 4, "won": false, "survival": 123.0, "player_level": 3, "kills": 2}]
+	main.recent_runs = [{"species_id": "rabbit", "level": 4, "won": false, "survival": 123.0, "player_level": 3, "kills": 2, "fish_catches": 3}]
 	main._save_progress(test_path)
 	var reload := MainScript.new()
 	reload._load_progress(test_path)
@@ -116,7 +116,7 @@ func _validate_save_migration() -> void:
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
 	_expect(reload.discovered_species == ["rabbit", "eagle"], "图鉴发现顺序或内容无法回读")
 	_expect(int(reload.species_records.get("rabbit", {}).get("runs", 0)) == 3, "物种个人记录无法回读")
-	_expect(reload.recent_runs.size() == 1 and int(reload.recent_runs[0].get("level", 0)) == 4, "最近轮回记录无法回读")
+	_expect(reload.recent_runs.size() == 1 and int(reload.recent_runs[0].get("level", 0)) == 4 and int(reload.recent_runs[0].get("fish_catches", 0)) == 3, "最近轮回或捕鱼记录无法回读")
 	DirAccess.remove_absolute(test_path)
 	main.free()
 	reload.free()
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.51.0\"") and presets.contains("application/short_version=\"1.51.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=610") and presets.contains("application/version=\"610\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.51.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.52.0\"") and presets.contains("application/short_version=\"1.52.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=620") and presets.contains("application/version=\"620\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.52.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -310,7 +310,7 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
-	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,habit_activations") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道与进食行为")
+	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼与溺水行为")
 	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
 	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
 	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
@@ -438,6 +438,7 @@ func _validate_level_identity_contract() -> void:
 		_expect(float(profile.get("cover", 0.0)) >= 0.75 and float(profile.get("cover", 0.0)) <= 1.35, "第%d关掩体密度越界" % level)
 		_expect(float(profile.get("food", 0.0)) >= 0.75 and float(profile.get("food", 0.0)) <= 1.25, "第%d关食物密度越界" % level)
 		_expect(float(profile.get("water", 0.0)) >= 0.60 and float(profile.get("water", 0.0)) <= 1.50, "第%d关水域尺度越界" % level)
+		_expect(float(profile.get("water_depth", 0.0)) >= 0.65 and float(profile.get("water_depth", 0.0)) <= 1.20, "第%d关水深倍率越界" % level)
 		_expect(int(profile.get("side_trails", 0)) >= 2 and int(profile.get("side_trails", 0)) <= 6, "第%d关支路数量越界" % level)
 		_expect(float(profile.get("collapse", 0.0)) >= 0.18 and float(profile.get("collapse", 0.0)) <= 0.24, "第%d关终局收束半径越界" % level)
 		for phase in profile.get("phases", []):
@@ -452,6 +453,7 @@ func _validate_level_identity_contract() -> void:
 	_expect(WorldScript.ecology_event_repeat_delay(10, 0.0) < WorldScript.ecology_event_repeat_delay(5, 0.0), "终极生物圈的生态事件没有进入高频节奏")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("本关生态：") and ui_source.contains("level_profile"), "随机物种攻略没有显示当前关卡规则")
+	_expect(ui_source.contains("Catalog.water_description") and ui_source.contains("water_status_text"), "随机物种攻略或 HUD 没有显示水性与屏息状态")
 
 
 func _validate_world_navigation_contract() -> void:
@@ -481,6 +483,27 @@ func _validate_world_navigation_contract() -> void:
 		var report: Dictionary = world.navigation_connectivity_report(0.85, float(level_case["cell"]))
 		print("[navigation] level=%d size=%.0f open=%d largest=%d ratio=%.2f%%" % [int(level_case["level"]), float(level_case["size"]), int(report.get("open_cells", 0)), int(report.get("largest_component", 0)), float(report.get("ratio", 0.0)) * 100.0])
 		_expect(float(report.get("ratio", 0.0)) >= 0.97, "第%d关可通行区最大连通块低于 97%%：%.2f%%" % [int(level_case["level"]), float(report.get("ratio", 0.0)) * 100.0])
+		var basin_center := Vector3(-float(level_case["size"]) * 0.25, 0.0, float(level_case["size"]) * 0.25)
+		var ford_position := world.nearest_ford_position()
+		var dry_sample := Vector3(float(level_case["size"]) * 0.38, 0.0, float(level_case["size"]) * 0.36)
+		_expect(world.water_depth_at(basin_center) > 0.58 and world.water_zone_at(basin_center) == "deep", "第%d关湿地中心没有形成深水" % int(level_case["level"]))
+		_expect(world.water_depth_at(ford_position) <= 0.22 and world.water_zone_at(ford_position) == "shallow", "第%d关踏石处没有保留弱水性浅滩" % int(level_case["level"]))
+		_expect(world.water_depth_at(dry_sample) <= 0.01, "第%d关非水域被错误标记为水面" % int(level_case["level"]))
+		var safe_exit := world.nearest_safe_water_position(basin_center, Catalog.water_wade_depth("rabbit"), float(level_case["size"]) * 0.22)
+		_expect(world.water_depth_at(safe_exit) <= Catalog.water_wade_depth("rabbit"), "第%d关深水中无法找到可达浅滩出口" % int(level_case["level"]))
+		var fish_schools := 0
+		var shallow_fish := 0
+		var deep_fish := 0
+		for patch in world.food_patches:
+			if is_instance_valid(patch) and str(patch.food_kind) == "fish":
+				fish_schools += 1
+				var fish_depth := world.water_depth_at(patch.position)
+				_expect(fish_depth >= 0.10, "第%d关鱼群生成在水域之外" % int(level_case["level"]))
+				if fish_depth <= 0.40:
+					shallow_fish += 1
+				if fish_depth >= 0.48:
+					deep_fish += 1
+		_expect(fish_schools >= 2 and shallow_fish >= 1 and deep_fish >= 1, "第%d关没有同时生成浅水与深水鱼群" % int(level_case["level"]))
 		world.free()
 
 

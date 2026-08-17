@@ -254,6 +254,33 @@ func _render() -> void:
 		await process_frame
 	var level_identity_result := root.get_texture().get_image().save_png("res://docs/images/v41-ten-level-identity.png")
 	ui.intro_panel.hide()
+	preview_actor.species_id = "otter"
+	preview_actor.data = Catalog.get_data("otter")
+	preview_actor.max_health = float(preview_actor.data["health"])
+	preview_actor.health = preview_actor.max_health * 0.72
+	preview_actor.max_stamina = float(preview_actor.data["stamina"])
+	preview_actor.stamina = preview_actor.max_stamina * 0.58
+	preview_actor.hunger = 64.0
+	preview_actor.max_breath = Catalog.water_breath_seconds("otter")
+	preview_actor.breath_remaining = preview_actor.max_breath * 0.24
+	preview_actor.current_water_depth = 0.86
+	ui.update_hud(preview_actor, 16, 20, "浅水湿地 · 深水河道 0.86m · 氧气 24%", "生态热点 · 鱼群聚集 西南 24m", "迁徙 5 · 猎手 1 · 风险：警戒", "生态本能 · 活鱼群 西南 24m · 完美习性")
+	ui.show_species_intro("otter", WorldScript.level_profile(7))
+	for _frame in range(5):
+		await process_frame
+	var water_guide_result := root.get_texture().get_image().save_png("res://docs/images/v71-water-species-guide.png")
+	ui.intro_panel.hide()
+	ui.show_hint("氧气不足：立即游向浅滩；抓住活鱼可恢复生命并降低饥饿")
+	for _frame in range(5):
+		await process_frame
+	var water_hud_result := root.get_texture().get_image().save_png("res://docs/images/v71-water-survival-hud.png")
+	preview_actor.species_id = "rabbit"
+	preview_actor.data = Catalog.get_data("rabbit")
+	preview_actor.max_health = float(preview_actor.data["health"])
+	preview_actor.max_stamina = float(preview_actor.data["stamina"])
+	preview_actor.max_breath = Catalog.water_breath_seconds("rabbit")
+	preview_actor.breath_remaining = preview_actor.max_breath
+	preview_actor.current_water_depth = 0.0
 	preview_actor.health = 31.0
 	preview_actor.stamina = 34.0
 	preview_actor.hunger = 68.0
@@ -265,7 +292,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and instinct_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:
