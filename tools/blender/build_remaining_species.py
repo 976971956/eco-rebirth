@@ -14,7 +14,7 @@ LIMBS = ("LF", "RF", "LH", "RH")
 BIRDS = ("owl", "eagle")
 LONG_BODY = ("snake", "crocodile")
 REMAINING_SPECIES = (
-    "owl", "moose", "turtle",
+    "moose", "turtle",
     "cheetah", "rhino", "gorilla",
     "eagle", "hippo", "hyena", "lion",
 )
