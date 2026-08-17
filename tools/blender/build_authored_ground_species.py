@@ -195,8 +195,63 @@ def customize_goat(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent
         parts.append(beard)
 
 
+def customize_wolverine(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Replace generic canid details with a compact mustelid silhouette."""
+    remove_named(parts, ("V5EarSilhouette", "V5TailBaseSilhouette", "V5TailTipSilhouette"))
+    for suffix, side in (("L", -1.0), ("R", 1.0)):
+        ear_position = (
+            side * cfg["head"] * 0.48,
+            layout["head_y"] + cfg["head"] * 0.44,
+            layout["head_z"] + cfg["head"] * 0.10,
+        )
+        ear = PIPELINE.uv_sphere(
+            f"WolverineRoundedEarSilhouette_{suffix}", ear_position,
+            (cfg["head"] * 0.18, cfg["head"] * 0.20, cfg["head"] * 0.105),
+            coat, hero,
+        )
+        PIPELINE.rigid_skin(ear, rig, f"Ear_{suffix}")
+        parts.append(ear)
+        if hero:
+            inner = PIPELINE.uv_sphere(
+                f"WolverineRoundedEarInnerDetail_{suffix}",
+                (ear_position[0], ear_position[1] + cfg["head"] * 0.018, ear_position[2] - cfg["head"] * 0.070),
+                (cfg["head"] * 0.105, cfg["head"] * 0.115, cfg["head"] * 0.035),
+                accent, hero,
+            )
+            PIPELINE.rigid_skin(inner, rig, f"Ear_{suffix}")
+            parts.append(inner)
+
+    tail_start = (0.0, layout["body_y"] - 0.02, cfg["length"] * 0.60)
+    tail_end = (0.0, max(0.20, layout["body_y"] - cfg["tail"] * 0.30), cfg["length"] * 0.60 + cfg["tail"] * 1.06)
+    tail = connected_tail(
+        "WolverineConnectedBrushTailSilhouette", hero, rig, tail_start, tail_end,
+        cfg["paw"] * 1.12, cfg["paw"] * 0.54, coat, 0.86,
+    )
+    tail["eco_tail_contract"] = "single_connected_low_tapered_mustelid_tail"
+    parts.append(tail)
+
+    for obj in parts:
+        if obj.name.startswith("V5FootDetail"):
+            obj.scale.x *= 1.20
+            obj.scale.y *= 0.68
+            obj.scale.z *= 0.92
+            obj["eco_paw_contract"] = "broad_five_toed_digging_paw"
+
+    # Flush shoulder colouring is already painted on the torso. These two
+    # short ruffs add the heavy neck/shoulder transition without floating fur.
+    for side in (-1.0, 1.0):
+        ruff = PIPELINE.ellipsoid_between(
+            f"WolverineShoulderRuffDetail_{side:+.0f}",
+            (side * cfg["width"] * 0.54, layout["shoulder_y"] + 0.05, layout["front_z"] + 0.12),
+            (side * cfg["width"] * 0.60, layout["shoulder_y"] - 0.04, layout["front_z"] + 0.48),
+            cfg["head"] * 0.13, accent, hero, 0.55,
+        )
+        PIPELINE.rigid_skin(ruff, rig, "Chest")
+        parts.append(ruff)
+
+
 def customize_actions(species: str, rig) -> None:
-    if species not in ("lynx", "goat"):
+    if species not in ("lynx", "goat", "wolverine"):
         return
     rig.animation_data_create()
 
@@ -218,7 +273,7 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, ((-0.48 if rear else 0.34) * amount, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, ((0.72 if rear else -0.48) * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.26 * abs(amount), 0.0, 0.0))
-        else:
+        elif species == "goat":
             insert("skill", "Spine", frame, (-0.12 * abs(amount), 0.0, 0.0))
             insert("skill", "Chest", frame, (0.20 * amount, 0.0, 0.0))
             insert("skill", "Neck", frame, (-0.48 * amount, 0.0, 0.0))
@@ -228,6 +283,21 @@ def customize_actions(species: str, rig) -> None:
                 insert("skill", f"Leg_{suffix}", frame, ((-0.56 if rear else 0.28) * amount, 0.0, 0.0))
                 insert("skill", f"Lower_{suffix}", frame, ((0.78 if rear else -0.34) * abs(amount), 0.0, 0.0))
                 insert("skill", f"Paw_{suffix}", frame, (-0.24 * abs(amount), 0.0, 0.0))
+        else:
+            # The wolverine plants its rear paws, twists through the shoulders,
+            # hooks with one forepaw and finishes with a deep tearing bite.
+            insert("skill", "Spine", frame, (-0.20 * abs(amount), 0.0, 0.18 * amount))
+            insert("skill", "Chest", frame, (0.16 * abs(amount), 0.0, -0.24 * amount))
+            insert("skill", "Neck", frame, (0.26 * amount, 0.0, 0.10 * amount))
+            insert("skill", "Head", frame, (0.30 * amount, 0.0, 0.12 * amount))
+            insert("skill", "Jaw", frame, (-0.44 * max(amount, 0.0), 0.0, 0.0))
+            insert("skill", "Leg_LF", frame, (-0.78 * amount, 0.0, -0.22 * amount))
+            insert("skill", "Lower_LF", frame, (0.58 * abs(amount), 0.0, 0.0))
+            insert("skill", "Paw_LF", frame, (-0.34 * abs(amount), 0.0, 0.0))
+            insert("skill", "Leg_RF", frame, (-0.22 * amount, 0.0, 0.16 * amount))
+            for suffix in ("LH", "RH"):
+                insert("skill", f"Leg_{suffix}", frame, (0.22 * abs(amount), 0.0, 0.0))
+                insert("skill", f"Lower_{suffix}", frame, (0.34 * abs(amount), 0.0, 0.0))
     rig.animation_data.action = bpy.data.actions["idle"]
 
 
@@ -239,6 +309,19 @@ def triangle_count(objects) -> tuple[int, int]:
         triangles += len(obj.data.loop_triangles)
         vertices += len(obj.data.vertices)
     return triangles, vertices
+
+
+def optimize_mobile_body(body) -> None:
+    """Reserve the shared 30-species budget without changing Hero quality."""
+    bpy.context.view_layer.objects.active = body
+    body.select_set(True)
+    modifier = body.modifiers.new("MobileSilhouetteDecimate", "DECIMATE")
+    modifier.decimate_type = "COLLAPSE"
+    modifier.ratio = 0.56
+    modifier.use_collapse_triangulate = True
+    bpy.ops.object.modifier_apply(modifier=modifier.name)
+    body.select_set(False)
+    body["eco_mobile_lod"] = "silhouette_decimate_0_56"
 
 
 def export_species(
@@ -267,11 +350,15 @@ def export_species(
     eye = PIPELINE.pbr_material(f"{species}_cinematic_eye_pbr", cfg["eye"], 0.10)
     replace_materials(parts, coat, accent, detail, eye)
     organic_body = next(obj for obj in parts if "OrganicBodyV2" in obj.name)
+    if not hero:
+        optimize_mobile_body(organic_body)
     BEAR.smart_uv(organic_body)
     if species == "lynx":
         customize_lynx(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "goat":
         customize_goat(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "wolverine":
+        customize_wolverine(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6

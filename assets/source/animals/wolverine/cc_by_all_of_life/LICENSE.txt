@@ -1,0 +1,13 @@
+Wolverine by all of life is licensed under the Creative Commons
+Attribution 4.0 International license (CC BY 4.0).
+
+License text and terms:
+https://creativecommons.org/licenses/by/4.0/
+
+Attribution:
+"Wolverine" by all of life (@Xfdfgd), accessed through Sketchfab.
+https://sketchfab.com/3d-models/wolverine-69229b6fd37b401388278c493556a49a
+
+The Eco Rebirth wolverine mesh, rig, materials and animations are a
+project-authored implementation. The linked model is retained only as an
+anatomical and silhouette reference; its mesh is not redistributed here.
