@@ -31,6 +31,8 @@ const COMPACT_STATUS_SIZE := Vector2(340.0, 230.0)
 const COMPACT_INFO_SIZE := Vector2(296.0, 170.0)
 const COMPACT_LEADERBOARD_SIZE := Vector2(296.0, 166.0)
 const COMPACT_SKILL_SIZE := Vector2(320.0, 88.0)
+const COMPACT_BREATH_SIZE := Vector2(360.0, 82.0)
+const BREATH_SIZE := Vector2(420.0, 90.0)
 const COMPACT_INTRO_SIZE := Vector2(600.0, 360.0)
 const HUD_STATUS_BACKGROUND := Color(0.018, 0.09, 0.075, 0.62)
 const HUD_INFO_BACKGROUND := Color(0.018, 0.09, 0.075, 0.54)
@@ -38,6 +40,7 @@ const HUD_LEADERBOARD_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
 const HUD_SKILL_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
 const HUD_TICKER_BACKGROUND := Color(0.055, 0.13, 0.095, 0.64)
 const HUD_ENEMY_BACKGROUND := Color(0.13, 0.035, 0.035, 0.70)
+const HUD_BREATH_BACKGROUND := Color(0.018, 0.085, 0.11, 0.68)
 
 var game: Node
 var menu_root: Control
@@ -86,6 +89,10 @@ var ecology_trace_label: Label
 var skill_label: Label
 var skill_hint_label: Label
 var skill_bar: ProgressBar
+var breath_panel: PanelContainer
+var breath_label: Label
+var breath_bar: ProgressBar
+var breath_visual_state: String = ""
 var hint_label: Label
 var hint_tween: Tween
 var intro_panel: PanelContainer
@@ -170,6 +177,24 @@ static func compact_touch_layout_needed(safe_viewport_size: Vector2, touch_layou
 
 static func touch_rect(viewport_size: Vector2, offset: Vector2, size_value: Vector2) -> Rect2:
 	return Rect2(viewport_size + offset, size_value)
+
+
+static func breath_indicator_should_show(current_water_depth: float, safe_wade_depth: float, airborne: bool) -> bool:
+	return not airborne and current_water_depth > maxf(safe_wade_depth, 0.0)
+
+
+static func breath_indicator_state(breath_ratio: float) -> String:
+	if breath_ratio <= 0.0:
+		return "drowning"
+	if breath_ratio <= EcoActor.WATER_ESCAPE_BREATH_RATIO:
+		return "warning"
+	return "normal"
+
+
+static func water_location_text(water_status: String, breath_indicator_visible: bool) -> String:
+	if water_status.is_empty() or not breath_indicator_visible:
+		return water_status
+	return water_status.get_slice(" · ", 0)
 
 
 static func modal_size_for_available(desired_size: Vector2, available_size: Vector2, touch_layout: bool) -> Vector2:
@@ -499,6 +524,30 @@ func _build_hud() -> void:
 	enemy_hp_bar.custom_minimum_size.y = 17.0
 	enemy_box.add_child(enemy_hp_bar)
 	enemy_panel.hide()
+
+	breath_panel = PanelContainer.new()
+	breath_panel.name = "DeepWaterBreath"
+	breath_panel.set_anchors_preset(Control.PRESET_CENTER)
+	breath_panel.position = -COMPACT_BREATH_SIZE * 0.5 if compact_touch else -BREATH_SIZE * 0.5
+	breath_panel.size = COMPACT_BREATH_SIZE if compact_touch else BREATH_SIZE
+	breath_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	breath_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_BREATH_BACKGROUND, 16, Color(0.38, 0.82, 0.92, 0.78), 2))
+	hud_root.add_child(breath_panel)
+	var breath_box := VBoxContainer.new()
+	breath_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	breath_box.add_theme_constant_override("separation", 7)
+	breath_panel.add_child(breath_box)
+	breath_label = Label.new()
+	breath_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	breath_label.add_theme_font_size_override("font_size", _font_size(20, 24))
+	breath_label.add_theme_color_override("font_color", Color("#c8f3ff"))
+	breath_label.text = "深水屏息"
+	breath_box.add_child(breath_label)
+	breath_bar = _make_bar(Color("#50c8e8"), 1.0)
+	breath_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	breath_bar.custom_minimum_size.y = 20.0 if touch_layout else 17.0
+	breath_box.add_child(breath_bar)
+	breath_panel.hide()
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -975,6 +1024,7 @@ func set_player(player_actor: EcoActor) -> void:
 	skill_button.text = "%s\n就绪" % str(data["skill"])
 	skill_button.add_theme_stylebox_override("normal", _panel_style(Color(skill_color.darkened(0.34), 0.88), 42, Color(skill_color.lightened(0.35), 0.72), 3))
 	skill_button.add_theme_stylebox_override("pressed", _panel_style(Color(skill_color.lightened(0.06), 0.98), 42, Color.WHITE, 4))
+	_update_breath_indicator(player_actor)
 
 
 func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> void:
@@ -1024,7 +1074,8 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
 	xp_value_label.text = ("最高等级" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
 	remaining_label.text = "存活个体　%d / %d" % [remaining, total]
-	var water_status := player_actor.water_status_text()
+	var breath_visible := breath_indicator_should_show(player_actor.current_water_depth, Catalog.water_wade_depth(player_actor.species_id), player_actor.is_airborne())
+	var water_status := water_location_text(player_actor.water_status_text(), breath_visible)
 	region_label.text = "当前位置 · %s%s" % [current_region, (" · " + water_status) if water_status != "" else ""]
 	ecology_event_label.text = ecology_event_status
 	ecology_activity_label.text = ecology_activity_status
@@ -1042,7 +1093,43 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	skill_label.text = "%s　%s" % [player_actor.data["skill"], skill_state]
 	skill_button.text = "%s\n%s" % [player_actor.data["skill"], skill_state]
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
+	_update_breath_indicator(player_actor)
 	_update_enemy_health_display()
+
+
+func _update_breath_indicator(player_actor: EcoActor) -> void:
+	if breath_panel == null or breath_bar == null or breath_label == null:
+		return
+	var safe_wade_depth := Catalog.water_wade_depth(player_actor.species_id)
+	var should_show := breath_indicator_should_show(player_actor.current_water_depth, safe_wade_depth, player_actor.is_airborne())
+	breath_panel.visible = should_show
+	if not should_show:
+		breath_visual_state = ""
+		return
+	breath_bar.max_value = maxf(player_actor.max_breath, 1.0)
+	breath_bar.value = clampf(player_actor.breath_remaining, 0.0, breath_bar.max_value)
+	var ratio := player_actor.water_breath_ratio()
+	var visual_state := breath_indicator_state(ratio)
+	if visual_state != breath_visual_state:
+		breath_visual_state = visual_state
+		var fill_color := Color("#50c8e8")
+		var label_color := Color("#c8f3ff")
+		var border_color := Color(0.38, 0.82, 0.92, 0.78)
+		if visual_state == "warning":
+			fill_color = Color("#f0c75e")
+			label_color = Color("#fff0b0")
+			border_color = Color(0.95, 0.72, 0.24, 0.88)
+		elif visual_state == "drowning":
+			fill_color = Color("#ef665c")
+			label_color = Color("#ffd2ca")
+			border_color = Color(0.96, 0.30, 0.26, 0.92)
+		breath_bar.add_theme_stylebox_override("fill", _bar_style(fill_color))
+		breath_label.add_theme_color_override("font_color", label_color)
+		breath_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_BREATH_BACKGROUND, 16, border_color, 2))
+	if visual_state == "drowning":
+		breath_label.text = "正在溺水！立即返回浅滩"
+	else:
+		breath_label.text = "深水屏息 · %.2fm · %.0f / %.0f 秒" % [player_actor.current_water_depth, player_actor.breath_remaining, player_actor.max_breath]
 
 
 func _update_player_combat_summary(player_actor: EcoActor) -> void:
@@ -1051,10 +1138,7 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	var ecology_status := player_actor.ecology_leverage_status_text()
 	var chain_status := player_actor.counterplay_chain_status_text()
 	var habit_status := player_actor.habit_status_text()
-	if player_actor.water_status_is_dangerous():
-		tactical_status = player_actor.water_status_text()
-		tactical_color = Color("#70cfe8") if player_actor.breath_remaining > 0.0 else Color("#ef7d68")
-	elif player_actor.exhausted:
+	if player_actor.exhausted:
 		tactical_status = "力竭破绽"
 		tactical_color = Color("#f1d46b")
 	elif player_actor.eat_timer > 0.0:

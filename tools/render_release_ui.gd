@@ -264,7 +264,7 @@ func _render() -> void:
 	preview_actor.max_breath = Catalog.water_breath_seconds("otter")
 	preview_actor.breath_remaining = preview_actor.max_breath * 0.24
 	preview_actor.current_water_depth = 0.86
-	ui.update_hud(preview_actor, 16, 20, "浅水湿地 · 深水河道 0.86m · 氧气 24%", "生态热点 · 鱼群聚集 西南 24m", "迁徙 5 · 猎手 1 · 风险：警戒", "生态本能 · 活鱼群 西南 24m · 完美习性")
+	ui.update_hud(preview_actor, 16, 20, "浅水湿地 · 夜晚 · 风暴", "生态热点 · 鱼群聚集 西南 24m", "迁徙 5 · 猎手 1 · 风险：警戒", "生态本能 · 活鱼群 西南 24m · 完美习性")
 	ui.show_species_intro("otter", WorldScript.level_profile(7))
 	for _frame in range(5):
 		await process_frame
@@ -273,7 +273,7 @@ func _render() -> void:
 	ui.show_hint("氧气不足：立即游向浅滩；抓住活鱼可恢复生命并降低饥饿")
 	for _frame in range(5):
 		await process_frame
-	var water_hud_result := root.get_texture().get_image().save_png("res://docs/images/v71-water-survival-hud.png")
+	var water_hud_result := root.get_texture().get_image().save_png("res://docs/images/v83-deep-water-breath-hud.png")
 	preview_actor.species_id = "rabbit"
 	preview_actor.data = Catalog.get_data("rabbit")
 	preview_actor.max_health = float(preview_actor.data["health"])

@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.53 发布候选校验通过：连续可见边界、附近主动捕猎、公平玩家目标选择、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.54 发布候选校验通过：深水中央屏息条、连续可见边界、附近主动捕猎、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.53.0\"") and presets.contains("application/short_version=\"1.53.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=630") and presets.contains("application/version=\"630\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.53.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.54.0\"") and presets.contains("application/short_version=\"1.54.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=640") and presets.contains("application/version=\"640\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.54.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1236,7 +1236,7 @@ func _validate_adaptive_ui_contract() -> void:
 	var hud_backgrounds := [
 		UIScript.HUD_STATUS_BACKGROUND, UIScript.HUD_INFO_BACKGROUND,
 		UIScript.HUD_LEADERBOARD_BACKGROUND, UIScript.HUD_SKILL_BACKGROUND,
-		UIScript.HUD_TICKER_BACKGROUND, UIScript.HUD_ENEMY_BACKGROUND,
+		UIScript.HUD_TICKER_BACKGROUND, UIScript.HUD_ENEMY_BACKGROUND, UIScript.HUD_BREATH_BACKGROUND,
 	]
 	for background_color in hud_backgrounds:
 		_expect(background_color.a >= 0.50 and background_color.a <= 0.72, "HUD 状态面板透明度超出清晰且不挡视线的范围")
@@ -1251,6 +1251,12 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(UIScript.compact_touch_layout_needed(safe_viewport, true), "手机安全区没有启用紧凑 HUD")
 	_expect(not UIScript.compact_touch_layout_needed(Vector2(1220, 820), true), "大屏平板被错误压缩成手机 HUD")
 	_expect(not UIScript.compact_touch_layout_needed(safe_viewport, false), "桌面窗口不应启用手机紧凑 HUD")
+	_expect(not UIScript.breath_indicator_should_show(0.18, 0.24, false), "安全浅水错误显示了屏息条")
+	_expect(UIScript.breath_indicator_should_show(0.25, 0.24, false), "超过物种涉水线后没有显示屏息条")
+	_expect(not UIScript.breath_indicator_should_show(0.86, 0.24, true), "飞行动物掠过深水时错误显示屏息条")
+	_expect(UIScript.breath_indicator_state(0.70) == "normal" and UIScript.breath_indicator_state(0.32) == "warning" and UIScript.breath_indicator_state(0.0) == "drowning", "屏息条的正常、预警或溺水状态切换不正确")
+	_expect(UIScript.water_location_text("浅滩 0.16m · 安全涉水", false) == "浅滩 0.16m · 安全涉水", "安全浅滩状态被中央屏息条规则误删")
+	_expect(UIScript.water_location_text("深水 0.86m · 屏息 23/96s", true) == "深水 0.86m", "顶部位置仍重复显示中央屏息数字")
 	var touch_rects := [
 		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_ATTACK_OFFSET, UIScript.TOUCH_ATTACK_SIZE),
 		UIScript.touch_rect(safe_viewport, UIScript.TOUCH_SKILL_OFFSET, UIScript.TOUCH_SKILL_SIZE),
@@ -1279,6 +1285,7 @@ func _validate_adaptive_ui_contract() -> void:
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
+	_expect(ui_source.contains("PRESET_CENTER") and ui_source.contains("DeepWaterBreath") and ui_source.contains("_update_breath_indicator"), "深水屏息进度条没有放在中央 HUD 或接入逐帧更新")
 
 
 func _validate_opportunity_contract() -> void:
