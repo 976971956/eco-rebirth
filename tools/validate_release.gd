@@ -64,7 +64,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.57.2 发布候选校验通过：AI 稳定绕障与真实位移朝向、移动摇杆多点触控锁、Lv.10 实时体型成长、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.58 发布候选校验通过：高密度落果疗养、尸体体型回血、近身强弱反应、Lv.10 实时体型成长与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -296,9 +296,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.57.2\"") and presets.contains("application/short_version=\"1.57.2\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=690") and presets.contains("application/version=\"690\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.57.2", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.58\"") and presets.contains("application/short_version=\"1.58\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=700") and presets.contains("application/version=\"700\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.58", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1461,6 +1461,15 @@ func _validate_ecology_hotspot_contract() -> void:
 	_expect(not ActorScript.should_follow_hotspot_signal(62.0, 0.82, 0.30, 0.9, 3, false, false, 4, 2), "重伤猎手仍会贸然离开安全区围猎")
 	world._end_ecology_event("自动测试切换信号")
 	var fruit_event: Dictionary = world.start_ecology_event("fruit_fall")
+	_expect(WorldScript.ecology_event_patch_count("fruit_fall", 1) == 15 and WorldScript.ecology_event_patch_count("fruit_fall", 10) == 24, "落果潮没有随关卡生成 15–24 个高密度资源点")
+	_expect(WorldScript.ecology_event_patch_count("fish_run", 10) == 6, "高密度落果规则错误扩散到其他生态热点")
+	_expect(world.active_event_patches.size() == 24, "第十关落果潮没有生成 24 个真实落果点")
+	var fruit_food_total := 0.0
+	for patch in world.active_event_patches:
+		if is_instance_valid(patch):
+			fruit_food_total += float(patch.amount)
+			_expect(str(patch.food_kind) == "fruit", "落果潮混入了非落果资源")
+	_expect(fruit_food_total >= 2000.0, "落果潮总食物量不足以形成可争夺的大型补给区")
 	var migrant := ActorScript.new()
 	migrant.actor_id = 1
 	migrant.species_id = "fox"
@@ -1474,6 +1483,9 @@ func _validate_ecology_hotspot_contract() -> void:
 	migrant.max_stamina = 100.0
 	migrant.stamina = 100.0
 	migrant.hunger = 52.0
+	migrant.health = 35.0
+	_expect(is_instance_valid(migrant._best_recovery_hotspot_food()), "低血量杂食动物不会主动寻找远处落果潮补给")
+	migrant.health = 100.0
 	var ordinary_resource := Node3D.new()
 	migrant.resource_target = ordinary_resource
 	_expect(not migrant.is_migrating_to_ecology_hotspot(int(fruit_event.get("sequence", -1)), fruit_event.get("position", Vector3.ZERO) + Vector3(40.0, 0.0, 0.0), 7.0), "普通资源目标被错误当作生态热点并触发布尔转换")

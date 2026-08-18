@@ -49,6 +49,8 @@ const AI_GROUP_ALERT_RANGE := 42.0
 const AI_MIN_PREY_UTILITY := 0.105
 const AI_HUNT_MOTIVATION_THRESHOLD := 0.44
 const AI_PROXIMITY_HUNT_MAX_RADIUS := 11.5
+const AI_CLOSE_ENCOUNTER_MAX_RADIUS := 7.2
+const AI_RECOVERY_HOTSPOT_HEALTH_RATIO := 0.46
 const AI_BLOCKED_ROUTE_MEMORY := 5.5
 const AI_STUCK_CHAIN_WINDOW := 6.0
 const AI_STUCK_REPLAN_COUNT := 3
@@ -153,6 +155,8 @@ var avoid_direction := Vector3.ZERO
 var obstacle_steering_side: float = 0.0
 var obstacle_steering_timer: float = 0.0
 var state_commit_timer: float = 0.0
+var dominance_response_timer: float = 0.0
+var dominance_target_id: int = -1
 var starvation_warning_timer: float = 0.0
 var water_warning_timer: float = 0.0
 var current_water_depth: float = 0.0
@@ -431,6 +435,21 @@ static func drowning_health_after(current_health: float, maximum_health: float, 
 	return maxf(current_health - maximum_health * DROWNING_DAMAGE_PER_SECOND * delta, 0.0)
 
 
+static func corpse_health_restore(eaten: float, bite_capacity: float, maximum_health: float, eater_size: float, corpse_size: float, ecology_multiplier: float = 1.0) -> float:
+	if eaten <= 0.0 or bite_capacity <= 0.0 or maximum_health <= 0.0:
+		return 0.0
+	var bite_fraction := clampf(eaten / bite_capacity, 0.0, 1.0)
+	var biomass_ratio := clampf(corpse_size / maxf(eater_size, 0.45), 0.45, 1.65)
+	var size_value := inverse_lerp(0.45, 1.65, biomass_ratio)
+	# A full corpse bite now restores 9–15% maximum health depending on how
+	# substantial the carcass is for this eater. Partial last bites scale down,
+	# so a nearly empty corpse cannot be exploited for a full recovery pulse.
+	var ratio_restore := maximum_health * lerpf(0.09, 0.15, size_value) * bite_fraction
+	var biomass_restore := eaten * lerpf(0.46, 0.66, size_value)
+	var restored := maxf(ratio_restore, biomass_restore) * maxf(ecology_multiplier, 0.0)
+	return minf(restored, maximum_health * 0.18 * bite_fraction)
+
+
 static func water_visual_immersion(current_depth: float, safe_wade_depth: float, size_level: int, water_grade: int, airborne: bool) -> float:
 	if airborne or current_depth <= 0.01:
 		return 0.0
@@ -494,6 +513,23 @@ static func should_start_proximity_hunt(context: Dictionary) -> bool:
 	if bool(context.get("target_exposed", false)):
 		required_motivation -= 0.05
 	return float(context.get("motivation", 0.0)) >= maxf(required_motivation, 0.18)
+
+
+static func close_encounter_radius(attack_range: float, effective_body_size: float) -> float:
+	return clampf(attack_range + 2.8 + effective_body_size * 0.28, 4.2, AI_CLOSE_ENCOUNTER_MAX_RADIUS)
+
+
+static func close_strength_response(own_strength: float, other_strength: float, own_health_ratio: float, own_stamina_ratio: float, other_health_ratio: float, distance: float, reaction_radius: float) -> String:
+	if distance > reaction_radius or own_strength <= 0.0 or other_strength <= 0.0:
+		return ""
+	var strength_ratio := own_strength / other_strength
+	# The gap between 0.88 and 1.14 is deliberate hysteresis: similarly matched
+	# animals observe one another instead of repeatedly swapping hunt/flee state.
+	if strength_ratio <= 0.88 or (own_health_ratio <= 0.26 and other_health_ratio > 0.20) or own_stamina_ratio <= 0.10:
+		return "flee"
+	if strength_ratio >= 1.14 and own_health_ratio >= 0.40 and own_stamina_ratio >= 0.22:
+		return "hunt"
+	return ""
 
 
 static func should_replan_blocked_route(recovery_chain: int, final_competition: bool) -> bool:
@@ -1086,6 +1122,14 @@ func _ecology_combat_presence(actor: EcoActor) -> float:
 	if not is_instance_valid(actor):
 		return 0.0
 	return actor.effective_size * 0.72 + actor.combat_power_rating() * 0.012 + actor.health / actor.max_health * 0.75 + actor.stamina / actor.max_stamina * 0.28
+
+
+func _encounter_strength(actor: EcoActor) -> float:
+	if not is_instance_valid(actor):
+		return 0.0
+	var health_ratio := clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
+	var stamina_ratio := clampf(actor.stamina / maxf(actor.max_stamina, 1.0), 0.0, 1.0)
+	return actor.combat_power_rating() * lerpf(0.48, 1.0, health_ratio) * lerpf(0.82, 1.0, stamina_ratio)
 
 
 func _build_rabbit() -> void:
@@ -2046,6 +2090,9 @@ func _update_timers(delta: float) -> void:
 	calm_timer = maxf(calm_timer - delta, 0.0)
 	alert_cooldown = maxf(alert_cooldown - delta, 0.0)
 	state_commit_timer = maxf(state_commit_timer - delta, 0.0)
+	dominance_response_timer = maxf(dominance_response_timer - delta, 0.0)
+	if dominance_response_timer <= 0.0:
+		dominance_target_id = -1
 	starvation_warning_timer = maxf(starvation_warning_timer - delta, 0.0)
 	water_warning_timer = maxf(water_warning_timer - delta, 0.0)
 	water_steering_timer = maxf(water_steering_timer - delta, 0.0)
@@ -2773,10 +2820,26 @@ func _think() -> void:
 	var shared_herd_distance := INF
 	var shared_pack_target: EcoActor
 	var shared_pack_distance := INF
+	var close_encounter_actor: EcoActor
+	var close_encounter_response := ""
+	var close_encounter_distance := INF
 	var pack_support := 0
 	var target_pressure_counts: Dictionary = {}
 	var herd_escape_sum := Vector3.ZERO
 	var herd_escape_count := 0
+	var own_encounter_strength := _encounter_strength(self)
+	var local_reaction_radius := close_encounter_radius(float(data["attack_range"]), effective_size)
+	# New close encounters are sampled on alternating, actor-staggered thought
+	# cycles. The worst-case response delay remains under a second, while dense
+	# 100-animal scenes avoid repeating the extra perception pass every decision.
+	var sample_new_close_encounter := (think_cycles + actor_id) % 2 == 1
+	var dominance_lock_active := dominance_response_timer > 0.0 and ai_state in ["hunt", "flee"] and is_instance_valid(ai_target) and not ai_target.dead and ai_target.species_id != species_id
+	if dominance_lock_active:
+		close_encounter_distance = global_position.distance_to(ai_target.global_position)
+		dominance_lock_active = close_encounter_distance <= local_reaction_radius and _can_detect_actor(ai_target)
+		if dominance_lock_active:
+			close_encounter_actor = ai_target
+			close_encounter_response = ai_state
 	group_escape_direction = Vector3.ZERO
 	for other in living_actors:
 		if other == self or other.dead:
@@ -2804,6 +2867,17 @@ func _think() -> void:
 					herd_escape_count += 1
 		if is_airborne() and not Catalog.has_trait(other.species_id, "flying"):
 			continue
+		if not dominance_lock_active and sample_new_close_encounter and other.species_id != species_id and observer_distance <= local_reaction_radius and spawn_protection <= 0.0 and other.spawn_protection <= 0.0 and _can_detect_actor(other):
+			var strength_response := close_strength_response(
+				own_encounter_strength, _encounter_strength(other),
+				health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), other.health / maxf(other.max_health, 1.0),
+				observer_distance, local_reaction_radius
+			)
+			var response_has_priority := strength_response == "flee" and close_encounter_response != "flee"
+			if strength_response != "" and (response_has_priority or (strength_response == close_encounter_response and observer_distance < close_encounter_distance) or close_encounter_response == ""):
+				close_encounter_actor = other
+				close_encounter_response = strength_response
+				close_encounter_distance = observer_distance
 		if Catalog.considers_prey(other.species_id, species_id) and _can_detect_actor(other):
 			var distance := global_position.distance_to(other.global_position)
 			var stronger: bool = other.health / other.max_health > 0.25 or other.effective_size >= effective_size
@@ -2823,6 +2897,19 @@ func _think() -> void:
 	if is_instance_valid(collapse_competitor):
 		_switch_state("hunt", collapse_competitor)
 		return
+	# Close encounters are resolved by the same current-health combat estimate for
+	# player and AI actors. A clear local advantage produces a short drive-off
+	# attack; a clear disadvantage produces flight; near-equal animals hold their
+	# existing plan. This is local personal-space behavior, not map-wide aggro.
+	var preserve_ready_counter := is_instance_valid(close_encounter_actor) and close_encounter_response == "flee" and ai_state == "flee" and ai_target == close_encounter_actor and can_terrain_counter(close_encounter_actor)
+	if is_instance_valid(close_encounter_actor) and not preserve_ready_counter:
+		dominance_target_id = close_encounter_actor.actor_id
+		dominance_response_timer = 3.2
+		if close_encounter_response == "hunt":
+			calm_timer = 0.0
+		_switch_state(close_encounter_response, close_encounter_actor)
+		state_commit_timer = maxf(state_commit_timer, 2.0)
+		return
 	if is_instance_valid(shared_herd_threat) and Catalog.considers_prey(shared_herd_threat.species_id, species_id):
 		_switch_state("flee", shared_herd_threat)
 		return
@@ -2832,7 +2919,8 @@ func _think() -> void:
 			has_last_known_target_position = true
 			var current_utility := _prey_utility(ai_target, pack_support, int(target_pressure_counts.get(ai_target.actor_id, 0)))
 			var current_distance := global_position.distance_to(ai_target.global_position)
-			if should_abandon_pursuit(current_utility, health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), ai_target.health / maxf(ai_target.max_health, 1.0), current_distance, float(data["attack_range"]), _collapse_competition_active()):
+			var dominance_pursuit := dominance_response_timer > 0.0 and dominance_target_id == ai_target.actor_id
+			if not dominance_pursuit and should_abandon_pursuit(current_utility, health / maxf(max_health, 1.0), stamina / maxf(max_stamina, 1.0), ai_target.health / maxf(ai_target.max_health, 1.0), current_distance, float(data["attack_range"]), _collapse_competition_active()):
 				var abandoned_target := ai_target
 				if Catalog.considers_prey(abandoned_target.species_id, species_id) and current_distance < 18.0:
 					_switch_state("flee", abandoned_target)
@@ -2938,6 +3026,17 @@ func _think() -> void:
 			_switch_state("hunt", nearby_prey)
 			return
 
+	var health_ratio := health / maxf(max_health, 1.0)
+	if health_ratio <= AI_RECOVERY_HOTSPOT_HEALTH_RATIO:
+		var emergency_fruit := _best_recovery_hotspot_food()
+		if is_instance_valid(emergency_fruit):
+			if ai_state != "food" or resource_target != emergency_fruit:
+				state_commit_timer = 2.2
+			ai_state = "food"
+			ai_target = null
+			resource_target = emergency_fruit
+			return
+
 	if calm_timer > 0.0 and hunger < 70.0:
 		if hunger > 42.0:
 			var calm_resource := _best_food_resource(living_actors)
@@ -2962,7 +3061,6 @@ func _think() -> void:
 				return
 	if _begin_danger_memory_avoidance():
 		return
-	var health_ratio := health / maxf(max_health, 1.0)
 	if health_ratio <= Catalog.habit_seek_health_ratio(species_id):
 		var recovery_food := _best_habit_food(34.0, living_actors)
 		if is_instance_valid(recovery_food):
@@ -3323,6 +3421,38 @@ func _best_habit_corpse(search_range: float, living_actors: Array[EcoActor]) -> 
 			best_score = score
 			best_corpse = corpse
 	return best_corpse
+
+
+func _best_recovery_hotspot_food() -> FoodPatch:
+	if game == null or game.world == null or not (game.world is EcoWorld):
+		return null
+	var eco_world := game.world as EcoWorld
+	var active_event := eco_world.get_active_ecology_event()
+	if str(active_event.get("id", "")) != "fruit_fall":
+		return null
+	var origin := global_position if is_inside_tree() else position
+	var search_range := eco_world.ecology_event_attraction_radius()
+	var best_patch: FoodPatch
+	var best_score := INF
+	for candidate_node in eco_world.active_event_patches:
+		if not is_instance_valid(candidate_node) or candidate_node.is_queued_for_deletion() or not candidate_node is FoodPatch:
+			continue
+		var patch := candidate_node as FoodPatch
+		if not patch.active or not patch.ecology_hotspot or patch.food_kind != "fruit" or not patch.can_be_eaten_by(species_id):
+			continue
+		if blocked_route_timer > 0.0 and patch.get_instance_id() == blocked_route_instance_id:
+			continue
+		if not _water_resource_is_safe(patch) or not _habit_resource_inside_active_area(patch):
+			continue
+		var distance := origin.distance_to(patch.global_position)
+		if distance > search_range:
+			continue
+		var affinity := Catalog.habitat_affinity(species_id, eco_world.region_id_at(patch.global_position))
+		var score := distance / (1.0 + affinity * 0.18) - patch.amount * 0.004
+		if score < best_score:
+			best_score = score
+			best_patch = patch
+	return best_patch
 
 
 func _habit_source_key(resource: Node3D) -> String:
@@ -4767,6 +4897,8 @@ func try_consume_resource(resource: Node3D) -> bool:
 		return false
 	if caught_fish:
 		bite_size *= catch_multiplier
+	var bite_capacity := bite_size
+	var corpse_size := float(resource.effective_size) if is_corpse else 0.0
 	var eaten: float = resource.consume(bite_size)
 	if eaten <= 0.0:
 		return false
@@ -4779,11 +4911,14 @@ func try_consume_resource(resource: Node3D) -> bool:
 	var satiety_efficiency := 0.55 if Catalog.has_trait(species_id, "giant") else 0.85
 	if caught_fish:
 		satiety_efficiency *= 1.12
-	var healing_efficiency := 0.08 if Catalog.has_trait(species_id, "giant") else (0.28 if is_corpse else ((0.22 + minf(catch_multiplier, 1.2) * 0.04) if caught_fish else 0.12))
+	var healing_efficiency := 0.08 if Catalog.has_trait(species_id, "giant") else ((0.22 + minf(catch_multiplier, 1.2) * 0.04) if caught_fish else 0.12)
 	var health_before_food := health
 	var hunger_before_food := hunger
 	hunger = maxf(hunger - eaten * satiety_efficiency * nutrition_multiplier, 0.0)
-	health = minf(health + eaten * healing_efficiency * nutrition_multiplier, max_health)
+	var health_restore := eaten * healing_efficiency * nutrition_multiplier
+	if is_corpse:
+		health_restore = corpse_health_restore(eaten, bite_capacity, max_health, effective_size, corpse_size, ecology_adaptation_multiplier())
+	health = minf(health + health_restore, max_health)
 	var habit_result := _apply_food_habit(resource, "corpse" if is_corpse else str(resource.food_kind))
 	if species_id == "raccoon":
 		forage_speed_timer = 3.0
@@ -4805,13 +4940,13 @@ func try_consume_resource(resource: Node3D) -> bool:
 	if is_player:
 		var food_name: String = str(resource.get_food_name()) if resource is FoodPatch else "猎物尸体"
 		if bool(habit_result.get("triggered", false)):
-			game.show_hint("进食%s触发「%s」：生命 +%d、耐力 +%d、适应经验 +%d · %s" % [
-				food_name, str(habit_result["name"]), ceili(float(habit_result["health"])), ceili(float(habit_result["stamina"])), int(habit_result.get("xp", 0)), Catalog.habit_buff_display_name(str(habit_result["buff"])),
+			game.show_hint("进食%s触发「%s」：总生命 +%d、耐力 +%d、饱腹 +%d、适应经验 +%d · %s" % [
+				food_name, str(habit_result["name"]), ceili(health - health_before_food), ceili(float(habit_result["stamina"])), ceili(hunger_before_food - hunger), int(habit_result.get("xp", 0)), Catalog.habit_buff_display_name(str(habit_result["buff"])),
 			])
 		elif caught_fish:
 			game.show_hint("捕获%s：生命 +%d、饱腹 +%d · 捕鱼效率 %.0f%%" % [food_name, ceili(health - health_before_food), ceili(hunger_before_food - hunger), catch_multiplier * 100.0])
 		else:
-			game.show_hint("进食%s，恢复了生命与饱腹" % food_name)
+			game.show_hint("进食%s：生命 +%d、饱腹 +%d" % [food_name, ceili(health - health_before_food), ceili(hunger_before_food - hunger)])
 	return true
 
 

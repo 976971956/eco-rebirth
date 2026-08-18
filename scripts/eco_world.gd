@@ -34,7 +34,7 @@ const ECOLOGY_TRACE_MAX_ENTRIES := 180
 const DANGER_MEMORY_MAX_ENTRIES := 24
 const ECOLOGY_EVENT_ORDER: Array[String] = ["fruit_fall", "grass_flush", "fish_run", "root_bloom"]
 const ECOLOGY_EVENT_PROFILES := {
-	"fruit_fall": {"unlock": 1, "title": "落果潮", "region": "forest", "foods": ["fruit", "berries", "fruit"], "color": "#e6a84f", "description": "成熟果实集中坠落，草食与杂食动物正在向林地迁徙"},
+	"fruit_fall": {"unlock": 1, "title": "落果潮", "region": "forest", "foods": ["fruit", "fruit", "fruit"], "color": "#e6a84f", "description": "大量成熟果实集中坠落，受伤的草食与杂食动物正在向林地迁徙"},
 	"grass_flush": {"unlock": 2, "title": "新草繁盛", "region": "grassland", "foods": ["grass", "grass", "fruit"], "color": "#a6d86f", "description": "雨露催生新草，开阔草原将形成短时争食热点"},
 	"fish_run": {"unlock": 3, "title": "鱼群洄游", "region": "wetland", "foods": ["fish", "fish", "fish"], "color": "#62cfd1", "description": "浅滩鱼群聚集，肉食与杂食动物会循水声前来"},
 	"root_bloom": {"unlock": 4, "title": "块根出土", "region": "highland", "foods": ["roots", "roots", "mushroom"], "color": "#d3b56d", "description": "岩丘土层松动，高能块根在山地集中出现"},
@@ -1200,6 +1200,22 @@ static func ecology_event_repeat_delay(level: int, random_unit: float) -> float:
 	return (ECOLOGY_EVENT_REPEAT_BASE - float(clampi(level, 1, 10) - 1) * 1.5 + clampf(random_unit, 0.0, 1.0) * 18.0) * float(profile.get("event", 1.0))
 
 
+static func ecology_event_patch_count(event_id: String, level: int) -> int:
+	var safe_level := clampi(level, 1, 10)
+	if event_id == "fruit_fall":
+		# Falling-fruit events are intentionally a broad recovery field rather
+		# than three decorative piles: 15 points at L1, rising to 24 at L10.
+		return 14 + safe_level
+	return 3 + int(floor(float(safe_level - 1) / 3.0))
+
+
+static func ecology_event_food_boost(event_id: String, level: int) -> float:
+	var safe_level := clampi(level, 1, 10)
+	if event_id == "fruit_fall":
+		return 1.58 + float(safe_level) * 0.032
+	return 1.22 + float(safe_level) * 0.018
+
+
 static func compass_direction(origin: Vector3, target: Vector3) -> String:
 	var delta := Vector2(target.x - origin.x, target.z - origin.z)
 	if delta.length_squared() < 0.01:
@@ -1447,7 +1463,8 @@ func foods_for_event(profile: Dictionary) -> Array[String]:
 
 func _build_ecology_event_food(profile: Dictionary, center: Vector3) -> void:
 	var foods: Array = profile["foods"]
-	var patch_count := 3 + int(floor(float(clampi(campaign_level, 1, 10) - 1) / 3.0))
+	var event_id := str(active_ecology_event.get("id", ""))
+	var patch_count := ecology_event_patch_count(event_id, campaign_level)
 	var region_id := str(profile["region"])
 	for index in range(patch_count):
 		var angle := TAU * float(index) / float(patch_count) + event_rng.randf_range(-0.22, 0.22)
@@ -1458,9 +1475,9 @@ func _build_ecology_event_food(profile: Dictionary, center: Vector3) -> void:
 			continue
 		var patch := FoodPatchScript.new()
 		patch.position = candidate
-		patch.setup(str(foods[index % foods.size()]), event_rng)
+		patch.setup(str(foods[index % foods.size()]), event_rng, "common", ecology_event_sequence, event_id == "fruit_fall")
 		patch.mark_ecology_hotspot(ecology_event_sequence)
-		patch.boost(1.22 + float(campaign_level) * 0.018)
+		patch.boost(ecology_event_food_boost(event_id, campaign_level))
 		add_child(patch)
 		food_patches.append(patch)
 		active_event_patches.append(patch)

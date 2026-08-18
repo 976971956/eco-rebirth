@@ -97,6 +97,22 @@ func _run_validation() -> void:
 		failures.append("饱腹耗尽后生命仍被锁在 1 点，无法触发饥饿死亡")
 	if not is_equal_approx(ActorScript.drowning_health_after(100.0, 100.0, 1.0), 94.0) or not is_zero_approx(ActorScript.drowning_health_after(3.0, 100.0, 1.0)):
 		failures.append("屏息耗尽后的溺水伤害没有按最大生命 6%/秒结算")
+	var ordinary_corpse_restore := ActorScript.corpse_health_restore(14.0, 14.0, 100.0, 1.0, 1.0)
+	var large_corpse_restore := ActorScript.corpse_health_restore(14.0, 14.0, 100.0, 1.0, 2.0)
+	var final_scrap_restore := ActorScript.corpse_health_restore(1.0, 14.0, 100.0, 1.0, 2.0)
+	if ordinary_corpse_restore < 9.0 or large_corpse_restore <= ordinary_corpse_restore:
+		failures.append("尸体完整进食没有按最大生命与猎物相对体型提供明显回血")
+	if final_scrap_restore >= large_corpse_restore * 0.20:
+		failures.append("尸体最后残渣仍能触发不成比例的完整回血")
+	var local_reaction_radius := ActorScript.close_encounter_radius(1.8, 2.0)
+	if ActorScript.close_strength_response(140.0, 100.0, 0.90, 0.80, 0.90, 4.0, local_reaction_radius) != "hunt":
+		failures.append("近距离明显更强的动物不会主动驱赶弱者")
+	if ActorScript.close_strength_response(80.0, 120.0, 0.90, 0.80, 0.90, 4.0, local_reaction_radius) != "flee":
+		failures.append("近距离明显更弱的动物不会主动逃离强者")
+	if ActorScript.close_strength_response(100.0, 100.0, 0.90, 0.80, 0.90, 4.0, local_reaction_radius) != "":
+		failures.append("同等强度动物缺少观望缓冲区，可能反复切换追逃")
+	if ActorScript.close_strength_response(140.0, 100.0, 0.90, 0.80, 0.90, local_reaction_radius + 0.1, local_reaction_radius) != "":
+		failures.append("强弱遭遇反应越过局部硬半径，恢复了跨图仇恨")
 	var dry_immersion := ActorScript.water_visual_immersion(0.0, 0.24, 3, 2, false)
 	var shallow_immersion := ActorScript.water_visual_immersion(0.16, 0.24, 3, 2, false)
 	var deep_immersion := ActorScript.water_visual_immersion(0.92, 0.24, 3, 2, false)
@@ -296,6 +312,34 @@ func _run_validation() -> void:
 		failures.append("同一近距离主动捕猎链没有同样覆盖普通 AI 动物")
 	proximity_wolf.free()
 	proximity_player.free()
+	game_stub.player = null
+	game_stub.actors.clear()
+	var dominant_elephant: EcoActor = ActorScript.new()
+	dominant_elephant.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(dominant_elephant)
+	dominant_elephant.setup(game_stub, 74, "elephant", false, Vector3.ZERO, 0)
+	var weaker_rabbit: EcoActor = ActorScript.new()
+	weaker_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(weaker_rabbit)
+	weaker_rabbit.setup(game_stub, 75, "rabbit", true, Vector3(4.0, 0.0, 0.0), 0)
+	dominant_elephant.spawn_protection = 0.0
+	weaker_rabbit.spawn_protection = 0.0
+	dominant_elephant.calm_timer = 30.0
+	dominant_elephant.state_commit_timer = 0.0
+	weaker_rabbit.state_commit_timer = 0.0
+	game_stub.player = weaker_rabbit
+	game_stub.actors = [dominant_elephant, weaker_rabbit]
+	dominant_elephant._think()
+	if dominant_elephant.ai_state != "hunt" or dominant_elephant.ai_target != weaker_rabbit:
+		failures.append("更强的草食 AI 没有按近身强弱规则主动驱赶玩家")
+	weaker_rabbit._think()
+	if weaker_rabbit.ai_state != "flee":
+		weaker_rabbit.state_commit_timer = 0.0
+		weaker_rabbit._think()
+	if weaker_rabbit.ai_state != "flee" or weaker_rabbit.ai_target != dominant_elephant:
+		failures.append("更弱的 AI 没有在玩家/普通动物共用规则下主动逃离强者")
+	dominant_elephant.free()
+	weaker_rabbit.free()
 	game_stub.player = null
 	game_stub.actors.clear()
 

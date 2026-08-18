@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.57.2"
+const RELEASE_VERSION := "1.58"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -870,6 +870,10 @@ func _start_benchmark() -> void:
 	benchmark_max_primitives = 0
 	benchmark_max_static_memory = 0
 	_start_new_world(true)
+	# Performance sampling must measure a fixed duration rather than end early
+	# when the unattended benchmark player is killed by normal ecology AI.
+	if is_instance_valid(player):
+		player.spawn_protection = benchmark_duration + 2.0
 	benchmark_started_usec = Time.get_ticks_usec()
 	print("[benchmark] 第%d关 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, benchmark_quality, benchmark_species, benchmark_duration])
 
