@@ -2234,7 +2234,7 @@ func _is_protected_route(pos: Vector3, clearance_radius: float = 0.0) -> bool:
 	return false
 
 
-func steer_around_obstacles(origin: Vector3, desired: Vector3, actor_radius: float, actor_id: int, look_ahead_scale: float = 1.0) -> Vector3:
+func steer_around_obstacles(origin: Vector3, desired: Vector3, actor_radius: float, actor_id: int, look_ahead_scale: float = 1.0, preferred_side_sign: float = 0.0) -> Vector3:
 	if desired.length() < 0.05:
 		return Vector3.ZERO
 	var flat_desired := Vector3(desired.x, 0.0, desired.z).normalized()
@@ -2243,7 +2243,17 @@ func steer_around_obstacles(origin: Vector3, desired: Vector3, actor_radius: flo
 	var nearest_clearance := INF
 	for index in range(obstacles.size()):
 		var to_obstacle := obstacles[index] - origin
-		var distance_along_path := clampf(to_obstacle.dot(flat_desired), 0.0, look_ahead)
+		var raw_distance_along_path := to_obstacle.dot(flat_desired)
+		# Once an animal has cleared a trunk or rock, do not let that obstacle keep
+		# steering it from behind. The old clamped projection treated nearby rear
+		# obstacles as if they were still on the route, making AI orbit them. Use a
+		# squared overlap check here because this runs for every ground AI.
+		if raw_distance_along_path < -0.12:
+			var retained_radius := obstacle_radii[index] + actor_radius + 0.05
+			var radial_distance_squared := to_obstacle.x * to_obstacle.x + to_obstacle.z * to_obstacle.z
+			if radial_distance_squared > retained_radius * retained_radius:
+				continue
+		var distance_along_path := clampf(raw_distance_along_path, 0.0, look_ahead)
 		var closest_path_point := origin + flat_desired * distance_along_path
 		var clearance := Vector2(closest_path_point.x - obstacles[index].x, closest_path_point.z - obstacles[index].z).length() - obstacle_radii[index] - actor_radius
 		if clearance < nearest_clearance and clearance < 0.9:
@@ -2257,9 +2267,11 @@ func steer_around_obstacles(origin: Vector3, desired: Vector3, actor_radius: flo
 	var obstacle := obstacles[blocking_index]
 	var left_clearance := Vector2(left_probe.x - obstacle.x, left_probe.z - obstacle.z).length()
 	var right_clearance := Vector2(right_probe.x - obstacle.x, right_probe.z - obstacle.z).length()
-	var side_sign := 1.0 if left_clearance > right_clearance else -1.0
-	if is_equal_approx(left_clearance, right_clearance):
-		side_sign = 1.0 if actor_id % 2 == 0 else -1.0
+	var side_sign := signf(preferred_side_sign)
+	if is_zero_approx(side_sign):
+		side_sign = 1.0 if left_clearance > right_clearance else -1.0
+		if is_equal_approx(left_clearance, right_clearance):
+			side_sign = 1.0 if actor_id % 2 == 0 else -1.0
 	return (flat_desired + lateral * side_sign * 1.25).normalized()
 
 

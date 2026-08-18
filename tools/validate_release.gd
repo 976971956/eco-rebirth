@@ -64,7 +64,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.57.1 发布候选校验通过：移动摇杆多点触控锁、Lv.10 实时体型成长、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.57.2 发布候选校验通过：AI 稳定绕障与真实位移朝向、移动摇杆多点触控锁、Lv.10 实时体型成长、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -296,9 +296,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.57.1\"") and presets.contains("application/short_version=\"1.57.1\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=680") and presets.contains("application/version=\"680\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.57.1", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.57.2\"") and presets.contains("application/short_version=\"1.57.2\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=690") and presets.contains("application/version=\"690\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.57.2", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1597,8 +1597,9 @@ func _validate_ai_tactical_contract() -> void:
 	proximity_context["diet"] = "herbivore"
 	_expect(not ActorScript.should_start_proximity_hunt(proximity_context), "附近主动捕猎规则破坏了草食物种定位")
 	_expect(ActorScript.should_replan_blocked_route(3, false) and not ActorScript.should_replan_blocked_route(3, true), "AI 路线连续失败后不会改道，或终局会错误脱战")
-	_expect(not ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0), "领地 AI 仍会对远处入侵者跨区追杀")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("obstacle_steering_side") and actor_source.contains("resolved_ai_ground_facing"), "AI 缺少稳定绕行侧锁或真实位移朝向，可能恢复原地转圈")
+	_expect(not ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0), "领地 AI 仍会对远处入侵者跨区追杀")
 	_expect(actor_source.contains("func evaluate_prey_utility") and actor_source.contains("target_pressure_counts"), "AI 猎物选择没有战况效用与第三方压力")
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"pack_hunter\")") and actor_source.contains("shared_pack_target"), "群猎物种没有共享追猎意图")
 	_expect(actor_source.contains("Catalog.has_trait(species_id, \"herd_mover\")") and actor_source.contains("group_escape_direction"), "群居物种没有共享危险或逃生方向")

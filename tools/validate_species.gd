@@ -771,6 +771,25 @@ func _run_validation() -> void:
 		failures.append("巨象开路没有移除轻型树木")
 	elif not world_test.obstacles.is_empty() or not world_test.obstacle_radii.is_empty() or not world_test.obstacle_kinds.is_empty():
 		failures.append("巨象开路后障碍导航数组没有保持同步")
+	world_test.obstacles.append(Vector3.ZERO)
+	world_test.obstacle_radii.append(0.75)
+	world_test.obstacle_kinds.append("tree")
+	var forward_route := Vector3(0.0, 0.0, -1.0)
+	var left_steer := world_test.steer_around_obstacles(Vector3(0.0, 0.0, 2.2), forward_route, 0.55, 2, 1.0, 1.0)
+	var right_steer := world_test.steer_around_obstacles(Vector3(0.0, 0.0, 2.2), forward_route, 0.55, 2, 1.0, -1.0)
+	if left_steer.x <= 0.1 or right_steer.x >= -0.1:
+		failures.append("AI 避障没有遵守已锁定的左右绕行方向")
+	var cleared_route := world_test.steer_around_obstacles(Vector3(0.0, 0.0, -2.2), forward_route, 0.55, 2)
+	if cleared_route.dot(forward_route) < 0.999:
+		failures.append("AI 已越过障碍后仍被身后的障碍牵引，可能原地转圈")
+	if not ActorScript.resolved_ai_ground_facing(Vector3.ZERO).is_zero_approx():
+		failures.append("AI 没有实际位移时仍会跟随抖动的意图方向原地旋转")
+	var actual_facing := ActorScript.resolved_ai_ground_facing(Vector3(0.08, 0.0, -0.03))
+	if actual_facing.dot(Vector3(0.08, 0.0, -0.03).normalized()) < 0.999:
+		failures.append("AI 移动朝向没有跟随实际位移")
+	world_test.obstacles.clear()
+	world_test.obstacle_radii.clear()
+	world_test.obstacle_kinds.clear()
 	var basin_center := Vector3(-world_test.world_size * 0.25, 0.0, world_test.world_size * 0.25)
 	if world_test.water_depth_at(basin_center) <= 0.45:
 		failures.append("湿地中心没有生成深水速度带")

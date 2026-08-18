@@ -1,6 +1,6 @@
 extends SceneTree
 
-const EXPECTED_VERSION := "1.57.1"
+const EXPECTED_VERSION := "1.57.2"
 const CASES := [
 	{"level": 1, "minimum_fps": 58.0, "maximum_physics_ms": 10.0, "maximum_memory_mib": 120.0},
 	{"level": 5, "minimum_fps": 58.0, "maximum_physics_ms": 16.0, "maximum_memory_mib": 135.0},

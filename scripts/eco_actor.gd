@@ -150,6 +150,8 @@ var previous_flat_direction := Vector3.ZERO
 var alert_cooldown: float = 0.0
 var avoid_timer: float = 0.0
 var avoid_direction := Vector3.ZERO
+var obstacle_steering_side: float = 0.0
+var obstacle_steering_timer: float = 0.0
 var state_commit_timer: float = 0.0
 var starvation_warning_timer: float = 0.0
 var water_warning_timer: float = 0.0
@@ -2047,6 +2049,9 @@ func _update_timers(delta: float) -> void:
 	starvation_warning_timer = maxf(starvation_warning_timer - delta, 0.0)
 	water_warning_timer = maxf(water_warning_timer - delta, 0.0)
 	water_steering_timer = maxf(water_steering_timer - delta, 0.0)
+	obstacle_steering_timer = maxf(obstacle_steering_timer - delta, 0.0)
+	if obstacle_steering_timer <= 0.0:
+		obstacle_steering_side = 0.0
 	recovery_timer = maxf(recovery_timer - delta, 0.0)
 	blocked_route_timer = maxf(blocked_route_timer - delta, 0.0)
 	if blocked_route_timer <= 0.0:
@@ -2390,7 +2395,7 @@ func _steer_for_water_safety(direction: Vector3) -> Vector3:
 	if is_player or is_airborne() or direction.length() <= 0.05 or game.world == null or not game.world.has_method("water_depth_at"):
 		return direction
 	var normalized_direction := direction.normalized()
-	if water_steering_timer > 0.0 and cached_water_input_direction.dot(normalized_direction) >= 0.86:
+	if water_steering_timer > 0.0 and cached_water_input_direction.dot(normalized_direction) >= 0.72:
 		return cached_water_safe_direction
 	var entry_limit := _ai_water_entry_limit()
 	var probe_distance := 1.9 + effective_size * 0.12
@@ -2415,20 +2420,36 @@ func _steer_for_water_safety(direction: Vector3) -> Vector3:
 		safe_direction = _safest_water_alternative(direction, probe_distance, entry_limit)
 	cached_water_input_direction = normalized_direction
 	cached_water_safe_direction = safe_direction
-	water_steering_timer = 0.10 + fmod(float(actor_id) * 0.011, 0.055)
+	# Shoreline depth changes by small amounts between frames. Keep one safe
+	# route briefly so equally valid left/right shallows cannot make an animal
+	# alternate its heading in place.
+	water_steering_timer = 0.28 + fmod(float(actor_id) * 0.013, 0.09)
 	return safe_direction
 
 
 func _safest_water_alternative(direction: Vector3, probe_distance: float, entry_limit: float) -> Vector3:
 	var best_direction := Vector3.ZERO
 	var best_depth := INF
-	for angle in [0.82, -0.82, 1.32, -1.32]:
+	var side_sign := 1.0 if actor_id % 2 == 0 else -1.0
+	var angles := [0.82 * side_sign, -0.82 * side_sign, 1.32 * side_sign, -1.32 * side_sign]
+	for angle in angles:
 		var alternative := direction.rotated(Vector3.UP, float(angle)).normalized()
 		var alternative_depth := float(game.world.water_depth_at(global_position + alternative * probe_distance))
-		if alternative_depth < best_depth:
+		# A few centimetres of sampled depth should not reverse the chosen bank.
+		if alternative_depth < best_depth - 0.025:
 			best_depth = alternative_depth
 			best_direction = alternative
 	return best_direction if best_depth <= entry_limit else Vector3.ZERO
+
+
+static func resolved_ai_ground_facing(actual_displacement: Vector3, attack_direction: Vector3 = Vector3.ZERO) -> Vector3:
+	var flat_attack := Vector3(attack_direction.x, 0.0, attack_direction.z)
+	if flat_attack.length() > 0.05:
+		return flat_attack.normalized()
+	var flat_displacement := Vector3(actual_displacement.x, 0.0, actual_displacement.z)
+	if flat_displacement.length() <= 0.002:
+		return Vector3.ZERO
+	return flat_displacement.normalized()
 
 
 func _update_health_bar_visibility(delta: float) -> void:
@@ -3616,12 +3637,20 @@ func _apply_movement(delta: float) -> void:
 		if center_distance > game.world.collapse_radius:
 			var toward_center := Vector3(-global_position.x, 0.0, -global_position.z).normalized()
 			flat_direction = (flat_direction + toward_center * 1.25).normalized()
-	if not is_player and game.world != null and flat_direction.length() > 0.1 and (not uses_height_domain or global_position.y < 1.35):
+	if not is_player and recovery_timer <= 0.0 and game.world != null and flat_direction.length() > 0.1 and (not uses_height_domain or global_position.y < 1.35):
 		var steering_radius := 0.52 + effective_size * 0.09
 		if Catalog.has_trait(species_id, "climber"):
 			steering_radius *= 0.80
 		var look_ahead_scale := 1.72 if species_id == "cheetah" else 1.0
-		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale)
+		var obstacle_input_direction := flat_direction
+		var preferred_side := obstacle_steering_side if obstacle_steering_timer > 0.0 else 0.0
+		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale, preferred_side)
+		var obstacle_lateral := Vector3(-obstacle_input_direction.z, 0.0, obstacle_input_direction.x)
+		var lateral_amount := obstacle_lateral.dot(flat_direction)
+		if absf(lateral_amount) > 0.08 and flat_direction.dot(obstacle_input_direction) < 0.995:
+			if obstacle_steering_timer <= 0.0:
+				obstacle_steering_side = 1.0 if lateral_amount > 0.0 else -1.0
+			obstacle_steering_timer = 0.78 + fmod(float(actor_id) * 0.019, 0.18)
 	if not is_player and flat_direction.length() > 0.05 and (not uses_height_domain or global_position.y < 1.35):
 		flat_direction = _steer_for_water_safety(flat_direction)
 	if avoid_timer > 0.0 and not is_player:
@@ -3769,8 +3798,15 @@ func _apply_movement(delta: float) -> void:
 		if is_instance_valid(pending_food_resource) and global_position.y < 0.92 and global_position.distance_to(pending_food_resource.global_position) <= 2.6:
 			try_consume_resource(pending_food_resource)
 			pending_food_resource = null
-	if flat_direction.length() > 0.12:
-		var target_angle := atan2(-flat_direction.x, -flat_direction.z)
+	var facing_direction := flat_direction
+	if not is_player and not uses_height_domain:
+		var actual_displacement := global_position - movement_origin
+		var attack_direction := Vector3.ZERO
+		if attack_intent and is_instance_valid(ai_target):
+			attack_direction = ai_target.global_position - global_position
+		facing_direction = resolved_ai_ground_facing(actual_displacement, attack_direction)
+	if facing_direction.length() > 0.12:
+		var target_angle := atan2(-facing_direction.x, -facing_direction.z)
 		var turn_rate := lerpf(7.0, 4.0, clampf((effective_size - 3.0) / 3.4, 0.0, 1.0))
 		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-delta * turn_rate))
 	var flat_speed := Vector2(velocity.x, velocity.z).length()
