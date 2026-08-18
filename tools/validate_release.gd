@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.52 发布候选校验通过：深浅水、水性/屏息/溺水、动态鱼群、AI 水域决策、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.53 发布候选校验通过：连续可见边界、附近主动捕猎、公平玩家目标选择、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.52.0\"") and presets.contains("application/short_version=\"1.52.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=620") and presets.contains("application/version=\"620\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.52.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.53.0\"") and presets.contains("application/short_version=\"1.53.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=630") and presets.contains("application/version=\"630\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.53.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -474,6 +474,11 @@ func _validate_world_navigation_contract() -> void:
 		_expect(world.region_landmark_positions.size() == 4, "第%d关没有生成四个生态区地标" % int(level_case["level"]))
 		_expect(world.find_children("LevelSignature_*", "Node3D", true, false).size() == 1, "第%d关没有生成独立中央生态图腾" % int(level_case["level"]))
 		_expect(world.migration_routes.size() == 2, "第%d关没有生成横纵迁徙主通道" % int(level_case["level"]))
+		_expect(world.find_children("BoundaryGroundBand_*", "MeshInstance3D", true, false).size() == 4, "第%d关没有生成四向连续地表边界带" % int(level_case["level"]))
+		_expect(world.find_children("BoundaryGuideLine_*", "MeshInstance3D", true, false).size() == 4, "第%d关缺少四向边界引导线" % int(level_case["level"]))
+		_expect(world.find_children("BoundaryMarker_*", "Node3D", true, false).size() == 4, "第%d关没有生成四向生态边界界碑" % int(level_case["level"]))
+		_expect(world.boundary_status_at(Vector3(float(level_case["size"]) * 0.5 - 3.0, 0.0, 0.0)).contains("生态边界"), "第%d关靠近边缘时 HUD 没有边界距离预警" % int(level_case["level"]))
+		_expect(world.boundary_status_at(Vector3.ZERO).is_empty(), "第%d关地图中心错误显示边界预警" % int(level_case["level"]))
 		for region_id in WorldScript.REGION_ORDER:
 			var marker_position: Vector3 = world.region_landmark_positions.get(region_id, Vector3.ZERO)
 			_expect(world.is_landing_clear(marker_position, 0.85), "第%d关 %s 地标周边被障碍物封锁" % [int(level_case["level"]), region_id])
@@ -1511,6 +1516,16 @@ func _validate_ai_tactical_contract() -> void:
 	_expect(not ActorScript.should_approach_contested_food(1, 0.2, 0.3, 60.0, false, 0), "受伤独行者仍会无视守尸风险")
 	_expect(ActorScript.hunting_motivation(18.0, 0.55, "omnivore", 4) < ActorScript.AI_HUNT_MOTIVATION_THRESHOLD, "饱腹的大型杂食者仍会主动清场")
 	_expect(ActorScript.hunting_motivation(68.0, 0.55, "omnivore", 4) > ActorScript.AI_HUNT_MOTIVATION_THRESHOLD, "饥饿的大型杂食者不会恢复捕食动机")
+	var proximity_context := {
+		"diet": "carnivore", "health": 0.90, "stamina": 0.80,
+		"utility": ActorScript.AI_MIN_PREY_UTILITY + 0.06,
+		"motivation": ActorScript.hunting_motivation(18.0, 0.68, "carnivore", 3),
+		"aggression": 0.68, "pack_support": 0, "attack_range": 1.8,
+		"distance": 5.8, "target_exposed": false,
+	}
+	_expect(ActorScript.should_start_proximity_hunt(proximity_context), "附近合法猎物无法触发肉食 AI 主动捕猎")
+	proximity_context["diet"] = "herbivore"
+	_expect(not ActorScript.should_start_proximity_hunt(proximity_context), "附近主动捕猎规则破坏了草食物种定位")
 	_expect(ActorScript.should_replan_blocked_route(3, false) and not ActorScript.should_replan_blocked_route(3, true), "AI 路线连续失败后不会改道，或终局会错误脱战")
 	_expect(not ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0), "领地 AI 仍会对远处入侵者跨区追杀")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")

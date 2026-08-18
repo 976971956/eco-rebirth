@@ -127,6 +127,22 @@ func _run_validation() -> void:
 		failures.append("大型杂食者的饥饿猎杀动机没有区分饱腹与饥饿状态")
 	if coordinated_wolf_motivation <= ActorScript.AI_HUNT_MOTIVATION_THRESHOLD:
 		failures.append("同伴支援没有让狼群在建立期后形成可读围猎")
+	var nearby_hunt_context := {
+		"diet": "carnivore", "health": 0.92, "stamina": 0.84,
+		"utility": ActorScript.AI_MIN_PREY_UTILITY + 0.08,
+		"motivation": ActorScript.hunting_motivation(18.0, 0.68, "carnivore", 3, 0),
+		"aggression": 0.68, "pack_support": 0, "attack_range": 1.8,
+		"distance": 5.8, "target_exposed": false,
+	}
+	if not ActorScript.should_start_proximity_hunt(nearby_hunt_context):
+		failures.append("健康肉食 AI 不会主动攻击进入附近反应半径的合法猎物")
+	nearby_hunt_context["diet"] = "herbivore"
+	if ActorScript.should_start_proximity_hunt(nearby_hunt_context):
+		failures.append("草食 AI 被近距离规则错误改成了主动猎杀者")
+	nearby_hunt_context["diet"] = "carnivore"
+	nearby_hunt_context["distance"] = ActorScript.AI_PROXIMITY_HUNT_MAX_RADIUS + 0.1
+	if ActorScript.should_start_proximity_hunt(nearby_hunt_context):
+		failures.append("近距离主动捕猎超过硬上限，可能恢复跨图仇恨")
 	if ActorScript.should_replan_blocked_route(2, false) or not ActorScript.should_replan_blocked_route(3, false) or ActorScript.should_replan_blocked_route(4, true):
 		failures.append("AI 连续脱困后的改道阈值或终局例外无效")
 	if ActorScript.should_escalate_territory_intrusion(true, false, 14.0, 2.0, 16.0) or not ActorScript.should_escalate_territory_intrusion(true, false, 5.0, 2.0, 16.0) or not ActorScript.should_escalate_territory_intrusion(false, true, 18.0, 2.0, 16.0):
@@ -245,6 +261,36 @@ func _run_validation() -> void:
 		failures.append("一名狼升级污染了后续生成的同物种基础数据")
 	growth_actor.free()
 	fresh_growth_actor.free()
+
+	var proximity_wolf: EcoActor = ActorScript.new()
+	proximity_wolf.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(proximity_wolf)
+	proximity_wolf.setup(game_stub, 72, "wolf", false, Vector3.ZERO, 0)
+	var proximity_player: EcoActor = ActorScript.new()
+	proximity_player.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(proximity_player)
+	proximity_player.setup(game_stub, 73, "rabbit", true, Vector3(5.8, 0.0, 0.0), 0)
+	proximity_wolf.spawn_protection = 0.0
+	proximity_player.spawn_protection = 0.0
+	proximity_wolf.calm_timer = 30.0
+	proximity_wolf.state_commit_timer = 0.0
+	game_stub.player = proximity_player
+	game_stub.actors = [proximity_wolf, proximity_player]
+	proximity_wolf._think()
+	if proximity_wolf.ai_state != "hunt" or proximity_wolf.ai_target != proximity_player or proximity_wolf.calm_timer > 0.0:
+		failures.append("生态建立期内的附近合法玩家猎物没有公平进入 AI 主动捕猎链")
+	proximity_wolf.ai_state = "wander"
+	proximity_wolf.ai_target = null
+	proximity_wolf.calm_timer = 30.0
+	proximity_wolf.state_commit_timer = 0.0
+	proximity_player.is_player = false
+	proximity_wolf._think()
+	if proximity_wolf.ai_state != "hunt" or proximity_wolf.ai_target != proximity_player:
+		failures.append("同一近距离主动捕猎链没有同样覆盖普通 AI 动物")
+	proximity_wolf.free()
+	proximity_player.free()
+	game_stub.player = null
+	game_stub.actors.clear()
 
 	var pack_leader: EcoActor = ActorScript.new()
 	pack_leader.process_mode = Node.PROCESS_MODE_DISABLED

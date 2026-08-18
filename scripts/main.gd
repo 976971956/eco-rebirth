@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.52.0"
+const RELEASE_VERSION := "1.53.0"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -196,6 +196,10 @@ func _process(delta: float) -> void:
 		var domain_suffix: String = "" if player.movement_domain_label() == "地面" else "\n移动层：%s" % player.movement_domain_label()
 		var adaptation_suffix := " · %s" % player.environment_region_status_text() if player.has_method("environment_region_status_text") else ""
 		var region_name := "%s · %s%s%s" % [world.region_name_at(player.global_position), world.condition_summary(), domain_suffix, adaptation_suffix] if is_instance_valid(world) else "未知区域"
+		if is_instance_valid(world):
+			var boundary_status := world.boundary_status_at(player.global_position)
+			if boundary_status != "":
+				region_name += "\n%s" % boundary_status
 		var ecology_status := world.ecology_event_status(player.global_position) if is_instance_valid(world) else ""
 		var ecology_activity := ecology_hotspot_activity_status()
 		var habit_guidance := player.habit_resource_guidance_text()

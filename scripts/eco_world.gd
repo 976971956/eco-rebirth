@@ -994,11 +994,27 @@ func _random_fish_position(prefer_deep: bool) -> Vector3:
 
 func _build_visible_border() -> void:
 	var edge := world_size * 0.5
-	var segments_per_edge: int = {"low": 7, "medium": 10, "high": 12}.get(quality_preset, 10)
+	# The collision square used to be represented only by a few low rocks with
+	# intentional gaps. From the gameplay camera those gaps looked like open
+	# terrain. Two continuous, walkable ground ribbons now announce the exact
+	# perimeter while remaining visual-only and absent from navigation data.
+	var outer_material := Factory.terrain_material(Color("#303a33"), Color("#697066"), 7.0, HIGHLAND_GROUND_TEXTURE, 4.4, 0.58)
+	var inner_material := Factory.terrain_material(Color("#b5a166"), Color("#d0bd79"), 9.0, HIGHLAND_GROUND_TEXTURE, 3.2, 0.42)
+	var outer_line := edge - 1.05
+	var inner_line := edge - 2.15
+	for side in range(4):
+		var outer_points := _boundary_side_points(side, outer_line)
+		var inner_points := _boundary_side_points(side, inner_line)
+		var outer_band := _add_ground_ribbon("BoundaryGroundBand_%d" % side, outer_points, 1.65, 0.082, outer_material)
+		var inner_band := _add_ground_ribbon("BoundaryGuideLine_%d" % side, inner_points, 0.34, 0.094, inner_material)
+		outer_band.set_meta("visual_only", true)
+		inner_band.set_meta("visual_only", true)
+	# Reuse four biome-colour meshes instead of retaining one randomly tinted
+	# sphere mesh per stone. The continuous bands carry readability, so a sparse
+	# ridge is enough and leaves more memory headroom on Web/mobile L10.
+	var segments_per_edge: int = {"low": 4, "medium": 6, "high": 8}.get(quality_preset, 6)
 	for side in range(4):
 		for segment_index in range(segments_per_edge):
-			if (segment_index + side * 3) % 5 == 2:
-				continue
 			var ratio := (float(segment_index) + 0.5) / float(segments_per_edge)
 			var along := lerpf(-edge, edge, ratio) + rng.randf_range(-1.2, 1.2)
 			var inward := rng.randf_range(-0.25, 0.45)
@@ -1016,10 +1032,69 @@ func _build_visible_border() -> void:
 				"forest": Color("#4b574a"), "grassland": Color("#666349"),
 				"wetland": Color("#4d5c57"), "highland": Color("#666158"),
 			}.get(region_id, Color("#5c6256"))
-			var ridge := Factory.sphere("NaturalBoundaryRidge", ridge_color.lightened(rng.randf_range(-0.06, 0.06)), ridge_scale, Vector3(ridge_position.x, ridge_scale.y * 0.88 - 0.04, ridge_position.z), 9, 5)
+			var ridge := Factory.sphere("NaturalBoundaryRidge", ridge_color, ridge_scale, Vector3(ridge_position.x, ridge_scale.y * 0.88 - 0.04, ridge_position.z), 9, 5)
 			ridge.rotation = Vector3(rng.randf_range(-0.08, 0.08), rng.randf_range(0.0, TAU), rng.randf_range(-0.06, 0.06))
 			ridge.set_meta("visual_only", true)
 			decoration_root.add_child(ridge)
+	_build_boundary_markers(edge - 2.25)
+
+
+func _boundary_side_points(side: int, edge_line: float) -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for point_index in range(7):
+		var ratio := float(point_index) / 6.0
+		var along := lerpf(-edge_line, edge_line, ratio)
+		var organic_offset := 0.0 if point_index in [0, 6] else sin(float(point_index) * 1.71 + float(side) * 0.83) * 0.16
+		match side:
+			0: points.append(Vector2(along, -edge_line + organic_offset))
+			1: points.append(Vector2(edge_line - organic_offset, along))
+			2: points.append(Vector2(along, edge_line - organic_offset))
+			_: points.append(Vector2(-edge_line + organic_offset, along))
+	return points
+
+
+func _build_boundary_markers(edge_line: float) -> void:
+	for side in range(4):
+		var marker := Node3D.new()
+		marker.name = "BoundaryMarker_%d" % side
+		match side:
+			0: marker.position = Vector3(0.0, 0.0, -edge_line)
+			1: marker.position = Vector3(edge_line, 0.0, 0.0)
+			2: marker.position = Vector3(0.0, 0.0, edge_line)
+			_: marker.position = Vector3(-edge_line, 0.0, 0.0)
+		if side in [1, 3]:
+			marker.rotation.y = PI * 0.5
+		marker.set_meta("visual_only", true)
+		decoration_root.add_child(marker)
+		for x_offset in [-1.42, 1.42]:
+			var pillar := Factory.tapered_cylinder("BoundaryCairn", Color("#59645e"), 0.34, 0.22, 2.38, Vector3(x_offset, 1.17, 0.0), 7)
+			pillar.set_meta("visual_only", true)
+			marker.add_child(pillar)
+		var signboard := Factory.box("BoundarySignboard", Color("#263d34"), Vector3(3.05, 0.82, 0.16), Vector3(0.0, 2.25, 0.0))
+		signboard.set_meta("visual_only", true)
+		marker.add_child(signboard)
+		var warning_stripe := Factory.box("BoundaryWarningStripe", Color("#d8bd67"), Vector3(1.92, 0.13, 0.07), Vector3(0.0, 2.25, -0.10))
+		warning_stripe.set_meta("visual_only", true)
+		marker.add_child(warning_stripe)
+		# Label3D keeps a glyph atlas resident. Preserve the literal sign on the
+		# high preset while medium/low use the same unmistakable gold stop stripe
+		# and continuous ground band without spending that mobile/Web memory.
+		if quality_preset != "high":
+			continue
+		var label := Label3D.new()
+		label.name = "BoundaryLabel"
+		label.text = "生态边界  ·  请折返"
+		label.font = load("res://assets/fonts/NotoSansSC-VF.ttf") as Font
+		label.font_size = 44
+		label.outline_size = 7
+		label.modulate = Color("#f0dc96")
+		label.outline_modulate = Color(0.025, 0.045, 0.035, 0.96)
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		label.pixel_size = 0.0125
+		label.position = Vector3(0.0, 2.28, -0.10)
+		label.set_meta("visual_only", true)
+		marker.add_child(label)
 
 
 func _build_distant_landscape() -> void:
@@ -1544,6 +1619,18 @@ func clamp_position(pos: Vector3) -> Vector3:
 	# Leave only enough margin to keep the largest capsule on the ground plane.
 	var edge := maxf(world_size * 0.5 - 1.2, 1.0)
 	return Vector3(clampf(pos.x, -edge, edge), pos.y, clampf(pos.z, -edge, edge))
+
+
+func distance_to_playable_boundary(pos: Vector3) -> float:
+	var playable_edge := maxf(world_size * 0.5 - 1.2, 1.0)
+	return maxf(playable_edge - maxf(absf(pos.x), absf(pos.z)), 0.0)
+
+
+func boundary_status_at(pos: Vector3) -> String:
+	var distance := distance_to_playable_boundary(pos)
+	if distance > 14.0:
+		return ""
+	return "边界预警 · 距生态边界 %.0f米" % distance
 
 
 func region_id_at(pos: Vector3) -> String:

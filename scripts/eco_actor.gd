@@ -48,6 +48,7 @@ const AI_HERD_SHARE_RADIUS := 18.0
 const AI_GROUP_ALERT_RANGE := 42.0
 const AI_MIN_PREY_UTILITY := 0.105
 const AI_HUNT_MOTIVATION_THRESHOLD := 0.44
+const AI_PROXIMITY_HUNT_MAX_RADIUS := 11.5
 const AI_BLOCKED_ROUTE_MEMORY := 5.5
 const AI_STUCK_CHAIN_WINDOW := 6.0
 const AI_STUCK_REPLAN_COUNT := 3
@@ -327,6 +328,38 @@ static func hunting_motivation(hunger_value: float, aggression: float, diet: Str
 		result -= 0.04
 	result += minf(float(pack_support), 2.0) * 0.08
 	return clampf(result, 0.0, 1.0)
+
+
+static func proximity_hunt_radius(attack_range: float, aggression: float, pack_support: int = 0) -> float:
+	# A short opportunity radius makes predators react to animals that actually
+	# enter their immediate space without restoring map-wide omniscient aggro.
+	# Pack support widens the window slightly because nearby members can share a
+	# target, but the hard cap keeps this cheaper and fair on every platform.
+	return clampf(attack_range * 2.0 + 2.4 + clampf(aggression, 0.0, 1.0) * 2.0 + minf(float(pack_support), 2.0) * 0.7, 5.2, AI_PROXIMITY_HUNT_MAX_RADIUS)
+
+
+static func should_start_proximity_hunt(context: Dictionary) -> bool:
+	var diet := str(context.get("diet", "herbivore"))
+	if diet == "herbivore":
+		return false
+	var health_ratio := clampf(float(context.get("health", 1.0)), 0.0, 1.0)
+	var stamina_ratio := clampf(float(context.get("stamina", 1.0)), 0.0, 1.0)
+	var utility := maxf(float(context.get("utility", 0.0)), 0.0)
+	if health_ratio < 0.44 or stamina_ratio < 0.26 or utility < AI_MIN_PREY_UTILITY:
+		return false
+	var aggression := clampf(float(context.get("aggression", 0.0)), 0.0, 1.0)
+	var pack_support := maxi(int(context.get("pack_support", 0)), 0)
+	var attack_range := maxf(float(context.get("attack_range", 1.0)), 0.1)
+	var distance := maxf(float(context.get("distance", INF)), 0.0)
+	if distance > proximity_hunt_radius(attack_range, aggression, pack_support):
+		return false
+	var required_motivation := AI_HUNT_MOTIVATION_THRESHOLD - 0.13 - aggression * 0.05
+	required_motivation -= minf(float(pack_support), 2.0) * 0.03
+	if diet == "carnivore":
+		required_motivation -= 0.04
+	if bool(context.get("target_exposed", false)):
+		required_motivation -= 0.05
+	return float(context.get("motivation", 0.0)) >= maxf(required_motivation, 0.18)
 
 
 static func should_replan_blocked_route(recovery_chain: int, final_competition: bool) -> bool:
@@ -2658,6 +2691,38 @@ func _think() -> void:
 				_switch_state("hunt", visible_hotspot_prey)
 			return
 
+	# Establishment time prevents long-range opening kills, but it must not turn
+	# predators into scenery. A healthy carnivore or sufficiently motivated
+	# omnivore may engage a legal prey animal that comes into its local reaction
+	# radius. Player and AI actors pass through exactly the same candidate path.
+	var hunt_motivation := hunting_motivation(hunger, float(data["aggression"]), str(data["diet"]), int(data["size"]), pack_support)
+	var nearby_prey: EcoActor
+	# Highly motivated actors outside establishment time will run the ordinary
+	# full prey scan below. Avoid doing a second candidate pass in that case;
+	# this keeps the 100-actor physics budget stable on Web/mobile.
+	if calm_timer > 0.0 or hunt_motivation <= AI_HUNT_MOTIVATION_THRESHOLD:
+		var proximity_radius := proximity_hunt_radius(float(data["attack_range"]), float(data["aggression"]), pack_support)
+		nearby_prey = _best_prey(living_actors, target_pressure_counts, pack_support, proximity_radius)
+	if is_instance_valid(nearby_prey):
+		var nearby_utility := _prey_utility(nearby_prey, pack_support, int(target_pressure_counts.get(nearby_prey.actor_id, 0)))
+		if should_start_proximity_hunt({
+			"diet": str(data["diet"]),
+			"health": health / maxf(max_health, 1.0),
+			"stamina": stamina / maxf(max_stamina, 1.0),
+			"utility": nearby_utility,
+			"motivation": hunt_motivation,
+			"aggression": float(data["aggression"]),
+			"pack_support": pack_support,
+			"attack_range": float(data["attack_range"]),
+			"distance": global_position.distance_to(nearby_prey.global_position),
+			"target_exposed": nearby_prey.is_opportunity_exposed(),
+		}):
+			# The local encounter is now established, so normal attack and skill
+			# execution may proceed instead of being rejected by calm_timer.
+			calm_timer = 0.0
+			_switch_state("hunt", nearby_prey)
+			return
+
 	if calm_timer > 0.0 and hunger < 70.0:
 		if hunger > 42.0:
 			var calm_resource := _best_food_resource(living_actors)
@@ -2701,16 +2766,16 @@ func _think() -> void:
 			resource_target = resource
 			return
 
-	var hunt_motivation := hunting_motivation(hunger, float(data["aggression"]), str(data["diet"]), int(data["size"]), pack_support)
 	if is_instance_valid(shared_pack_target) and hunt_motivation > AI_HUNT_MOTIVATION_THRESHOLD - 0.06:
 		var shared_utility := _prey_utility(shared_pack_target, pack_support, int(target_pressure_counts.get(shared_pack_target.actor_id, 0)))
 		if shared_utility >= AI_MIN_PREY_UTILITY:
 			_switch_state("hunt", shared_pack_target)
 			return
-	var prey := _best_prey(living_actors, target_pressure_counts, pack_support)
-	if is_instance_valid(prey) and hunt_motivation > AI_HUNT_MOTIVATION_THRESHOLD:
-		_switch_state("hunt", prey)
-		return
+	if hunt_motivation > AI_HUNT_MOTIVATION_THRESHOLD:
+		var prey := _best_prey(living_actors, target_pressure_counts, pack_support)
+		if is_instance_valid(prey):
+			_switch_state("hunt", prey)
+			return
 	if _begin_ecology_trace_investigation():
 		return
 	if _begin_ecology_hotspot_stalk():
@@ -3211,7 +3276,7 @@ func is_stalking_ecology_hotspot(event_sequence: int) -> bool:
 	return not dead and ai_state == "hotspot_stalk" and hotspot_event_sequence == event_sequence
 
 
-func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dictionary = {}, pack_support: int = -1) -> EcoActor:
+func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dictionary = {}, pack_support: int = -1, maximum_distance: float = INF) -> EcoActor:
 	var candidates: Array[EcoActor] = living_actors
 	if candidates.is_empty():
 		candidates = game.get_living_actors()
@@ -3226,6 +3291,8 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 	var best_score := -INF
 	for other in candidates:
 		if other == self or other.dead or other.spawn_protection > 0.0:
+			continue
+		if global_position.distance_to(other.global_position) > maximum_distance:
 			continue
 		if blocked_route_timer > 0.0 and other.get_instance_id() == blocked_route_instance_id:
 			continue
