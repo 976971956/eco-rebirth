@@ -273,7 +273,7 @@ func _render() -> void:
 	ui.show_hint("氧气不足：立即游向浅滩；抓住活鱼可恢复生命并降低饥饿")
 	for _frame in range(5):
 		await process_frame
-	var water_hud_result := root.get_texture().get_image().save_png("res://docs/images/v83-deep-water-breath-hud.png")
+	var water_hud_result := root.get_texture().get_image().save_png("res://docs/images/v85-deep-water-lower-breath-hud.png")
 	preview_actor.species_id = "rabbit"
 	preview_actor.data = Catalog.get_data("rabbit")
 	preview_actor.max_health = float(preview_actor.data["health"])

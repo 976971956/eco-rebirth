@@ -33,6 +33,10 @@ const COMPACT_LEADERBOARD_SIZE := Vector2(296.0, 166.0)
 const COMPACT_SKILL_SIZE := Vector2(320.0, 88.0)
 const COMPACT_BREATH_SIZE := Vector2(360.0, 82.0)
 const BREATH_SIZE := Vector2(420.0, 90.0)
+const DEEP_WATER_HUD_DEPTH := 0.58
+const COMPACT_BREATH_BOTTOM_OFFSET := 198.0
+const TOUCH_BREATH_BOTTOM_OFFSET := 222.0
+const DESKTOP_BREATH_BOTTOM_OFFSET := 224.0
 const COMPACT_INTRO_SIZE := Vector2(600.0, 360.0)
 const HUD_STATUS_BACKGROUND := Color(0.018, 0.09, 0.075, 0.62)
 const HUD_INFO_BACKGROUND := Color(0.018, 0.09, 0.075, 0.54)
@@ -180,7 +184,24 @@ static func touch_rect(viewport_size: Vector2, offset: Vector2, size_value: Vect
 
 
 static func breath_indicator_should_show(current_water_depth: float, safe_wade_depth: float, airborne: bool) -> bool:
-	return not airborne and current_water_depth > maxf(safe_wade_depth, 0.0)
+	# The compact warning belongs to the actual deep-water zone. Medium water can
+	# still consume breath for poor swimmers, but keeps the center/lower view clear
+	# and reports that status in the top-right location line instead.
+	return not airborne and current_water_depth > maxf(maxf(safe_wade_depth, DEEP_WATER_HUD_DEPTH), 0.0)
+
+
+static func breath_panel_size_for_layout(compact_touch: bool) -> Vector2:
+	return COMPACT_BREATH_SIZE if compact_touch else BREATH_SIZE
+
+
+static func breath_panel_anchor_offset(compact_touch: bool, touch_layout: bool) -> Vector2:
+	var panel_size := breath_panel_size_for_layout(compact_touch)
+	var top_from_bottom := COMPACT_BREATH_BOTTOM_OFFSET if compact_touch else (TOUCH_BREATH_BOTTOM_OFFSET if touch_layout else DESKTOP_BREATH_BOTTOM_OFFSET)
+	return Vector2(-panel_size.x * 0.5, -top_from_bottom)
+
+
+static func breath_panel_rect(viewport_size: Vector2, compact_touch: bool, touch_layout: bool) -> Rect2:
+	return Rect2(Vector2(viewport_size.x * 0.5, viewport_size.y) + breath_panel_anchor_offset(compact_touch, touch_layout), breath_panel_size_for_layout(compact_touch))
 
 
 static func breath_indicator_state(breath_ratio: float) -> String:
@@ -527,9 +548,9 @@ func _build_hud() -> void:
 
 	breath_panel = PanelContainer.new()
 	breath_panel.name = "DeepWaterBreath"
-	breath_panel.set_anchors_preset(Control.PRESET_CENTER)
-	breath_panel.position = -COMPACT_BREATH_SIZE * 0.5 if compact_touch else -BREATH_SIZE * 0.5
-	breath_panel.size = COMPACT_BREATH_SIZE if compact_touch else BREATH_SIZE
+	breath_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	breath_panel.position = breath_panel_anchor_offset(compact_touch, touch_layout)
+	breath_panel.size = breath_panel_size_for_layout(compact_touch)
 	breath_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	breath_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_BREATH_BACKGROUND, 16, Color(0.38, 0.82, 0.92, 0.78), 2))
 	hud_root.add_child(breath_panel)
