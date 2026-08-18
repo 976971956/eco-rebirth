@@ -462,25 +462,28 @@ func _build_paths_and_pond() -> void:
 		_add_ground_ribbon("ForestTrail", side_points, rng.randf_range(2.05, 2.85), 0.018 + trail_index * 0.002, side_material)
 
 	var stream_points := stream_points_for_size(world_size)
+	var river_width := stream_width()
 	var water_scale := float(level_profile_data.get("water", 1.0))
 	var bank_material := Factory.terrain_material(Color("#3f5643"), Color("#6d775a"), 7.0, WETLAND_GROUND_TEXTURE, 2.7, 0.38)
-	_add_ground_ribbon("StreamBank", stream_points, 7.6 * water_scale, 0.030, bank_material, true)
+	_add_ground_ribbon("StreamBank", stream_points, river_width + 5.2, 0.030, bank_material, true)
 	var stream_material := Factory.water_material(Color("#719b87"), Color("#315f61"), 0.70, 0.16)
-	_add_ground_ribbon("ShallowStream", stream_points, 5.4 * water_scale, 0.044, stream_material, true)
+	_add_ground_ribbon("ShallowStream", stream_points, river_width, 0.044, stream_material, true)
 	var medium_stream_material := Factory.water_material(Color("#4d7d75"), Color("#183f49"), 0.76, 0.56)
-	_add_ground_ribbon("StreamMediumChannel", stream_points, 3.65 * water_scale, 0.047, medium_stream_material, true)
+	_add_ground_ribbon("StreamMediumChannel", stream_points, river_width * 0.68, 0.047, medium_stream_material, true)
 	var deep_stream_material := Factory.water_material(Color("#315e64"), Color("#092a38"), 0.86, 0.94)
-	_add_ground_ribbon("StreamDeepChannel", stream_points, 2.15 * water_scale, 0.050, deep_stream_material, true)
-	var crossing_center := stream_points[2].lerp(stream_points[3], 0.52)
-	var crossing_tangent := (stream_points[3] - stream_points[2]).normalized()
-	var crossing_normal := Vector2(-crossing_tangent.y, crossing_tangent.x)
-	for stone_index in range(9):
-		var t := float(stone_index) / 8.0
-		var stone_point := crossing_center + crossing_normal * lerpf(-2.25 * water_scale, 2.25 * water_scale, t) + crossing_tangent * sin(t * TAU) * 0.18
-		var stone_pos := Vector3(stone_point.x, 0.10, stone_point.y)
-		var stone := Factory.sphere("SteppingStone", Color("#818a79").lightened(rng.randf_range(-0.05, 0.08)), Vector3(0.72, 0.20, 0.58), stone_pos, 8, 4)
-		stone.rotation.y = rng.randf_range(-0.5, 0.5)
-		decoration_root.add_child(stone)
+	_add_ground_ribbon("StreamDeepChannel", stream_points, river_width * 0.38, 0.050, deep_stream_material, true)
+	for ford_spec in ford_specs_for_size(world_size, campaign_level):
+		var crossing_center: Vector2 = ford_spec["center"]
+		var crossing_tangent: Vector2 = ford_spec["tangent"]
+		var crossing_normal := Vector2(-crossing_tangent.y, crossing_tangent.x)
+		var stone_count := maxi(ceili(river_width / 0.92), 9)
+		for stone_index in range(stone_count):
+			var t := float(stone_index) / float(maxi(stone_count - 1, 1))
+			var stone_point := crossing_center + crossing_normal * lerpf(-river_width * 0.46, river_width * 0.46, t) + crossing_tangent * sin(t * TAU) * 0.18
+			var stone_pos := Vector3(stone_point.x, 0.10, stone_point.y)
+			var stone := Factory.sphere("SteppingStone", Color("#818a79").lightened(rng.randf_range(-0.05, 0.08)), Vector3(0.72, 0.20, 0.58), stone_pos, 8, 4)
+			stone.rotation.y = rng.randf_range(-0.5, 0.5)
+			decoration_root.add_child(stone)
 
 	var basin_center := Vector3(-world_size * 0.25, 0.052, world_size * 0.25)
 	var basin_radius_x := world_size * 0.145 * water_scale
@@ -940,22 +943,33 @@ func _decorate_highland_prop(prop: Node3D) -> void:
 
 
 func _build_food() -> void:
-	var food_count := int(round(18 * clampf(world_size / 86.0, 1.0, 4.0) * float(level_profile_data.get("food", 1.0))))
-	for i in range(food_count):
-		var patch := FoodPatchScript.new()
-		patch.position = _random_level_food_position()
+	# One logical cluster contains several independent compact patches. Actors
+	# must keep moving between them for first-discovery XP, while visual/node cost
+	# remains bounded for Web and mobile. This yields about 30 patches on L1 and
+	# 75–100 on L10 without turning every food item into an always-ticking node.
+	var cluster_count := clampi(roundi(world_size / 20.0 * float(level_profile_data.get("food", 1.0))), 8, 26)
+	for cluster_index in range(cluster_count):
+		var cluster_center := _random_level_food_position()
+		var region_id := region_id_at(cluster_center)
 		var food_pool: Array[String]
-		match region_id_at(patch.position):
+		match region_id:
 			"forest": food_pool = ["berries", "mushroom", "fruit", "berries"]
 			"grassland": food_pool = ["grass", "grass", "berries", "fruit"]
-			"wetland": food_pool = ["fish", "fish", "mushroom", "grass"]
+			"wetland": food_pool = ["fish", "mushroom", "grass", "fish"]
 			_: food_pool = ["roots", "roots", "grass", "mushroom"]
-		var food_kind := food_pool[rng.randi_range(0, food_pool.size() - 1)]
-		if food_kind == "fish":
-			patch.position = _random_fish_position(i % 3 == 0)
-		patch.setup(food_kind, rng)
-		add_child(patch)
-		food_patches.append(patch)
+		var member_count := rng.randi_range(3, 5)
+		var cluster_tier := "rare" if cluster_index == 0 or rng.randf() < 0.055 + float(campaign_level) * 0.006 else ("rich" if rng.randf() < 0.26 else "common")
+		for member_index in range(member_count):
+			var patch := FoodPatchScript.new()
+			var food_kind := food_pool[rng.randi_range(0, food_pool.size() - 1)]
+			if food_kind == "fish":
+				patch.position = _random_fish_position((cluster_index + member_index) % 3 == 0)
+			else:
+				patch.position = _cluster_land_position(cluster_center, member_index, member_count)
+			var member_tier := cluster_tier if member_index == 0 else ("rich" if cluster_tier == "rare" and member_index <= 2 else "common")
+			patch.setup(food_kind, rng, member_tier, cluster_index, true)
+			add_child(patch)
+			food_patches.append(patch)
 	# Fish are a guaranteed water resource rather than a lucky replacement for
 	# an ordinary plant roll. Later levels add a few more schools but keep the
 	# count small enough for mobile/Web ecology simulations.
@@ -963,9 +977,23 @@ func _build_food() -> void:
 	for fish_index in range(guaranteed_fish):
 		var fish_patch := FoodPatchScript.new()
 		fish_patch.position = _random_fish_position(fish_index % 2 == 1)
-		fish_patch.setup("fish", rng)
+		fish_patch.setup("fish", rng, "rich" if fish_index == 0 else "common", cluster_count + fish_index, true)
 		add_child(fish_patch)
 		food_patches.append(fish_patch)
+
+
+func _cluster_land_position(center: Vector3, member_index: int, member_count: int) -> Vector3:
+	var angle := TAU * float(member_index) / float(maxi(member_count, 1)) + rng.randf_range(-0.30, 0.30)
+	var radius := rng.randf_range(1.2, 4.2)
+	var candidate := center + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+	candidate = clamp_position(candidate)
+	if water_depth_at(candidate) <= 0.22 and is_landing_clear(candidate, 0.42):
+		return candidate
+	for attempt in range(24):
+		candidate = _random_valid_position(2.0)
+		if water_depth_at(candidate) <= 0.22:
+			return candidate
+	return Vector3(center.x, 0.0, center.z)
 
 
 func _random_level_food_position() -> Vector3:
@@ -1693,6 +1721,24 @@ static func stream_points_for_size(size_value: float) -> Array[Vector2]:
 	]
 
 
+func stream_width() -> float:
+	return clampf(world_size * 0.035, 8.0, 17.0) * float(level_profile_data.get("water", 1.0))
+
+
+static func ford_specs_for_size(size_value: float, level: int) -> Array[Dictionary]:
+	var points := stream_points_for_size(size_value)
+	var specs: Array[Dictionary] = [{
+		"center": points[2].lerp(points[3], 0.52),
+		"tangent": (points[3] - points[2]).normalized(),
+	}]
+	if level >= 6:
+		specs.append({
+			"center": points[4].lerp(points[5], 0.42),
+			"tangent": (points[5] - points[4]).normalized(),
+		})
+	return specs
+
+
 func water_depth_at(pos: Vector3) -> float:
 	var point := Vector2(pos.x, pos.z)
 	var water_scale := float(level_profile_data.get("water", 1.0))
@@ -1717,16 +1763,18 @@ func water_depth_at(pos: Vector3) -> float:
 	var stream_distance := INF
 	for point_index in range(stream_points.size() - 1):
 		stream_distance = minf(stream_distance, point_segment_distance_2d(point, stream_points[point_index], stream_points[point_index + 1]))
-	var channel_half_width := 2.70 * water_scale
+	var channel_half_width := stream_width() * 0.5
 	if stream_distance <= channel_half_width:
 		var channel_ratio := clampf(stream_distance / maxf(channel_half_width, 0.1), 0.0, 1.0)
 		var stream_depth := lerpf(0.66, 0.08, smoothstep(0.0, 1.0, channel_ratio)) * depth_scale
 		# The visible stepping stones mark a genuine shallow ford. Even species
 		# with poor water adaptation retain one readable route across the river.
-		var ford_center := stream_points[2].lerp(stream_points[3], 0.52)
-		var ford_ratio := clampf(point.distance_to(ford_center) / maxf(4.8 * water_scale, 0.1), 0.0, 1.0)
-		if ford_ratio < 1.0:
-			stream_depth = minf(stream_depth, lerpf(0.14, stream_depth, smoothstep(0.0, 1.0, ford_ratio)))
+		for ford_spec in ford_specs_for_size(world_size, campaign_level):
+			var ford_center: Vector2 = ford_spec["center"]
+			var ford_radius := stream_width() * 0.58 + 1.4
+			var ford_ratio := clampf(point.distance_to(ford_center) / maxf(ford_radius, 0.1), 0.0, 1.0)
+			if ford_ratio < 1.0:
+				stream_depth = minf(stream_depth, lerpf(0.14, stream_depth, smoothstep(0.0, 1.0, ford_ratio)))
 		result = maxf(result, stream_depth)
 	return maxf(result, 0.0)
 
@@ -1759,15 +1807,22 @@ func water_body_at(pos: Vector3) -> String:
 		return "basin"
 	var points := stream_points_for_size(world_size)
 	for point_index in range(points.size() - 1):
-		if point_segment_distance_2d(point, points[point_index], points[point_index + 1]) <= 2.70 * water_scale:
+		if point_segment_distance_2d(point, points[point_index], points[point_index + 1]) <= stream_width() * 0.5:
 			return "stream"
 	return "dry"
 
 
-func nearest_ford_position(_origin: Vector3 = Vector3.ZERO) -> Vector3:
-	var points := stream_points_for_size(world_size)
-	var ford := points[2].lerp(points[3], 0.52)
-	return Vector3(ford.x, 0.0, ford.y)
+func nearest_ford_position(origin: Vector3 = Vector3.ZERO) -> Vector3:
+	var best := Vector3.ZERO
+	var best_distance := INF
+	for ford_spec in ford_specs_for_size(world_size, campaign_level):
+		var ford: Vector2 = ford_spec["center"]
+		var candidate := Vector3(ford.x, 0.0, ford.y)
+		var distance := origin.distance_squared_to(candidate)
+		if distance < best_distance:
+			best_distance = distance
+			best = candidate
+	return best
 
 
 func nearest_safe_water_position(origin: Vector3, safe_depth: float, search_radius: float = 18.0) -> Vector3:
@@ -1801,7 +1856,7 @@ func condition_summary() -> String:
 	return "%s · %s" % [phase_name, weather_name]
 
 
-func movement_multiplier(species_id: String, pos: Vector3) -> float:
+func movement_multiplier(species_id: String, pos: Vector3, effective_size_value: float = -1.0) -> float:
 	var multiplier := 1.0
 	var region_id := region_id_at(pos)
 	var affinity := Catalog.habitat_affinity(species_id, region_id)
@@ -1809,7 +1864,7 @@ func movement_multiplier(species_id: String, pos: Vector3) -> float:
 		multiplier *= 1.08
 	elif affinity >= TERRAIN_COUNTER_THRESHOLD:
 		multiplier *= 1.045
-	var size_level := Catalog.body_size(species_id)
+	var size_level := effective_size_value if effective_size_value > 0.0 else Catalog.effective_body_size(species_id, 1)
 	if affinity < TERRAIN_COUNTER_THRESHOLD:
 		if region_id == "forest" and size_level >= 4:
 			multiplier *= 0.93
@@ -1968,11 +2023,19 @@ func perception_multiplier(species_id: String) -> float:
 	return multiplier
 
 
-func cover_strength_at(pos: Vector3, species_id: String) -> float:
+func cover_strength_at(pos: Vector3, species_id: String, effective_size_value: float = -1.0) -> float:
 	if pos.y > 1.30 or cover_positions.is_empty():
 		return 0.0
-	var size_level := int(Catalog.get_data(species_id).get("size", 3))
-	var size_factor: float = {1: 1.0, 2: 0.90, 3: 0.68, 4: 0.24, 5: 0.0}.get(size_level, 0.0)
+	var size_value := effective_size_value if effective_size_value > 0.0 else Catalog.effective_body_size(species_id, 1)
+	var size_factor := 0.0
+	if size_value <= 1.2:
+		size_factor = 1.0
+	elif size_value <= 2.2:
+		size_factor = lerpf(1.0, 0.88, size_value - 1.2)
+	elif size_value <= 3.2:
+		size_factor = lerpf(0.88, 0.58, size_value - 2.2)
+	elif size_value <= 4.4:
+		size_factor = lerpf(0.58, 0.0, (size_value - 3.2) / 1.2)
 	if size_factor <= 0.0:
 		return 0.0
 	var strongest := 0.0

@@ -21,51 +21,70 @@ var active: bool = true
 var regrow_enabled: bool = true
 var visual_root: Node3D
 var food_kind: String = "grass"
+var nutrient_tier: String = "common"
+var nutrient_experience: int = 3
+var nutrient_cluster_id: int = -1
 var ecology_hotspot: bool = false
 var ecology_event_id: int = -1
 var fish_animation_time: float = 0.0
 
 
-func setup(kind: String, rng: RandomNumberGenerator) -> void:
+func setup(kind: String, rng: RandomNumberGenerator, tier: String = "common", cluster_id: int = -1, compact_visual: bool = false) -> void:
 	food_kind = kind if FOOD_DATA.has(kind) else "grass"
+	nutrient_tier = tier if tier in ["common", "rich", "rare"] else "common"
+	nutrient_cluster_id = cluster_id
+	match nutrient_tier:
+		"rare": nutrient_experience = rng.randi_range(15, 25)
+		"rich": nutrient_experience = rng.randi_range(6, 9)
+		_: nutrient_experience = rng.randi_range(3, 5)
 	var config: Dictionary = FOOD_DATA[food_kind]
 	max_amount = float(config["amount"])
+	if nutrient_tier == "rich":
+		max_amount *= 1.18
+	elif nutrient_tier == "rare":
+		max_amount *= 1.36
 	amount = max_amount
 	regrow_delay = float(config["regrow"])
-	visual_root = Node3D.new()
-	visual_root.name = "Food_%s" % food_kind
-	add_child(visual_root)
-	_build_visual(rng)
+	# FoodPatch already is a Node3D. Reusing it as the visual root removes one
+	# transform node per resource, which matters on 100-actor mobile maps.
+	visual_root = self
+	name = "Food_%s" % food_kind
+	_build_visual(rng, compact_visual)
+	set_process(food_kind == "fish")
 
 
-func _build_visual(rng: RandomNumberGenerator) -> void:
+func _build_visual(rng: RandomNumberGenerator, compact_visual: bool = false) -> void:
 	match food_kind:
 		"berries":
-			for i in range(5):
-				var angle := TAU * float(i) / 5.0
+			var leaf_count := 1 if compact_visual else 5
+			for i in range(leaf_count):
+				var angle := TAU * float(i) / float(leaf_count)
 				visual_root.add_child(Factory.sphere("BerryLeaf", Color("#43894b").lightened(rng.randf_range(-0.05, 0.08)), Vector3(0.62, 0.32, 0.45), Vector3(cos(angle) * 0.48, 0.42, sin(angle) * 0.48), 7, 4))
-			for i in range(7):
-				var berry_angle := TAU * float(i) / 7.0 + 0.3
+			var berry_count := 2 if compact_visual else 7
+			for i in range(berry_count):
+				var berry_angle := TAU * float(i) / float(berry_count) + 0.3
 				visual_root.add_child(Factory.sphere("WildBerry", Color("#c9474f").lightened(rng.randf_range(-0.04, 0.10)), Vector3.ONE * 0.13, Vector3(cos(berry_angle) * 0.46, 0.60 + (i % 2) * 0.16, sin(berry_angle) * 0.46), 7, 4))
 		"mushroom":
-			for i in range(5):
+			for i in range(1 if compact_visual else 5):
 				var offset := Vector3(rng.randf_range(-0.62, 0.62), 0.0, rng.randf_range(-0.52, 0.52))
 				var height := rng.randf_range(0.34, 0.62)
 				visual_root.add_child(Factory.tapered_cylinder("Stem", Color("#e1d5b8"), 0.08, 0.065, height, offset + Vector3.UP * height * 0.5, 7))
 				visual_root.add_child(Factory.sphere("Cap", Color("#c88449").lightened(i * 0.025), Vector3(0.30, 0.12, 0.30), offset + Vector3.UP * height, 8, 4))
 		"fruit":
-			for i in range(7):
-				var angle := TAU * float(i) / 7.0
+			var fruit_count := 2 if compact_visual else 7
+			for i in range(fruit_count):
+				var angle := TAU * float(i) / float(fruit_count)
 				var fruit_color := Color("#dc9a38") if i % 2 == 0 else Color("#b94c3f")
 				visual_root.add_child(Factory.sphere("FallenFruit", fruit_color, Vector3.ONE * rng.randf_range(0.20, 0.27), Vector3(cos(angle) * rng.randf_range(0.28, 0.70), 0.22, sin(angle) * rng.randf_range(0.28, 0.70)), 8, 5))
 		"roots":
-			for i in range(5):
-				var angle := TAU * float(i) / 5.0
+			var root_count := 1 if compact_visual else 5
+			for i in range(root_count):
+				var angle := TAU * float(i) / float(root_count)
 				var root := Factory.sphere("Root", Color("#a76b3e").lightened(i * 0.025), Vector3(0.22, 0.16, 0.48), Vector3(cos(angle) * 0.48, 0.15, sin(angle) * 0.48), 7, 4)
 				root.rotation.y = -angle
 				visual_root.add_child(root)
 		"fish":
-			for i in range(6):
+			for i in range(2 if compact_visual else 6):
 				var swimmer := Node3D.new()
 				swimmer.name = "LiveFish_%02d" % i
 				var school_center := Vector3(rng.randf_range(-0.78, 0.78), 0.07 + float(i % 2) * 0.025, rng.randf_range(-0.60, 0.60))
@@ -80,11 +99,18 @@ func _build_visual(rng: RandomNumberGenerator) -> void:
 				swimmer.add_child(tail)
 				visual_root.add_child(swimmer)
 		_:
-			for i in range(8):
-				var angle := TAU * float(i) / 8.0
+			var grass_count := 2 if compact_visual else 8
+			for i in range(grass_count):
+				var angle := TAU * float(i) / float(grass_count)
 				var blade := Factory.cone("GrassBlade", Color("#76ad4d").lightened(rng.randf_range(-0.08, 0.10)), 0.13, rng.randf_range(0.48, 0.82), Vector3(cos(angle) * 0.42, 0.35, sin(angle) * 0.42), 6)
 				blade.rotation.z = rng.randf_range(-0.18, 0.18)
 				visual_root.add_child(blade)
+	if nutrient_tier in ["rich", "rare"]:
+		var nutrient_color := Color("#f2cd67") if nutrient_tier == "rich" else Color("#d59bff")
+		var nutrient_ring := Factory.disc("NutrientSignal", Color(nutrient_color, 0.55), 0.82 if nutrient_tier == "rich" else 1.02, 0.025, Vector3(0.0, 0.025, 0.0), 16)
+		nutrient_ring.material_override = Factory.material(Color(nutrient_color, 0.44), 0.35, nutrient_color)
+		nutrient_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		visual_root.add_child(nutrient_ring)
 
 
 func can_be_eaten_by(species_id: String) -> bool:
@@ -100,6 +126,15 @@ func get_nutrition_multiplier() -> float:
 	return float(FOOD_DATA[food_kind]["nutrition"])
 
 
+func get_experience_reward(species_id: String, region_id: String = "") -> int:
+	var reward := nutrient_experience
+	if food_kind in Catalog.habit_favored_foods(species_id):
+		reward += 2
+	if region_id != "" and Catalog.habitat_affinity(species_id, region_id) >= 0.99:
+		reward += 1
+	return maxi(reward, 1)
+
+
 func consume(requested: float) -> float:
 	if not active or amount <= 0.0:
 		return 0.0
@@ -109,6 +144,7 @@ func consume(requested: float) -> float:
 	if amount <= 0.01:
 		active = false
 		empty_time = 0.0
+		set_process(true)
 	return taken
 
 
@@ -122,6 +158,7 @@ func _process(delta: float) -> void:
 		amount = max_amount
 		active = true
 		_update_visual()
+		set_process(food_kind == "fish")
 
 
 func _animate_fish_school(delta: float) -> void:
@@ -158,10 +195,13 @@ func retire_hotspot() -> void:
 	active = false
 	amount = 0.0
 	_update_visual()
+	set_process(false)
 
 
 func stop_regrow() -> void:
 	regrow_enabled = false
+	if not active:
+		set_process(false)
 
 
 func _update_visual() -> void:

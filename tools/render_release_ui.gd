@@ -288,11 +288,24 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var instinct_result := root.get_texture().get_image().save_png("res://docs/images/v29-ecological-instinct.png")
+	preview_actor.species_id = "rabbit"
+	preview_actor.base_data = Catalog.get_data("rabbit")
+	preview_actor.data = preview_actor.base_data.duplicate(true)
+	preview_actor.level = 3
+	preview_actor.experience = 28
+	preview_actor._recalculate_growth_stats()
+	preview_actor.health = preview_actor.max_health
+	preview_actor.stamina = preview_actor.max_stamina
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态本能 · 嫩草 东北 18m · 完美习性")
+	ui.show_adaptation_choice(preview_actor, 3)
+	for _frame in range(5):
+		await process_frame
+	var adaptation_result := root.get_texture().get_image().save_png("res://docs/images/v86-growth-adaptation-choice.png")
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and adaptation_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

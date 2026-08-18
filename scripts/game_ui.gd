@@ -13,6 +13,7 @@ signal tutorial_skipped
 signal battle_report_opened
 signal battle_report_closed
 signal orientation_blocked_changed(blocked: bool)
+signal adaptation_selected(route_id: String)
 
 const MENU_MARGIN := Vector4(64.0, 54.0, 64.0, 42.0)
 const MOBILE_EDGE_PADDING := Vector4(12.0, 10.0, 12.0, 14.0)
@@ -1028,7 +1029,7 @@ func _reset_live_information() -> void:
 
 func set_player(player_actor: EcoActor) -> void:
 	var data := Catalog.get_data(player_actor.species_id)
-	species_label.text = "Lv.%d %s · %s" % [player_actor.level, data["name"], data["subtitle"]]
+	species_label.text = "Lv.%d %s · 体型 %.1f" % [player_actor.level, data["name"], player_actor.effective_size]
 	_update_player_combat_summary(player_actor)
 	_sync_player_status_ranges(player_actor)
 	hp_bar.value = player_actor.health
@@ -1057,9 +1058,10 @@ func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> v
 		level_prefix = "第%d关 · %s" % [int(level_profile.get("level", 1)), str(level_profile.get("title", "随机生态"))]
 	intro_title.text = "%s%s · %s" % [(level_prefix + "　|　") if level_prefix != "" else "", data["name"], data["subtitle"]]
 	var level_rule := ("本关生态：%s\n" % str(level_profile.get("rule", ""))) if not level_profile.is_empty() else ""
-	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n水域生存：浅滩可安全涉水；进入超过自身高度的水域会消耗屏息，鱼群可回血与补充饱腹\n黄色可逆袭目标：抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
+	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n成长：探索不同营养食物获得经验，最高 Lv.10；体型会逐级变大，Lv.3/6/9 选择局内适应\n水域生存：浅滩可安全涉水；进入超过自身高度的水域会消耗屏息，鱼群可回血与补充饱腹\n黄色可逆袭目标：威胁按双方实时体型判断，抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
+	var level_one_stats := Catalog.growth_stats(species_id, 1)
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
-		int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
+		int(level_one_stats["health"]), float(level_one_stats["attack"]), float(level_one_stats["speed"]), int(level_one_stats["stamina"]), float(level_one_stats["armor"]),
 		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.water_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
 	]
 	intro_panel.modulate = Color.WHITE
@@ -1088,14 +1090,14 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	hp_value_label.text = "%d / %d" % [maxi(ceili(player_actor.health), 0), ceili(player_actor.max_health)]
 	stamina_value_label.text = "%d / %d" % [maxi(ceili(player_actor.stamina), 0), ceili(player_actor.max_stamina)]
 	satiety_value_label.text = "%d / 100" % ceili(satiety)
-	species_label.text = "Lv.%d %s · %s" % [player_actor.level, player_actor.data["name"], player_actor.data["subtitle"]]
+	species_label.text = "Lv.%d %s · 体型 %.1f" % [player_actor.level, player_actor.data["name"], player_actor.effective_size]
 	_update_player_combat_summary(player_actor)
 	var needed_xp := player_actor.experience_to_next_level()
 	xp_bar.max_value = maxf(float(needed_xp), 1.0)
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
-	xp_value_label.text = ("最高等级" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
+	xp_value_label.text = ("最高等级 Lv.10" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
 	remaining_label.text = "存活个体　%d / %d" % [remaining, total]
-	var breath_visible := breath_indicator_should_show(player_actor.current_water_depth, Catalog.water_wade_depth(player_actor.species_id), player_actor.is_airborne())
+	var breath_visible := breath_indicator_should_show(player_actor.current_water_depth, player_actor.effective_wade_depth(), player_actor.is_airborne())
 	var water_status := water_location_text(player_actor.water_status_text(), breath_visible)
 	region_label.text = "当前位置 · %s%s" % [current_region, (" · " + water_status) if water_status != "" else ""]
 	ecology_event_label.text = ecology_event_status
@@ -1121,7 +1123,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 func _update_breath_indicator(player_actor: EcoActor) -> void:
 	if breath_panel == null or breath_bar == null or breath_label == null:
 		return
-	var safe_wade_depth := Catalog.water_wade_depth(player_actor.species_id)
+	var safe_wade_depth := player_actor.effective_wade_depth()
 	var should_show := breath_indicator_should_show(player_actor.current_water_depth, safe_wade_depth, player_actor.is_airborne())
 	breath_panel.visible = should_show
 	if not should_show:
@@ -1192,8 +1194,11 @@ func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	elif player_actor.tactical_terrain_status_text() != "":
 		tactical_status = player_actor.tactical_terrain_status_text()
 		tactical_color = Color("#8fc9d8")
-	combat_stats_label.text = "攻 %.1f　速 %.2f　甲 %.1f　恢复 %.1f%s" % [
-		float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), float(player_actor.data["regen"]),
+	if tactical_status == "" and not player_actor.adaptation_ranks.values().all(func(value: Variant) -> bool: return int(value) == 0):
+		tactical_status = player_actor.adaptation_summary_text()
+		tactical_color = Color("#d9b4ff")
+	combat_stats_label.text = "型 %.1f　攻 %.1f　速 %.2f　甲 %.1f　恢复 %.1f%s" % [
+		player_actor.effective_size, float(player_actor.data["attack"]), float(player_actor.data["speed"]), float(player_actor.data["armor"]), float(player_actor.data["regen"]),
 		"\n%s" % tactical_status if tactical_status != "" else "",
 	]
 	combat_stats_label.add_theme_color_override("font_color", tactical_color)
@@ -1226,9 +1231,9 @@ func update_leaderboard(entries: Array[Dictionary]) -> void:
 		var is_player_entry := bool(entry.get("is_player", false))
 		var row_color := "#f4df7b" if int(entry.get("rank", 0)) == 1 else ("#8fe0b0" if is_player_entry else "#dcebd6")
 		var player_mark := "你·" if is_player_entry else ""
-		leaderboard_content.append_text("[color=%s]%d　Lv.%d　%s%s　%d击杀[/color]\n" % [
-			row_color, int(entry.get("rank", 0)), int(entry.get("level", 1)), player_mark,
-			str(entry.get("name", "未知")), int(entry.get("kills", 0)),
+		leaderboard_content.append_text("[color=%s]%d　Lv.%d 型%.1f　%s%s　%d击杀[/color]\n" % [
+			row_color, int(entry.get("rank", 0)), int(entry.get("level", 1)), float(entry.get("size", 1.0)),
+			player_mark, str(entry.get("name", "未知")), int(entry.get("kills", 0)),
 		])
 
 
@@ -1436,7 +1441,7 @@ func _refresh_enemy_health() -> void:
 	var ecology_highlight := can_ecology_leverage and not can_opportunity_strike
 	var opportunity_color := Color("#d7a2f2") if ecology_highlight else (Color("#70cfe8") if terrain_highlight else Color("#ffe078"))
 	var highlighted := can_opportunity_strike or ecology_highlight
-	enemy_name_label.text = "Lv.%d %s" % [enemy_target.level, target_data["name"]]
+	enemy_name_label.text = "Lv.%d %s · 体型 %.1f" % [enemy_target.level, target_data["name"], enemy_target.effective_size]
 	enemy_status_label.text = " / ".join(status_parts) if not status_parts.is_empty() else "状态稳定"
 	enemy_name_label.add_theme_color_override("font_color", opportunity_color if highlighted else Color("#fff0df"))
 	enemy_status_label.add_theme_color_override("font_color", opportunity_color if highlighted else Color("#edc7b4"))
@@ -1469,6 +1474,68 @@ func add_event(text_value: String, color_hex: String = "#dcebd6") -> void:
 	event_feed.clear()
 	for line in event_lines:
 		event_feed.append_text("%s\n" % line)
+
+
+func show_adaptation_choice(player_actor: EcoActor, milestone_level: int) -> void:
+	hide_tutorial()
+	_cancel_intro_tween()
+	if intro_panel != null:
+		intro_panel.hide()
+	_clear_modal_content(Color(0.008, 0.025, 0.035, 0.88))
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.028, 0.075, 0.095, 0.99), 24, Color(0.74, 0.60, 0.94, 0.78), 2))
+	_add_modal_panel(panel, Vector2(1040, 590) if not _uses_compact_touch_layout() else Vector2(920, 540))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 13)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "Lv.%d · 选择一次局内适应" % milestone_level
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", _font_size(36, 42))
+	title.add_theme_color_override("font_color", Color("#f2e5ff"))
+	box.add_child(title)
+	var summary := Label.new()
+	summary.text = "%s当前体型 %.1f。适应只在本局生效，可重复强化同一路线，也可混合构筑。" % [Catalog.display_name(player_actor.species_id), player_actor.effective_size]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary.add_theme_font_size_override("font_size", _font_size(17, 20))
+	summary.add_theme_color_override("font_color", Color("#cbd9df"))
+	box.add_child(summary)
+	var cards := GridContainer.new()
+	cards.columns = 3
+	cards.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cards.add_theme_constant_override("h_separation", 12)
+	box.add_child(cards)
+	var route_colors := {"habitat": Color("#72d8a7"), "combat": Color("#e8a875"), "ecology": Color("#b89be8")}
+	for choice in Catalog.adaptation_choices(player_actor.species_id, player_actor.adaptation_ranks):
+		var route_id := str(choice["id"])
+		var card_color: Color = route_colors.get(route_id, Color("#a8d7c0"))
+		var card := Button.new()
+		card.text = "%s\n「%s」 %d级\n\n%s" % [str(choice["route"]), str(choice["name"]), int(choice["rank"]), str(choice["description"])]
+		card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		card.custom_minimum_size = Vector2(150, 250 if _uses_compact_touch_layout() else 280)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		card.add_theme_font_size_override("font_size", _font_size(17, 20))
+		card.add_theme_color_override("font_color", Color("#f1f4ea"))
+		card.add_theme_stylebox_override("normal", _panel_style(Color(card_color.darkened(0.52), 0.96), 18, Color(card_color, 0.72), 2))
+		card.add_theme_stylebox_override("hover", _panel_style(Color(card_color.darkened(0.38), 0.98), 18, card_color.lightened(0.20), 3))
+		card.add_theme_stylebox_override("pressed", _panel_style(Color(card_color.darkened(0.24), 1.0), 18, Color.WHITE, 3))
+		card.pressed.connect(_play_ui_sound)
+		card.pressed.connect(_on_adaptation_card_pressed.bind(route_id))
+		cards.add_child(card)
+	var footer := Label.new()
+	footer.text = "生境适应偏向主场与耐力 · 战斗技艺改造现有技能 · 生态关系强化觅食与习性"
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	footer.add_theme_font_size_override("font_size", _font_size(15, 18))
+	footer.add_theme_color_override("font_color", Color("#aebfc5"))
+	box.add_child(footer)
+
+
+func _on_adaptation_card_pressed(route_id: String) -> void:
+	adaptation_selected.emit(route_id)
 
 
 func show_result(title_text: String, body_text: String, retry_text: String = "轮回重生", include_settings: bool = false) -> void:

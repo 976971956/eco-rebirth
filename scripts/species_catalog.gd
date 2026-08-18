@@ -163,6 +163,67 @@ const GROWTH_PROFILES := {
 	"giant": {"name": "巨兽蜕变", "health": 0.120, "attack": 0.070, "speed": 0.008, "stamina": 0.050, "armor": 2.2, "regen": 0.020},
 }
 
+# Growth is driven by continuous body mass rather than by the species' original
+# threat tier.  This makes a fully grown rabbit a genuine medium-sized animal,
+# while naturally large species still retain the highest possible ceiling.
+const MAX_GROWTH_LEVEL := 10
+const GROWTH_MILESTONES: Array[int] = [3, 6, 9]
+const EXPERIENCE_THRESHOLDS: Array[int] = [45, 90, 150, 225, 315, 420, 540, 675, 825]
+const BODY_GROWTH_BY_SIZE := {
+	1: {"start": 1.0, "maximum": 3.2, "visual_max": 1.75},
+	2: {"start": 1.8, "maximum": 3.8, "visual_max": 1.55},
+	3: {"start": 2.7, "maximum": 4.6, "visual_max": 1.40},
+	4: {"start": 3.8, "maximum": 5.4, "visual_max": 1.28},
+	5: {"start": 4.9, "maximum": 6.4, "visual_max": 1.18},
+}
+const GROWTH_ARCHETYPE_CORE_MODIFIERS := {
+	"survivor": {"health": 0.96, "attack": 0.94, "armor": -1.0, "speed_growth": 0.18, "stamina_growth": 0.34},
+	"skirmisher": {"health": 0.94, "attack": 1.04, "armor": -1.0, "speed_growth": 0.17, "stamina_growth": 0.32},
+	"hunter": {"health": 0.99, "attack": 1.06, "armor": 0.0, "speed_growth": 0.14, "stamina_growth": 0.28},
+	"runner": {"health": 1.01, "attack": 0.96, "armor": 0.0, "speed_growth": 0.18, "stamina_growth": 0.36},
+	"guardian": {"health": 1.07, "attack": 0.99, "armor": 2.0, "speed_growth": 0.11, "stamina_growth": 0.30},
+	"giant": {"health": 1.08, "attack": 1.03, "armor": 3.0, "speed_growth": 0.09, "stamina_growth": 0.27},
+}
+
+const ADAPTATION_ROUTE_ORDER: Array[String] = ["habitat", "combat", "ecology"]
+const ADAPTATION_ROUTE_DISPLAY_NAMES := {
+	"habitat": "生境适应",
+	"combat": "战斗技艺",
+	"ecology": "生态关系",
+}
+const SPECIES_ADAPTATION_NAMES := {
+	"rabbit": ["草影", "折返", "多点觅食"],
+	"fox": ["林缘", "佯攻扩散", "机会食腐"],
+	"deer": ["开阔步幅", "断后蹬踏", "迁徙记忆"],
+	"wolf": ["驱赶者", "截击扑杀", "分食秩序"],
+	"snake": ["湿草潜行", "迟发毒性", "血味隐藏"],
+	"bear": ["杂食储备", "震地余势", "有限领地"],
+	"boar": ["泥地冲线", "破围突阵", "拱土寻路"],
+	"raccoon": ["林间小径", "夺食翻滚", "巧手藏果"],
+	"porcupine": ["窄路固守", "怒刺节奏", "啮根固刺"],
+	"crocodile": ["浅流伏岸", "翻滚咬合", "水岸分食"],
+	"capybara": ["水路同栖", "安抚撤离", "共享水草"],
+	"otter": ["水线穿梭", "旋水回身", "鱼群感知"],
+	"lynx": ["岩隙静猎", "无声收割", "藏餐"],
+	"goat": ["崖径步伐", "角击换位", "岩根迁徙"],
+	"wolverine": ["寒岩耐性", "巨兽撕咬", "大尸不屈"],
+	"bison": ["草浪结阵", "踏阵开路", "守群进食"],
+	"zebra": ["旷野变线", "乱纹扰敌", "迁徙补草"],
+	"elephant": ["水草长途", "践踏通路", "象群记忆"],
+	"tiger": ["密林侧翼", "裂风扑杀", "独食警戒"],
+	"monkey": ["树冠路线", "投果标记", "林果见闻"],
+	"owl": ["夜航", "静默俯冲", "夜栖精食"],
+	"moose": ["湿岸步伐", "横扫断后", "岸线觅食"],
+	"turtle": ["岩隙慢行", "出壳反击", "慢食疗养"],
+	"cheetah": ["晴野呼吸", "极速收束", "猎后进食"],
+	"rhino": ["草原冲线", "破阵角冲", "厚皮拱根"],
+	"gorilla": ["林地边界", "震地示威", "林果护群"],
+	"eagle": ["高地气流", "日照俯冲", "高地精食"],
+	"hippo": ["浅水边界", "裂颚震慑", "湿地水草"],
+	"hyena": ["腐味路线", "狂笑分工", "碎骨分食"],
+	"lion": ["狮群前线", "围猎扑杀", "狮群分食"],
+}
+
 const HABIT_BUFF_NAMES := {
 	"escape": "轻捷", "recover": "调息", "guard": "守势", "hunt": "猎性", "conceal": "匿踪",
 }
@@ -1272,15 +1333,108 @@ static func growth_profile(species_id: String) -> Dictionary:
 	return GROWTH_PROFILES.get(archetype, GROWTH_PROFILES["survivor"]).duplicate(true)
 
 
+static func body_growth_profile(species_id: String) -> Dictionary:
+	var authored_size := clampi(body_size(species_id), 1, 5)
+	return BODY_GROWTH_BY_SIZE.get(authored_size, BODY_GROWTH_BY_SIZE[1]).duplicate(true)
+
+
+static func growth_progress(level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> float:
+	if maximum_level <= 1:
+		return 1.0
+	var linear_progress := clampf(float(level - 1) / float(maximum_level - 1), 0.0, 1.0)
+	return pow(linear_progress, 0.85)
+
+
+static func effective_body_size(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> float:
+	var profile := body_growth_profile(species_id)
+	return lerpf(float(profile["start"]), float(profile["maximum"]), growth_progress(level, maximum_level))
+
+
+static func maximum_effective_body_size(species_id: String) -> float:
+	return float(body_growth_profile(species_id)["maximum"])
+
+
+static func visual_growth_scale(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> float:
+	var profile := body_growth_profile(species_id)
+	return lerpf(1.0, float(profile["visual_max"]), growth_progress(level, maximum_level))
+
+
+static func growth_stats(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> Dictionary:
+	var base := get_data(species_id)
+	var archetype := growth_archetype(species_id)
+	var modifiers: Dictionary = GROWTH_ARCHETYPE_CORE_MODIFIERS.get(archetype, GROWTH_ARCHETYPE_CORE_MODIFIERS["survivor"])
+	var progress := growth_progress(level, maximum_level)
+	var effective_size := effective_body_size(species_id, level, maximum_level)
+	# Health, attack and armor share one body-mass curve. Species identity is a
+	# deliberately narrow ±6% role modifier; locomotion, skills and habits remain
+	# the main matchup differences between animals of equal current size.
+	var health := (28.0 + 28.0 * pow(effective_size, 1.65)) * float(modifiers["health"])
+	var attack := (3.0 + 4.0 * pow(effective_size, 1.50)) * float(modifiers["attack"])
+	var armor := 8.0 * maxf(effective_size - 1.0, 0.0) + float(modifiers["armor"])
+	if has_trait(species_id, "armored"):
+		armor += 10.0
+	return {
+		"effective_size": effective_size,
+		"visual_scale": visual_growth_scale(species_id, level, maximum_level),
+		"health": maxf(health, 20.0),
+		"attack": maxf(attack, 4.0),
+		"armor": maxf(armor, 0.0),
+		"speed": float(base["speed"]) * (1.0 + progress * float(modifiers["speed_growth"])),
+		"stamina": float(base["stamina"]) * (1.0 + progress * float(modifiers["stamina_growth"])),
+		"regen": float(base["regen"]) * (1.0 + progress * 0.25),
+		# A growing body needs more food and is easier to track. This keeps level
+		# growth from becoming a free, consequence-less stat snowball.
+		"hunger_rate": float(base["hunger_rate"]) * (1.0 + progress * 0.12 + maxf(effective_size / maxf(float(body_growth_profile(species_id)["start"]), 0.1) - 1.0, 0.0) * 0.10),
+	}
+
+
+static func experience_threshold(level: int, effective_size_value: float) -> int:
+	if level < 1 or level >= MAX_GROWTH_LEVEL:
+		return 0
+	var base_threshold := EXPERIENCE_THRESHOLDS[clampi(level - 1, 0, EXPERIENCE_THRESHOLDS.size() - 1)]
+	var body_cost := clampf(0.82 + maxf(effective_size_value, 0.5) * 0.12, 0.90, 1.58)
+	return maxi(roundi(float(base_threshold) * body_cost), 1)
+
+
+static func adaptation_name(species_id: String, route_id: String) -> String:
+	var route_index := ADAPTATION_ROUTE_ORDER.find(route_id)
+	var names: Array = SPECIES_ADAPTATION_NAMES.get(species_id, ["主场本能", "战术磨炼", "生态共生"])
+	if route_index < 0 or route_index >= names.size():
+		return "生态适应"
+	return str(names[route_index])
+
+
+static func adaptation_description(species_id: String, route_id: String, next_rank: int = 1) -> String:
+	var rank := clampi(next_rank, 1, 3)
+	match route_id:
+		"habitat":
+			return "主场移动与恢复 +%d%%，冲刺消耗降低 %d%%；更善于利用掩体和水陆路线。" % [rank * 3, rank * 6]
+		"combat":
+			return "主动技能消耗与冷却各降低 %d%%，抓住强敌破绽时获得更稳定的战术收益。" % [rank * 6]
+		"ecology":
+			return "首次探索新食物的经验 +%d%%，营养与生态习性恢复 +%d%%。" % [rank * 12, rank * 6]
+		_:
+			return "形成一项新的局内生态能力。"
+
+
+static func adaptation_choices(species_id: String, current_ranks: Dictionary = {}) -> Array[Dictionary]:
+	var choices: Array[Dictionary] = []
+	for route_id in ADAPTATION_ROUTE_ORDER:
+		var next_rank := clampi(int(current_ranks.get(route_id, 0)) + 1, 1, 3)
+		choices.append({
+			"id": route_id,
+			"route": str(ADAPTATION_ROUTE_DISPLAY_NAMES[route_id]),
+			"name": adaptation_name(species_id, route_id),
+			"rank": next_rank,
+			"description": adaptation_description(species_id, route_id, next_rank),
+		})
+	return choices
+
+
 static func growth_description(species_id: String) -> String:
-	var profile := growth_profile(species_id)
-	return "%s：每级生命 +%.1f%%、攻击 +%.1f%%、速度 +%.1f%%、耐力 +%.1f%%、护甲 +%.1f" % [
-		str(profile["name"]),
-		float(profile["health"]) * 100.0,
-		float(profile["attack"]) * 100.0,
-		float(profile["speed"]) * 100.0,
-		float(profile["stamina"]) * 100.0,
-		float(profile["armor"]),
+	var profile := body_growth_profile(species_id)
+	return "%s：最高 Lv.10 · 实时体型 %.1f → %.1f · 体型同步提高生命、攻击、护甲、速度与耐力；Lv.3/6/9 选择局内适应" % [
+		str(growth_profile(species_id)["name"]), float(profile["start"]), float(profile["maximum"]),
 	]
 
 
@@ -1404,13 +1558,23 @@ static func experience_reward(species_id: String, victim_level: int = 1) -> int:
 	return maxi(int(round(base_reward * (1.0 + maxi(victim_level - 1, 0) * 0.14))), 1)
 
 
-static func combat_experience_reward(killer_id: String, victim_id: String, victim_level: int = 1) -> int:
-	var base_reward := experience_reward(victim_id, victim_level)
-	var tier_dominance := combat_tier(killer_id) - combat_tier(victim_id)
-	var size_dominance := body_size(killer_id) - body_size(victim_id)
-	var dominance_gap := clampi(maxi(tier_dominance, size_dominance), 0, 4)
-	var multiplier: float = [1.0, 0.82, 0.68, 0.56, 0.48][dominance_gap]
-	return maxi(roundi(float(base_reward) * multiplier), 1)
+static func combat_experience_reward(killer_id: String, victim_id: String, victim_level: int = 1, killer_size: float = -1.0, victim_size: float = -1.0, killer_power: float = 0.0, victim_power: float = 0.0) -> int:
+	# Legacy/static callers still receive the authored-tier result. Live combat
+	# passes current body size and power so a grown small species is no longer
+	# treated as its Lv.1 silhouette for rewards or anti-snowballing.
+	if killer_size < 0.0 or victim_size < 0.0:
+		var base_reward := experience_reward(victim_id, victim_level)
+		var tier_dominance := combat_tier(killer_id) - combat_tier(victim_id)
+		var size_dominance := body_size(killer_id) - body_size(victim_id)
+		var legacy_dominance_gap := clampi(maxi(tier_dominance, size_dominance), 0, 4)
+		var multiplier: float = [1.0, 0.82, 0.68, 0.56, 0.48][legacy_dominance_gap]
+		return maxi(roundi(float(base_reward) * multiplier), 1)
+	var runtime_base := 10.0 + maxf(victim_size, 0.5) * 11.0 + float(maxi(victim_level, 1)) * 4.0
+	var live_dominance_gap := runtime_opportunity_threat_gap(victim_size, killer_size, victim_power, killer_power)
+	var underdog_gap := runtime_opportunity_threat_gap(killer_size, victim_size, killer_power, victim_power)
+	var dominance_multiplier: float = [1.0, 0.82, 0.68, 0.56, 0.48][live_dominance_gap]
+	var underdog_multiplier := 1.0 + float(underdog_gap) * 0.08
+	return maxi(roundi(runtime_base * dominance_multiplier * underdog_multiplier), 1)
 
 
 static func counterplay_experience_reward(target_id: String, target_level: int = 1) -> int:
@@ -1440,6 +1604,22 @@ static func opportunity_threat_gap(attacker_id: String, target_id: String) -> in
 	var tier_gap := combat_tier(target_id) - combat_tier(attacker_id)
 	var size_gap := int(target_data["size"]) - int(attacker_data["size"])
 	return clampi(maxi(tier_gap, size_gap), 0, OPPORTUNITY_MAX_GAP)
+
+
+static func runtime_opportunity_threat_gap(attacker_size: float, target_size: float, attacker_power: float = 0.0, target_power: float = 0.0) -> int:
+	var size_gap := maxi(ceili((target_size - attacker_size) / 0.90), 0)
+	var power_gap := 0
+	if attacker_power > 0.0 and target_power > 0.0:
+		var ratio := target_power / maxf(attacker_power, 0.01)
+		if ratio >= 2.30:
+			power_gap = 4
+		elif ratio >= 1.80:
+			power_gap = 3
+		elif ratio >= 1.45:
+			power_gap = 2
+		elif ratio >= 1.18:
+			power_gap = 1
+	return clampi(maxi(size_gap, power_gap), 0, OPPORTUNITY_MAX_GAP)
 
 
 static func opportunity_health_ratio(threat_gap: int) -> float:

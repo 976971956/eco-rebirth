@@ -219,36 +219,34 @@ func _run_validation() -> void:
 	growth_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	container.add_child(growth_actor)
 	growth_actor.setup(game_stub, 69, "wolf", true, Vector3.ZERO, 0)
-	var expected_thresholds := [45, 82, 129, 186, 253, 330, 417]
-	for threshold_index in range(expected_thresholds.size()):
+	for threshold_index in range(Catalog.EXPERIENCE_THRESHOLDS.size()):
 		growth_actor.level = threshold_index + 1
-		if growth_actor.experience_to_next_level() != expected_thresholds[threshold_index]:
-			failures.append("Lv.%d 升级门槛不是 %d" % [threshold_index + 1, expected_thresholds[threshold_index]])
+		growth_actor._recalculate_growth_stats()
+		var expected_threshold := Catalog.experience_threshold(growth_actor.level, growth_actor.effective_size)
+		if growth_actor.experience_to_next_level() != expected_threshold:
+			failures.append("Lv.%d 实时体型升级门槛不是 %d" % [threshold_index + 1, expected_threshold])
 	growth_actor.level = 1
-	var growth_profile := Catalog.growth_profile("wolf")
+	growth_actor._recalculate_growth_stats()
 	var growth_base_health := growth_actor.max_health
 	var growth_base_stamina := growth_actor.max_stamina
 	var growth_base_attack := float(growth_actor.data["attack"])
-	var growth_base_speed := float(growth_actor.data["speed"])
-	var growth_base_armor := float(growth_actor.data["armor"])
-	var growth_base_regen := float(growth_actor.data["regen"])
 	growth_actor.health = growth_actor.max_health * 0.20
 	growth_actor.stamina = growth_actor.max_stamina * 0.05
 	growth_actor.exhausted = true
 	game_stub.actor_level_events.clear()
 	game_stub.player_level_events.clear()
 	game_stub.player_xp_events.clear()
-	growth_actor.gain_experience(144, "bear")
+	var two_level_reward := Catalog.experience_threshold(1, Catalog.effective_body_size("wolf", 1)) + Catalog.experience_threshold(2, Catalog.effective_body_size("wolf", 2)) + 17
+	growth_actor.gain_experience(two_level_reward, "bear")
 	if growth_actor.level != 3 or growth_actor.experience != 17:
 		failures.append("一次获得大量经验时没有正确连升两级并保留剩余经验")
-	if not is_equal_approx(growth_actor.max_health, growth_base_health * pow(1.0 + float(growth_profile["health"]), 2)):
-		failures.append("连续升级后生命上限不符合物种成长曲线")
-	if not is_equal_approx(growth_actor.max_stamina, growth_base_stamina * pow(1.0 + float(growth_profile["stamina"]), 2)):
-		failures.append("连续升级后耐力上限不符合物种成长曲线")
-	if not is_equal_approx(float(growth_actor.data["attack"]), growth_base_attack * pow(1.0 + float(growth_profile["attack"]), 2)) or not is_equal_approx(float(growth_actor.data["speed"]), growth_base_speed * pow(1.0 + float(growth_profile["speed"]), 2)):
-		failures.append("连续升级后攻击或速度复利错误")
-	if not is_equal_approx(float(growth_actor.data["armor"]), growth_base_armor + float(growth_profile["armor"]) * 2.0) or not is_equal_approx(float(growth_actor.data["regen"]), growth_base_regen * pow(1.0 + float(growth_profile["regen"]), 2)):
-		failures.append("连续升级后护甲或耐力恢复成长错误")
+	var expected_level_three := Catalog.growth_stats("wolf", 3)
+	if not is_equal_approx(growth_actor.max_health, float(expected_level_three["health"])) or not is_equal_approx(growth_actor.max_stamina, float(expected_level_three["stamina"])):
+		failures.append("连续升级后生命或耐力没有按实时体型确定性重算")
+	if not is_equal_approx(float(growth_actor.data["attack"]), float(expected_level_three["attack"])) or not is_equal_approx(float(growth_actor.data["speed"]), float(expected_level_three["speed"])):
+		failures.append("连续升级后攻击或速度没有按实时体型确定性重算")
+	if not is_equal_approx(float(growth_actor.data["armor"]), float(expected_level_three["armor"])) or not is_equal_approx(float(growth_actor.data["regen"]), float(expected_level_three["regen"])):
+		failures.append("连续升级后护甲或耐力恢复没有按实时体型确定性重算")
 	if growth_actor.health <= growth_base_health * 0.20 or growth_actor.stamina <= growth_base_stamina * 0.05 or growth_actor.exhausted:
 		failures.append("升级后没有正确恢复生命、耐力或解除力竭")
 	if game_stub.actor_level_events.size() != 2 or game_stub.player_level_events.size() != 2 or game_stub.player_xp_events.size() != 1:
@@ -257,7 +255,7 @@ func _run_validation() -> void:
 		failures.append("玩家升级反馈没有包含耐力恢复成长")
 	growth_actor.gain_experience(100000, "elephant")
 	if growth_actor.level != growth_actor.MAX_LEVEL or growth_actor.experience != 0 or growth_actor.experience_to_next_level() != 0:
-		failures.append("超额经验没有正确限制在 Lv.8 并清理溢出")
+		failures.append("超额经验没有正确限制在 Lv.10 并清理溢出")
 	var capped_attack := float(growth_actor.data["attack"])
 	growth_actor.gain_experience(999, "rabbit")
 	if not is_equal_approx(float(growth_actor.data["attack"]), capped_attack):
@@ -418,6 +416,12 @@ func _run_validation() -> void:
 	container.add_child(distant_corpse)
 	distant_corpse.setup("rabbit", 999)
 	distant_corpse.position = Vector3(14.0, 0.0, 0.0)
+	var grown_corpse: EcoCorpse = CorpseScript.new()
+	grown_corpse.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(grown_corpse)
+	grown_corpse.setup("rabbit", 1000, Catalog.maximum_effective_body_size("rabbit"))
+	if grown_corpse.food_amount <= distant_corpse.food_amount or grown_corpse.lifetime <= distant_corpse.lifetime or not is_equal_approx(grown_corpse.effective_size, Catalog.maximum_effective_body_size("rabbit")):
+		failures.append("尸体食物量、保留时间或习性体型没有继承死亡个体的实时体型")
 	game_stub.corpses = [distant_corpse]
 	game_stub.actors = [snake_actor]
 	snake_actor.habit_rewarded_sources[str(fish_patch.get_instance_id())] = true
@@ -433,6 +437,7 @@ func _run_validation() -> void:
 	snake_actor.free()
 	fish_patch.free()
 	distant_corpse.free()
+	grown_corpse.free()
 	game_stub.corpses.clear()
 	guidance_world.level_profile_data = {"water": 1.0, "water_depth": 1.0}
 	guidance_world.weather_id = "clear"
@@ -518,12 +523,18 @@ func _run_validation() -> void:
 		var base_attack := float(actor.data["attack"])
 		var base_speed := float(actor.data["speed"])
 		var base_stamina := actor.max_stamina
+		var base_effective_size := actor.effective_size
 		for _growth_level in range(2, actor.MAX_LEVEL + 1):
 			actor._level_up()
 		if actor.max_health <= base_health or float(actor.data["attack"]) <= base_attack or float(actor.data["speed"]) <= base_speed or actor.max_stamina <= base_stamina:
 			failures.append("%s 升到满级后没有全面提升生命、攻击、速度与耐力" % species_id)
-		if actor.max_health > base_health * 2.25 or float(actor.data["attack"]) > base_attack * 1.72 or float(actor.data["speed"]) > base_speed * 1.20:
-			failures.append("%s 的满级成长超过首发平衡上限" % species_id)
+		var expected_max_stats := Catalog.growth_stats(species_id, actor.MAX_LEVEL)
+		if not is_equal_approx(actor.effective_size, Catalog.maximum_effective_body_size(species_id)) or not is_equal_approx(actor.max_health, float(expected_max_stats["health"])) or not is_equal_approx(float(actor.data["attack"]), float(expected_max_stats["attack"])):
+			failures.append("%s 的 Lv.10 体型或核心属性偏离确定性体型曲线" % species_id)
+		if actor.effective_size <= base_effective_size or Catalog.visual_growth_scale(species_id, actor.MAX_LEVEL) <= 1.0 or float(actor.data["speed"]) > base_speed * 1.20:
+			failures.append("%s 的体型展示没有成长或速度成长越过 20%% 上限" % species_id)
+		if not Catalog.SPECIES_ADAPTATION_NAMES.has(species_id) or Catalog.adaptation_choices(species_id).size() != 3:
+			failures.append("%s 缺少三条完整局内适应路线" % species_id)
 		var combat_tier := Catalog.combat_tier(species_id)
 		if combat_tier < 1 or combat_tier > 5:
 			failures.append("%s 的生态威胁级不在 1–5 范围" % species_id)
@@ -560,7 +571,8 @@ func _run_validation() -> void:
 		failures.append("逆袭命中后没有进入防止连续触发的冷却")
 	if elephant_opportunity.stamina >= opportunity_stamina_before:
 		failures.append("逆袭命中没有削减强敌耐力")
-	var expected_tactical_xp := Catalog.counterplay_experience_reward("elephant", 1)
+	var live_opponent_reward := Catalog.combat_experience_reward("rabbit", "elephant", 1, rabbit_opportunity.effective_size, elephant_opportunity.effective_size, rabbit_opportunity.combat_power_rating(), elephant_opportunity.combat_power_rating())
+	var expected_tactical_xp := maxi(roundi(float(live_opponent_reward) * Catalog.COUNTERPLAY_ROUTE_XP_RATIO), 1)
 	if rabbit_opportunity.experience != expected_tactical_xp or rabbit_opportunity.tactical_actions != 1:
 		failures.append("首次弱打强战术没有获得限定战术经验")
 	var second_health_before := elephant_opportunity.health
@@ -587,7 +599,7 @@ func _run_validation() -> void:
 		failures.append("同一强敌可以重复触发生态掌控恢复")
 	rabbit_opportunity.register_counterplay(elephant_opportunity, "ecology")
 	var target_tactical_xp := int(rabbit_opportunity.counterplay_xp_by_target.get(str(elephant_opportunity.actor_id), 0))
-	if target_tactical_xp != Catalog.counterplay_experience_cap("elephant", 1):
+	if target_tactical_xp != maxi(roundi(float(live_opponent_reward) * Catalog.COUNTERPLAY_TARGET_XP_CAP_RATIO), 1):
 		failures.append("四种路线累计战术经验没有限制到目标价值的 32%")
 	var strong_result: Dictionary = elephant_opportunity.register_counterplay(rabbit_opportunity, "opportunity")
 	if int(strong_result["xp"]) != 0 or elephant_opportunity.tactical_actions != 0:

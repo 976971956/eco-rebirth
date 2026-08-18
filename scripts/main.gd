@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.56.0"
+const RELEASE_VERSION := "1.57.0"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -115,6 +115,7 @@ var new_discoveries_current_run: Array[String] = []
 var leaderboard_refresh_remaining: float = 0.0
 var orientation_blocked: bool = false
 var world_seed_override: int = -1
+var pending_player_adaptations: Array[int] = []
 
 
 func _ready() -> void:
@@ -140,6 +141,7 @@ func _ready() -> void:
 	ui.battle_report_opened.connect(_on_battle_report_opened)
 	ui.battle_report_closed.connect(_on_battle_report_closed)
 	ui.orientation_blocked_changed.connect(_on_orientation_blocked_changed)
+	ui.adaptation_selected.connect(_on_adaptation_selected)
 	audio.set_context("menu")
 	var batch_arg := _find_cmdline_value("--batch-sim")
 	var benchmark_arg := _find_cmdline_value("--benchmark-level")
@@ -309,6 +311,7 @@ func _on_orientation_blocked_changed(blocked: bool) -> void:
 func _start_new_world(free_mode: bool = false) -> void:
 	get_tree().paused = false
 	_clear_game_root()
+	pending_player_adaptations.clear()
 	if not batch_mode:
 		run_uses_free_mode = free_mode
 		current_level = selected_free_level if run_uses_free_mode else campaign_level
@@ -509,20 +512,20 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	var corpse := CorpseScript.new()
 	corpse_root.add_child(corpse)
 	corpse.global_position = Vector3(actor.global_position.x, 0.0, actor.global_position.z)
-	corpse.setup(actor.species_id, actor.actor_id)
+	corpse.setup(actor.species_id, actor.actor_id, actor.effective_size)
 	corpses.append(corpse)
 	if is_instance_valid(killer) and killer != actor:
 		killer.claim_fresh_corpse(corpse)
 	if is_instance_valid(world):
-		world.record_danger_memory(actor.global_position, actor.species_id, int(actor.data["size"]), killer.species_id if is_instance_valid(killer) else "")
+		world.record_danger_memory(actor.global_position, actor.species_id, actor.runtime_size_class(), killer.species_id if is_instance_valid(killer) else "")
 	if is_instance_valid(killer) and killer != actor:
-		var reward := Catalog.combat_experience_reward(killer.species_id, actor.species_id, actor.level)
+		var reward := Catalog.combat_experience_reward(killer.species_id, actor.species_id, actor.level, killer.effective_size, actor.effective_size, killer.combat_power_rating(), actor.combat_power_rating())
 		killer.gain_experience(reward, actor.species_id)
 	elif not is_instance_valid(killer):
 		pass
 	var influence_source: EcoActor = actor.ecology_influence_source if is_instance_valid(actor.ecology_influence_source) else null
 	if is_instance_valid(influence_source) and not influence_source.dead and influence_source != killer:
-		var assist_reward := maxi(int(round(Catalog.combat_experience_reward(influence_source.species_id, actor.species_id, actor.level) * 0.45)), 1)
+		var assist_reward := maxi(int(round(Catalog.combat_experience_reward(influence_source.species_id, actor.species_id, actor.level, influence_source.effective_size, actor.effective_size, influence_source.combat_power_rating(), actor.combat_power_rating()) * 0.45)), 1)
 		influence_source.assists += 1
 		influence_source.gain_experience(assist_reward, actor.species_id, actor.ecology_influence_reason)
 
@@ -1188,6 +1191,7 @@ func _build_level_leaderboard() -> Array[Dictionary]:
 			"species_id": actor.species_id,
 			"name": Catalog.display_name(actor.species_id),
 			"level": actor.level,
+			"size": actor.effective_size,
 			"experience": actor.experience,
 			"kills": actor.kills,
 			"health_ratio": clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0),
@@ -1388,7 +1392,8 @@ func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 		return
 	var growth_text := "生命、攻击、速度、耐力与护甲提升"
 	if not gains.is_empty():
-		growth_text = "生命+%d　攻击+%.1f　速度+%.2f　耐力+%d　护甲+%.1f　恢复+%.1f" % [
+		growth_text = "体型+%.2f　生命+%d　攻击+%.1f　速度+%.2f　耐力+%d　护甲+%.1f　恢复+%.1f" % [
+			float(gains.get("size", 0.0)),
 			ceili(float(gains.get("health", 0.0))),
 			float(gains.get("attack", 0.0)),
 			float(gains.get("speed", 0.0)),
@@ -1402,6 +1407,54 @@ func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 	ui.update_leaderboard(_build_level_leaderboard())
 	if audio != null:
 		audio.play_sfx("level_up", 1.0)
+
+
+func request_player_adaptation(actor: EcoActor, milestone_level: int) -> void:
+	if batch_mode or actor != player or milestone_level not in Catalog.GROWTH_MILESTONES:
+		return
+	var was_empty := pending_player_adaptations.is_empty()
+	if milestone_level not in pending_player_adaptations:
+		pending_player_adaptations.append(milestone_level)
+	if was_empty and state == "playing":
+		_present_next_player_adaptation.call_deferred()
+
+
+func _present_next_player_adaptation() -> void:
+	if pending_player_adaptations.is_empty() or not is_instance_valid(player) or state not in ["playing", "adaptation"]:
+		return
+	state = "adaptation"
+	get_tree().paused = true
+	if audio != null:
+		audio.set_context("pause")
+	ui.show_adaptation_choice(player, pending_player_adaptations[0])
+
+
+func _on_adaptation_selected(route_id: String) -> void:
+	if state != "adaptation" or not is_instance_valid(player) or pending_player_adaptations.is_empty():
+		return
+	if not player.apply_adaptation(route_id):
+		return
+	pending_player_adaptations.pop_front()
+	if not pending_player_adaptations.is_empty():
+		_present_next_player_adaptation()
+		return
+	get_tree().paused = false
+	state = "playing"
+	ui.modal_root.hide()
+	if audio != null:
+		audio.set_context("game")
+
+
+func on_actor_adaptation(actor: EcoActor, route_id: String, rank: int) -> void:
+	if ui == null or batch_mode or not is_instance_valid(actor):
+		return
+	var adaptation_name := Catalog.adaptation_name(actor.species_id, route_id)
+	if actor == player:
+		ui.show_hint("获得「%s」%d级：%s" % [adaptation_name, rank, Catalog.adaptation_description(actor.species_id, route_id, rank)])
+		ui.add_event("局内适应 · %s %d级" % [adaptation_name, rank], "#d9b4ff")
+		ui.add_battle_report("你·%s形成「%s」%d级适应" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "适应", "#d9b4ff")
+	elif is_instance_valid(player) and player.global_position.distance_to(actor.global_position) <= 28.0:
+		ui.add_battle_report("%s形成「%s」%d级适应" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "适应", "#b8a2d9")
 
 
 func play_ui_sound() -> void:

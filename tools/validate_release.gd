@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.56 发布候选校验通过：深水限定的中下屏息条、浅/中/深水视觉、动物浸没水纹、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.57 发布候选校验通过：Lv.10 实时体型成长、营养食物簇、宽河渡口、三路线适应、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.56.0\"") and presets.contains("application/short_version=\"1.56.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=660") and presets.contains("application/version=\"660\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.56.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.57.0\"") and presets.contains("application/short_version=\"1.57.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=670") and presets.contains("application/version=\"670\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.57.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1585,13 +1585,48 @@ func _validate_ecological_habit_contract() -> void:
 
 
 func _validate_growth_hud_contract() -> void:
+	_expect(ActorScript.MAX_LEVEL == 10 and Catalog.MAX_GROWTH_LEVEL == 10, "局内成长上限没有统一为 Lv.10")
+	_expect(Catalog.GROWTH_MILESTONES == [3, 6, 9], "局内适应没有在 Lv.3/6/9 触发")
+	_expect(Catalog.SPECIES_ADAPTATION_NAMES.size() == Catalog.ORDER.size(), "三路线适应没有覆盖全部 30 种动物")
+	for species_id in Catalog.ORDER:
+		_expect(Catalog.adaptation_choices(species_id).size() == 3, "%s 没有生境、战斗、生态三条适应" % species_id)
+		_expect(Catalog.maximum_effective_body_size(species_id) > Catalog.effective_body_size(species_id, 1), "%s 的实时体型不会成长" % species_id)
+	var rabbit_max := Catalog.growth_stats("rabbit", 10)
+	var cheetah_start := Catalog.growth_stats("cheetah", 1)
+	_expect(float(rabbit_max["effective_size"]) > float(cheetah_start["effective_size"]), "满级雪兔体型仍低于所有中型动物")
+	_expect(Catalog.runtime_opportunity_threat_gap(float(rabbit_max["effective_size"]), float(cheetah_start["effective_size"]), 120.0, 100.0) == 0, "实时逆袭判定仍把长大的弱物种当作初始小型物种")
+	for authored_size in range(1, 6):
+		var health_values: Array[float] = []
+		var attack_values: Array[float] = []
+		for species_id in Catalog.ORDER:
+			if Catalog.body_size(species_id) != authored_size:
+				continue
+			var stats := Catalog.growth_stats(species_id, 1)
+			health_values.append(float(stats["health"]))
+			attack_values.append(float(stats["attack"]))
+		if health_values.size() > 1:
+			_expect(health_values.max() / maxf(health_values.min(), 0.01) <= 1.16, "同体型物种生命差超过 16%%")
+			_expect(attack_values.max() / maxf(attack_values.min(), 0.01) <= 1.16, "同体型物种攻击差超过 16%%")
+	var world := WorldScript.new()
+	world.world_size = 470.0
+	world.campaign_level = 10
+	world.level_profile_data = WorldScript.level_profile(10)
+	_expect(world.stream_width() >= 15.0 and WorldScript.ford_specs_for_size(470.0, 10).size() == 2, "终局宽河或双渡口没有进入逻辑地图")
+	world.free()
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.count("_sync_player_status_ranges(player_actor)") >= 2, "玩家升级后 HUD 没有持续同步生命与耐力上限")
 	_expect(ui_source.contains("float(player_actor.data[\"regen\"])") and ui_source.contains("恢复 %.1f"), "HUD 没有显示会随等级成长的耐力恢复")
+	_expect(ui_source.contains("func show_adaptation_choice") and ui_source.contains("adaptation_selected"), "玩家缺少移动端可用的三选一适应界面")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("\"regen\": float(data[\"regen\"]) - old_regen"), "升级反馈没有传递耐力恢复增量")
+	_expect(actor_source.contains("effective_size") and actor_source.contains("func threat_gap_to") and actor_source.contains("func _best_nutrient_food"), "实时体型没有接入战斗、逆袭或 AI 营养觅食")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("gains.get(\"regen\""), "玩家升级提示没有显示耐力恢复增量")
+	_expect(main_source.contains("request_player_adaptation") and main_source.contains("killer.effective_size"), "主流程没有暂停选择局内适应或按实时体型结算击杀经验")
+	var food_source := FileAccess.get_file_as_string("res://scripts/food_patch.gd")
+	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
+	_expect(food_source.contains("nutrient_tier") and food_source.contains("get_experience_reward"), "普通、丰饶、稀有营养食物没有独立经验价值")
+	_expect(world_source.contains("cluster_count") and world_source.contains("member_count") and world_source.contains("stream_width()"), "地图没有生成成簇营养食物或宽河视觉逻辑")
 	_expect(Catalog.FIRST_LEVEL_BEAR_CHANCE > 0.25 and Catalog.FIRST_LEVEL_BEAR_CHANCE < 0.60, "第一关可选熊穴的出现率不在合理范围")
 
 

@@ -64,6 +64,7 @@ var game: Node
 var actor_id: int = -1
 var species_id: String = "rabbit"
 var data: Dictionary
+var base_data: Dictionary
 var is_player: bool = false
 var dead: bool = false
 
@@ -74,7 +75,11 @@ var max_stamina: float
 var hunger: float = 18.0
 var level: int = 1
 var experience: int = 0
-const MAX_LEVEL := 8
+const MAX_LEVEL := Catalog.MAX_GROWTH_LEVEL
+var effective_size: float = 1.0
+var threat_health_scale: float = 1.0
+var threat_speed_scale: float = 1.0
+var adaptation_ranks := {"habitat": 0, "combat": 0, "ecology": 0}
 var attack_timer: float = 0.0
 var skill_timer: float = 0.0
 var external_skill_animation_timer: float = 0.0
@@ -209,6 +214,7 @@ var selection_ring: MeshInstance3D
 var waterline_ring: MeshInstance3D
 var visual_immersion_offset: float = 0.0
 var base_visual_scale := Vector3.ONE
+var authored_visual_scale := Vector3.ONE
 var move_time: float = 0.0
 var gait_blend: float = 0.0
 var leg_pivots: Array[Node3D] = []
@@ -255,17 +261,17 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	actor_id = new_id
 	species_id = new_species_id
 	is_player = player_controlled
-	data = Catalog.get_data(species_id)
+	base_data = Catalog.get_data(species_id)
+	data = base_data.duplicate(true)
 	var world_seed_value := int(game.get("world_seed")) if is_instance_valid(game) and game.get("world_seed") != null else 1
 	behavior_rng.seed = behavior_seed(world_seed_value, actor_id, species_id)
 	name = "%s_%02d%s" % [species_id.capitalize(), actor_id, "_Player" if is_player else ""]
-	var ai_health_scale: float = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.06
+	threat_health_scale = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.06
+	threat_speed_scale = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.01
 	if not is_player:
-		data["speed"] = float(data["speed"]) * (1.0 + float(min(threat_level, 8)) * 0.01)
 		threat_perception_multiplier = 1.0 + float(min(threat_level, 8)) * 0.025
-	max_health = float(data["health"]) * ai_health_scale
+	_recalculate_growth_stats()
 	health = max_health
-	max_stamina = float(data["stamina"])
 	stamina = max_stamina
 	max_breath = Catalog.water_breath_seconds(species_id)
 	breath_remaining = max_breath
@@ -276,7 +282,7 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 		landing_target_position = position
 	territory_center = spawn_position
 	if Catalog.has_trait(species_id, "territorial"):
-		territory_radius = 10.0 + float(int(data["size"])) * 1.8
+		territory_radius = 10.0 + effective_size * 1.8
 	collision_layer = 1
 	collision_mask = 0 if Catalog.has_trait(species_id, "flying") else 2
 	_build_collision()
@@ -299,6 +305,108 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	last_sample_position = global_position
 	ecology_trace_last_position = global_position
 	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
+
+
+func _recalculate_growth_stats() -> void:
+	if base_data.is_empty():
+		base_data = Catalog.get_data(species_id)
+	if data.is_empty():
+		data = base_data.duplicate(true)
+	var stats := Catalog.growth_stats(species_id, level, MAX_LEVEL)
+	effective_size = float(stats["effective_size"])
+	max_health = float(stats["health"]) * threat_health_scale
+	max_stamina = float(stats["stamina"])
+	data["health"] = max_health
+	data["stamina"] = max_stamina
+	data["attack"] = float(stats["attack"])
+	data["armor"] = float(stats["armor"])
+	data["speed"] = float(stats["speed"]) * threat_speed_scale
+	data["regen"] = float(stats["regen"])
+	data["hunger_rate"] = float(stats["hunger_rate"])
+	var combat_rank := int(adaptation_ranks.get("combat", 0))
+	data["skill_cost"] = float(base_data["skill_cost"]) * pow(0.94, combat_rank)
+	data["skill_cooldown"] = float(base_data["skill_cooldown"]) * pow(0.94, combat_rank)
+
+
+func runtime_size_class() -> int:
+	return clampi(roundi(effective_size), 1, 6)
+
+
+func combat_power_rating() -> float:
+	return max_health * 0.18 + float(data["attack"]) * 2.8 + float(data["armor"]) * 1.1 + float(data["speed"]) * 3.0 + max_stamina * 0.05
+
+
+func threat_gap_to(target: EcoActor) -> int:
+	if not is_instance_valid(target):
+		return 0
+	return Catalog.runtime_opportunity_threat_gap(effective_size, target.effective_size, combat_power_rating(), target.combat_power_rating())
+
+
+func adaptation_summary_text() -> String:
+	var parts: Array[String] = []
+	for route_id in Catalog.ADAPTATION_ROUTE_ORDER:
+		var rank := int(adaptation_ranks.get(route_id, 0))
+		if rank > 0:
+			parts.append("%s%d" % [Catalog.adaptation_name(species_id, route_id), rank])
+	return "未选择局内适应" if parts.is_empty() else "适应·%s" % "/".join(parts)
+
+
+func apply_adaptation(route_id: String) -> bool:
+	if route_id not in Catalog.ADAPTATION_ROUTE_ORDER:
+		return false
+	var old_rank := int(adaptation_ranks.get(route_id, 0))
+	if old_rank >= 3:
+		return false
+	adaptation_ranks[route_id] = old_rank + 1
+	_recalculate_growth_stats()
+	if game != null and game.has_method("on_actor_adaptation"):
+		game.on_actor_adaptation(self, route_id, old_rank + 1)
+	return true
+
+
+func choose_ai_adaptation() -> String:
+	var habitat_score := 1.0 + (1.0 - stamina / maxf(max_stamina, 1.0)) * 0.75
+	var combat_score := 0.72 + float(data["aggression"]) * 0.80 + float(kills) * 0.08
+	var ecology_score := 0.90 + hunger / 100.0 * 0.75 + (0.32 if level <= 4 else 0.0)
+	if Catalog.has_trait(species_id, "territorial") or Catalog.has_trait(species_id, "straight_runner"):
+		habitat_score += 0.24
+	if Catalog.has_trait(species_id, "pack_hunter") or Catalog.has_trait(species_id, "finisher"):
+		combat_score += 0.24
+	if Catalog.has_trait(species_id, "scavenger") or str(data["diet"]) == "herbivore":
+		ecology_score += 0.22
+	var scored := [
+		{"id": "habitat", "score": habitat_score},
+		{"id": "combat", "score": combat_score},
+		{"id": "ecology", "score": ecology_score},
+	]
+	scored.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if is_equal_approx(float(a["score"]), float(b["score"])):
+			return str(a["id"]) < str(b["id"])
+		return float(a["score"]) > float(b["score"])
+	)
+	return str(scored[0]["id"])
+
+
+func habitat_adaptation_multiplier() -> float:
+	if environment_affinity < TERRAIN_AFFINITY_THRESHOLD:
+		return 1.0
+	return 1.0 + float(int(adaptation_ranks.get("habitat", 0))) * 0.03
+
+
+func ecology_adaptation_multiplier() -> float:
+	return 1.0 + float(int(adaptation_ranks.get("ecology", 0))) * 0.06
+
+
+func effective_wade_depth() -> float:
+	var authored_start := float(Catalog.body_growth_profile(species_id)["start"])
+	var growth_bonus := maxf(effective_size - authored_start, 0.0) * 0.06
+	var habitat_bonus := float(int(adaptation_ranks.get("habitat", 0))) * 0.025 if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD else 0.0
+	return Catalog.water_wade_depth(species_id) + growth_bonus + habitat_bonus
+
+
+func effective_water_entry_depth(pursuing_fish: bool = false, escape_advantage: bool = false) -> float:
+	var authored_limit := Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), pursuing_fish, escape_advantage)
+	return clampf(authored_limit + effective_wade_depth() - Catalog.water_wade_depth(species_id), effective_wade_depth(), 1.35)
 
 
 static func behavior_seed(seed_value: int, id_value: int, species_value: String) -> int:
@@ -509,12 +617,11 @@ static func should_avoid_danger_memory(courage: float, hunger_value: float, heal
 
 
 func _build_collision() -> void:
-	var size_level := int(data["size"])
 	var collision := CollisionShape3D.new()
 	collision.name = "BodyCollision"
 	var shape := CapsuleShape3D.new()
-	shape.radius = 0.28 + size_level * 0.09
-	shape.height = 0.72 + size_level * 0.20
+	shape.radius = 0.28 + effective_size * 0.09
+	shape.height = 0.72 + effective_size * 0.20
 	collision.shape = shape
 	collision.position.y = shape.height * 0.5
 	add_child(collision)
@@ -561,10 +668,44 @@ func _build_visual() -> void:
 			"hyena": _build_hyena()
 			"lion": _build_lion()
 	_collect_tail_visuals()
-	base_visual_scale = body_root.scale
+	authored_visual_scale = body_root.scale
+	base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+	body_root.scale = base_visual_scale
 	_build_health_bar()
 	if is_player:
 		_build_player_ring()
+	_update_growth_presentation()
+
+
+func _update_growth_presentation() -> void:
+	if body_root != null:
+		base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+		body_root.scale = base_visual_scale
+	var collision := get_node_or_null("BodyCollision") as CollisionShape3D
+	if collision != null and collision.shape is CapsuleShape3D:
+		var capsule := collision.shape as CapsuleShape3D
+		capsule.radius = 0.28 + effective_size * 0.09
+		capsule.height = 0.72 + effective_size * 0.20
+		collision.position.y = capsule.height * 0.5
+	if health_bar_root != null:
+		health_bar_root.position.y = 1.85 + effective_size * 0.50
+	if selection_ring != null and selection_ring.mesh is TorusMesh:
+		var selection_torus := selection_ring.mesh as TorusMesh
+		selection_torus.inner_radius = 0.82 + effective_size * 0.10
+		selection_torus.outer_radius = selection_torus.inner_radius + 0.085
+	if waterline_ring != null:
+		var base_waterline_radius := float(waterline_ring.get_meta("base_radius", 0.65))
+		var waterline_scale := (0.52 + effective_size * 0.13) / maxf(base_waterline_radius, 0.1)
+		waterline_ring.scale = Vector3(waterline_scale, 1.0, waterline_scale)
+	if Catalog.has_trait(species_id, "territorial"):
+		territory_radius = 10.0 + effective_size * 1.8
+	var marker_height := 2.6 + effective_size * 0.46
+	var arrow := get_node_or_null("PlayerArrow") as Node3D
+	if arrow != null:
+		arrow.position.y = marker_height
+	var player_label := get_node_or_null("PlayerLabel") as Label3D
+	if player_label != null:
+		player_label.position.y = marker_height + 0.56
 
 
 func _build_external_species_visual() -> bool:
@@ -693,11 +834,11 @@ func skill_socket_world_position(socket_name: String, fallback_height: float = 1
 
 
 func _build_player_ring() -> void:
-	var marker_height := 2.6 + int(data["size"]) * 0.46
+	var marker_height := 2.6 + effective_size * 0.46
 	selection_ring = MeshInstance3D.new()
 	selection_ring.name = "PlayerRing"
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.82 + int(data["size"]) * 0.1
+	torus.inner_radius = 0.82 + effective_size * 0.1
 	torus.outer_radius = torus.inner_radius + 0.085
 	torus.rings = 16
 	torus.ring_segments = 6
@@ -731,7 +872,7 @@ func _build_waterline_ring() -> void:
 		return
 	waterline_ring = MeshInstance3D.new()
 	waterline_ring.name = "WaterlineRipple"
-	var size_level := int(data["size"])
+	var size_level := runtime_size_class()
 	if not waterline_mesh_cache.has(size_level):
 		var torus := TorusMesh.new()
 		torus.inner_radius = 0.52 + size_level * 0.13
@@ -740,6 +881,7 @@ func _build_waterline_ring() -> void:
 		torus.ring_segments = 4
 		waterline_mesh_cache[size_level] = torus
 	waterline_ring.mesh = waterline_mesh_cache[size_level] as TorusMesh
+	waterline_ring.set_meta("base_radius", 0.52 + float(size_level) * 0.13)
 	if waterline_material == null:
 		waterline_material = Factory.material(Color(0.62, 0.92, 0.94, 0.58), 0.24, Color(0.20, 0.72, 0.78, 0.46))
 		waterline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -756,7 +898,7 @@ const HEALTH_BAR_WIDTH := 1.55
 
 
 func _build_health_bar() -> void:
-	var bar_height := 1.85 + int(data["size"]) * 0.5
+	var bar_height := 1.85 + effective_size * 0.5
 	health_bar_root = Node3D.new()
 	health_bar_root.name = "HealthBar"
 	health_bar_root.position = Vector3(0.0, bar_height, 0.0)
@@ -796,7 +938,7 @@ func _update_health_bar() -> void:
 	if mat != null:
 		mat.albedo_color = _health_bar_color(ratio)
 	if health_bar_label != null:
-		health_bar_label.text = "Lv.%d %s  %d/%d" % [level, str(data["name"]), maxi(ceili(health), 0), ceili(max_health)]
+		health_bar_label.text = "Lv.%d %s · 型%.1f  %d/%d" % [level, str(data["name"]), effective_size, maxi(ceili(health), 0), ceili(max_health)]
 
 
 func _health_bar_color(ratio: float) -> Color:
@@ -835,7 +977,7 @@ func has_terrain_momentum() -> bool:
 func can_terrain_counter(target: EcoActor) -> bool:
 	if not has_terrain_momentum() or not is_instance_valid(target) or target.dead or opportunity_strike_timer > 0.0 or game == null or game.world == null:
 		return false
-	if Catalog.opportunity_threat_gap(species_id, target.species_id) <= 0:
+	if threat_gap_to(target) <= 0:
 		return false
 	if not game.world.has_method("terrain_counter_strength"):
 		return false
@@ -868,7 +1010,7 @@ func environment_region_status_text() -> String:
 func ecology_leverage_candidate(threat: EcoActor, max_distance: float = ECOLOGY_LEVERAGE_RADIUS) -> EcoActor:
 	if dead or game == null or ecology_leverage_cooldown > 0.0 or _collapse_competition_active() or not is_instance_valid(threat) or threat.dead:
 		return null
-	if Catalog.opportunity_threat_gap(species_id, threat.species_id) <= 0:
+	if threat_gap_to(threat) <= 0:
 		return null
 	if threat.is_airborne():
 		return null
@@ -890,7 +1032,7 @@ func ecology_leverage_candidate(threat: EcoActor, max_distance: float = ECOLOGY_
 		var candidate_presence := _ecology_combat_presence(candidate)
 		if candidate_presence < threat_presence * 0.72:
 			continue
-		var willing_to_intervene := float(candidate.data["aggression"]) >= 0.48 or Catalog.has_trait(candidate.species_id, "territorial") or Catalog.has_trait(candidate.species_id, "brave_vs_large") or int(candidate.data["size"]) >= int(threat.data["size"])
+		var willing_to_intervene: bool = float(candidate.data["aggression"]) >= 0.48 or Catalog.has_trait(candidate.species_id, "territorial") or Catalog.has_trait(candidate.species_id, "brave_vs_large") or candidate.effective_size >= threat.effective_size
 		if not willing_to_intervene:
 			continue
 		var score := candidate_presence * 0.72 - candidate_distance * 0.12
@@ -922,14 +1064,14 @@ func ecology_leverage_status_text(threat: EcoActor = null) -> String:
 
 
 func _active_stronger_pursuer() -> EcoActor:
-	if is_instance_valid(last_attacker) and not last_attacker.dead and global_position.distance_to(last_attacker.global_position) <= 22.0 and Catalog.opportunity_threat_gap(species_id, last_attacker.species_id) > 0:
+	if is_instance_valid(last_attacker) and not last_attacker.dead and global_position.distance_to(last_attacker.global_position) <= 22.0 and threat_gap_to(last_attacker) > 0:
 		return last_attacker
 	var closest: EcoActor
 	var closest_distance := INF
 	for other in game.get_living_actors():
 		if other == self or other.dead or other.ai_state != "hunt" or other.ai_target != self:
 			continue
-		if Catalog.opportunity_threat_gap(species_id, other.species_id) <= 0:
+		if threat_gap_to(other) <= 0:
 			continue
 		var distance := global_position.distance_to(other.global_position)
 		if distance < closest_distance:
@@ -941,7 +1083,7 @@ func _active_stronger_pursuer() -> EcoActor:
 func _ecology_combat_presence(actor: EcoActor) -> float:
 	if not is_instance_valid(actor):
 		return 0.0
-	return float(Catalog.combat_tier(actor.species_id)) + float(int(actor.data["size"])) * 0.42 + actor.health / actor.max_health * 0.75 + actor.stamina / actor.max_stamina * 0.28
+	return actor.effective_size * 0.72 + actor.combat_power_rating() * 0.012 + actor.health / actor.max_health * 0.75 + actor.stamina / actor.max_stamina * 0.28
 
 
 func _build_rabbit() -> void:
@@ -2001,10 +2143,10 @@ func habit_resource_guidance_text() -> String:
 	if game.world is EcoWorld:
 		var eco_world := game.world as EcoWorld
 		region_id = str(eco_world.region_id_at(resource_position))
-		in_cover = float(eco_world.cover_strength_at(resource_position, species_id)) >= 0.40
+		in_cover = float(eco_world.cover_strength_at(resource_position, species_id, effective_size)) >= 0.40
 		time_phase = eco_world.time_phase
 		weather_id = eco_world.weather_id
-	var prey_size := Catalog.body_size(resource.species_id) if resource is EcoCorpse else 0
+	var prey_size := roundi(float(resource.effective_size)) if resource is EcoCorpse else 0
 	var effect := Catalog.habit_food_effect(species_id, food_kind, region_id, in_cover, time_phase, weather_id, health_ratio, prey_size)
 	var strength_text := ""
 	if bool(effect.get("home_active", false)) and bool(effect.get("special_active", false)):
@@ -2057,16 +2199,18 @@ func _update_cover_state(delta: float) -> void:
 		cover_sample_timer = 0.16 + fmod(float(maxi(actor_id, 0)) * 0.013, 0.07)
 		cover_strength = 0.0
 		if game != null and game.world != null and game.world.has_method("cover_strength_at"):
-			cover_strength = game.world.cover_strength_at(global_position, species_id)
+			cover_strength = game.world.cover_strength_at(global_position, species_id, effective_size)
 	if wants_sprint and (cover_dwell_timer > 0.0 or cover_ambush_timer > 0.0):
 		_break_cover(0.85)
 		_update_cover_visual()
 		return
 	var can_prepare := cover_strength >= COVER_CONCEAL_THRESHOLD and cover_reveal_timer <= 0.0 and scent_mark_timer <= 0.0 and not is_airborne()
 	var flat_speed := Vector2(velocity.x, velocity.z).length()
+	var habitat_rank := int(adaptation_ranks.get("habitat", 0)) if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD else 0
+	var hide_delay := COVER_HIDE_DELAY * (1.0 - float(habitat_rank) * 0.10)
 	if can_prepare and flat_speed <= 0.58:
-		cover_dwell_timer = minf(cover_dwell_timer + delta, COVER_HIDE_DELAY)
-		if cover_dwell_timer >= COVER_HIDE_DELAY:
+		cover_dwell_timer = minf(cover_dwell_timer + delta, hide_delay)
+		if cover_dwell_timer >= hide_delay:
 			var newly_ready := cover_ambush_timer <= 0.0
 			cover_ambush_timer = maxf(cover_ambush_timer, COVER_AMBUSH_GRACE)
 			if newly_ready and is_player and cover_hint_cooldown <= 0.0 and game.has_method("show_hint"):
@@ -2142,7 +2286,7 @@ func _update_water_survival(delta: float) -> void:
 		# Staggered sampling keeps 100 actors from repeating the same river-segment
 		# distance queries every tick while retaining a generous forward probe.
 		water_sample_timer = 0.055 if is_player else 0.12 + fmod(float(actor_id) * 0.013, 0.06)
-	var wade_depth := Catalog.water_wade_depth(species_id)
+	var wade_depth := effective_wade_depth()
 	var swimming := current_water_depth > wade_depth and not is_airborne()
 	if not swimming:
 		var recovery_rate := 0.34 if current_water_depth <= 0.01 else 0.22
@@ -2183,7 +2327,7 @@ func water_breath_ratio() -> float:
 
 
 func is_swimming() -> bool:
-	return not is_airborne() and current_water_depth > Catalog.water_wade_depth(species_id)
+	return not is_airborne() and current_water_depth > effective_wade_depth()
 
 
 func water_status_text() -> String:
@@ -2206,14 +2350,14 @@ func water_status_is_dangerous() -> bool:
 
 
 func _needs_water_escape() -> bool:
-	return not is_airborne() and current_water_depth > Catalog.water_wade_depth(species_id) and water_breath_ratio() <= WATER_ESCAPE_BREATH_RATIO
+	return not is_airborne() and current_water_depth > effective_wade_depth() and water_breath_ratio() <= WATER_ESCAPE_BREATH_RATIO
 
 
 func _begin_water_escape() -> void:
 	if game.world == null or not game.world.has_method("nearest_safe_water_position"):
 		return
 	var escape_search_radius := maxf(20.0, float(game.world.world_size) * 0.22) if game.world is EcoWorld else 20.0
-	water_escape_position = game.world.nearest_safe_water_position(global_position, Catalog.water_wade_depth(species_id), escape_search_radius)
+	water_escape_position = game.world.nearest_safe_water_position(global_position, effective_wade_depth(), escape_search_radius)
 	ai_state = "water_escape"
 	ai_target = null
 	resource_target = null
@@ -2225,7 +2369,7 @@ func _ai_water_entry_limit() -> float:
 	var escape_advantage := false
 	if ai_state == "flee" and is_instance_valid(ai_target):
 		escape_advantage = Catalog.water_grade(species_id) >= Catalog.water_grade(ai_target.species_id) + 2
-	var limit := Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), pursuing_fish, escape_advantage)
+	var limit := effective_water_entry_depth(pursuing_fish, escape_advantage)
 	if _collapse_competition_active() and water_breath_ratio() > 0.60:
 		limit += 0.10
 	return minf(limit, 1.35)
@@ -2236,10 +2380,10 @@ func _water_resource_is_safe(resource: Node3D) -> bool:
 		return is_instance_valid(resource)
 	var resource_position: Vector3 = resource.global_position if resource.is_inside_tree() else resource.position
 	var resource_depth := float(game.world.water_depth_at(resource_position))
-	if resource_depth <= Catalog.water_wade_depth(species_id):
+	if resource_depth <= effective_wade_depth():
 		return true
 	var pursuing_fish: bool = resource is FoodPatch and resource.food_kind == "fish"
-	return resource_depth <= Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), pursuing_fish, false)
+	return resource_depth <= effective_water_entry_depth(pursuing_fish, false)
 
 
 func _steer_for_water_safety(direction: Vector3) -> Vector3:
@@ -2249,7 +2393,7 @@ func _steer_for_water_safety(direction: Vector3) -> Vector3:
 	if water_steering_timer > 0.0 and cached_water_input_direction.dot(normalized_direction) >= 0.86:
 		return cached_water_safe_direction
 	var entry_limit := _ai_water_entry_limit()
-	var probe_distance := 1.9 + float(int(data["size"])) * 0.12
+	var probe_distance := 1.9 + effective_size * 0.12
 	var probe := global_position + normalized_direction * probe_distance
 	var probe_depth := float(game.world.water_depth_at(probe))
 	var safe_direction := direction
@@ -2258,7 +2402,7 @@ func _steer_for_water_safety(direction: Vector3) -> Vector3:
 	elif current_water_depth > entry_limit:
 		if water_escape_position.x == INF and game.world.has_method("nearest_safe_water_position"):
 			var escape_search_radius := maxf(20.0, float(game.world.world_size) * 0.22) if game.world is EcoWorld else 20.0
-			water_escape_position = game.world.nearest_safe_water_position(global_position, Catalog.water_wade_depth(species_id), escape_search_radius)
+			water_escape_position = game.world.nearest_safe_water_position(global_position, effective_wade_depth(), escape_search_radius)
 		var escape_offset := water_escape_position - global_position
 		safe_direction = Vector3(escape_offset.x, 0.0, escape_offset.z).normalized() if escape_offset.length() > 0.1 else direction
 	elif game.world.has_method("water_body_at") and game.world.water_body_at(probe) == "stream" and game.world.has_method("nearest_ford_position"):
@@ -2385,7 +2529,7 @@ func _request_landing(duration: float) -> void:
 		return
 	flight_ground_timer = maxf(flight_ground_timer, duration)
 	flight_target_height = 0.58
-	var radius := 0.40 + int(data["size"]) * 0.09
+	var radius := 0.40 + effective_size * 0.09
 	if game.world != null and game.world.has_method("nearest_legal_landing"):
 		landing_target_position = game.world.nearest_legal_landing(global_position, radius)
 	else:
@@ -2400,7 +2544,7 @@ func _update_ai(delta: float) -> void:
 	wants_sprint = false
 	match ai_state:
 		"water_escape":
-			if current_water_depth <= Catalog.water_wade_depth(species_id) or water_escape_position.x == INF:
+			if current_water_depth <= effective_wade_depth() or water_escape_position.x == INF:
 				ai_state = "wander"
 				water_escape_position = Vector3(INF, 0.0, INF)
 				desired_direction = Vector3.ZERO
@@ -2468,7 +2612,7 @@ func _update_ai(delta: float) -> void:
 				wants_sprint = trace_distance > 9.0 and stamina > max_stamina * 0.50 and not exhausted
 			else:
 				search_position = trace_investigation_position
-				search_timer = 1.85 + float(int(data["size"])) * 0.12
+				search_timer = 1.85 + effective_size * 0.12
 				ai_state = "search"
 				trace_investigation_timer = 0.0
 				trace_investigation_position = Vector3(INF, 0.0, INF)
@@ -2505,7 +2649,7 @@ func _update_ai(delta: float) -> void:
 				desired_direction = Vector3(to_target.x, 0.0, to_target.z).normalized()
 				var distance := global_position.distance_to(ai_target.global_position)
 				var planar_distance := Vector2(global_position.x - ai_target.global_position.x, global_position.z - ai_target.global_position.z).length()
-				var target_threat_gap := Catalog.opportunity_threat_gap(species_id, ai_target.species_id)
+				var target_threat_gap := threat_gap_to(ai_target)
 				# A final duel must still preserve the game's core weak-versus-strong
 				# answer. The shrinking boundary guarantees contact, while the weaker
 				# animal orbits until the stronger target spends enough stamina to
@@ -2641,7 +2785,7 @@ func _think() -> void:
 			continue
 		if Catalog.considers_prey(other.species_id, species_id) and _can_detect_actor(other):
 			var distance := global_position.distance_to(other.global_position)
-			var stronger: bool = other.health / other.max_health > 0.25 or int(other.data["size"]) >= int(data["size"])
+			var stronger: bool = other.health / other.max_health > 0.25 or other.effective_size >= effective_size
 			if distance < threat_distance and stronger:
 				nearest_threat = other
 				threat_distance = distance
@@ -2678,7 +2822,7 @@ func _think() -> void:
 				return
 		else:
 			search_position = last_known_target_position if has_last_known_target_position else ai_target.global_position
-			search_timer = SEARCH_MEMORY_SECONDS + float(int(data["size"])) * 0.16
+			search_timer = SEARCH_MEMORY_SECONDS + effective_size * 0.16
 			ai_target = null
 			ai_state = "search"
 			state_commit_timer = 0.45
@@ -2694,7 +2838,7 @@ func _think() -> void:
 			_switch_state("hunt", visible_trace_prey)
 	if ai_state == "hide" and is_cover_concealed():
 		if is_instance_valid(nearest_threat):
-			var hidden_threat_gap := Catalog.opportunity_threat_gap(species_id, nearest_threat.species_id)
+			var hidden_threat_gap := threat_gap_to(nearest_threat)
 			var ambush_reach := float(data["speed"]) * COVER_AMBUSH_GRACE * 0.78 + float(data["attack_range"]) + 0.8
 			if hidden_threat_gap > 0 and threat_distance <= ambush_reach:
 				_switch_state("hunt", nearest_threat)
@@ -2709,7 +2853,7 @@ func _think() -> void:
 		if threat_distance <= terrain_counter_reach:
 			_switch_state("hunt", nearest_threat)
 			return
-	var flee_distance := 10.0 + int(data["size"]) * 1.5
+	var flee_distance := 10.0 + effective_size * 1.5
 	if species_id == "rabbit":
 		flee_distance += 4.0
 	if is_instance_valid(last_attacker) and not last_attacker.dead and health < max_health * 0.42:
@@ -2745,7 +2889,7 @@ func _think() -> void:
 	# predators into scenery. A healthy carnivore or sufficiently motivated
 	# omnivore may engage a legal prey animal that comes into its local reaction
 	# radius. Player and AI actors pass through exactly the same candidate path.
-	var hunt_motivation := hunting_motivation(hunger, float(data["aggression"]), str(data["diet"]), int(data["size"]), pack_support)
+	var hunt_motivation := hunting_motivation(hunger, float(data["aggression"]), str(data["diet"]), runtime_size_class(), pack_support)
 	var nearby_prey: EcoActor
 	# Highly motivated actors outside establishment time will run the ordinary
 	# full prey scan below. Avoid doing a second candidate pass in that case;
@@ -2805,6 +2949,17 @@ func _think() -> void:
 				state_commit_timer = 1.8
 			ai_state = "food"
 			resource_target = recovery_food
+			return
+	# Small and under-levelled animals deliberately look for unexplored nutrient
+	# clusters instead of repeating hopeless attacks. Rich food remains attractive
+	# to larger animals only when they are already hungry, preserving predation.
+	if level < MAX_LEVEL and (effective_size <= 3.45 or hunger >= 30.0):
+		var nutrient_food := _best_nutrient_food(36.0, living_actors)
+		if is_instance_valid(nutrient_food):
+			if ai_state != "food" or resource_target != nutrient_food:
+				state_commit_timer = 1.6
+			ai_state = "food"
+			resource_target = nutrient_food
 			return
 
 	if hunger > 42.0:
@@ -2885,7 +3040,7 @@ func _best_territory_intruder() -> EcoActor:
 		var recently_attacked: bool = is_instance_valid(last_attacker) and last_attacker == other and ecology_influence_timer > 0.0
 		if not should_escalate_territory_intrusion(Catalog.considers_prey(species_id, other.species_id), recently_attacked, actor_distance, float(data["attack_range"]), territory_radius):
 			continue
-		if int(other.data["size"]) > int(data["size"]) + 1 and health < max_health * 0.78:
+		if other.effective_size > effective_size + 0.9 and health < max_health * 0.78:
 			continue
 		if actor_distance >= closest_distance:
 			continue
@@ -2975,9 +3130,9 @@ func _prepare_escape_intervention(threat: EcoActor) -> void:
 
 func _prepare_escape_cover(threat: EcoActor) -> void:
 	escape_cover_position = Vector3(INF, 0.0, INF)
-	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_escape_cover") or int(data["size"]) > 3 or _collapse_competition_active():
+	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_escape_cover") or effective_size > 3.45 or _collapse_competition_active():
 		return
-	var search_radius := 12.0 + float(3 - mini(int(data["size"]), 3)) * 1.8
+	var search_radius := 12.0 + maxf(3.0 - effective_size, 0.0) * 1.8
 	escape_cover_position = game.world.best_escape_cover(global_position, threat.global_position, species_id, search_radius)
 
 
@@ -2985,9 +3140,9 @@ func _prepare_escape_habitat(threat: EcoActor) -> void:
 	escape_habitat_position = Vector3(INF, 0.0, INF)
 	if not is_instance_valid(threat) or game.world == null or not game.world.has_method("best_counter_habitat") or _collapse_competition_active():
 		return
-	if Catalog.opportunity_threat_gap(species_id, threat.species_id) <= 0:
+	if threat_gap_to(threat) <= 0:
 		return
-	var search_radius := 16.0 + float(4 - mini(int(data["size"]), 4)) * 1.5
+	var search_radius := 16.0 + maxf(4.0 - effective_size, 0.0) * 1.5
 	escape_habitat_position = game.world.best_counter_habitat(global_position, threat.global_position, species_id, threat.species_id, search_radius)
 
 
@@ -2995,7 +3150,7 @@ func _can_detect_actor(other: EcoActor, base_range: float = 27.0) -> bool:
 	if not is_instance_valid(other) or other.dead:
 		return false
 	var distance := global_position.distance_to(other.global_position)
-	var close_reveal := COVER_CLOSE_REVEAL_DISTANCE + float(int(data["size"])) * 0.28
+	var close_reveal := COVER_CLOSE_REVEAL_DISTANCE + effective_size * 0.28
 	if distance <= close_reveal:
 		return true
 	var detect_range := base_range
@@ -3090,7 +3245,7 @@ func _best_habit_food(search_range: float, living_actors: Array[EcoActor] = []) 
 	var best_patch: FoodPatch
 	var best_score := INF
 	var hotspot_risk := str(game.ecology_hotspot_risk_level()) if game.has_method("ecology_hotspot_risk_level") else "平稳"
-	var risk_averse := int(data["size"]) <= 3 and float(data["courage"]) < 0.50 and hunger < 78.0
+	var risk_averse := effective_size <= 3.45 and float(data["courage"]) < 0.50 and hunger < 78.0
 	for candidate_node in game.world.food_patches:
 		if not is_instance_valid(candidate_node) or candidate_node.is_queued_for_deletion() or not candidate_node is FoodPatch:
 			continue
@@ -3138,7 +3293,7 @@ func _best_habit_corpse(search_range: float, living_actors: Array[EcoActor]) -> 
 		var distance := origin.distance_to(corpse.global_position)
 		if distance > search_range:
 			continue
-		var prey_size := Catalog.body_size(str(corpse.species_id))
+		var prey_size := roundi(float(corpse.effective_size))
 		var preferred_size := (not profile.has("prey_min") or prey_size >= int(profile["prey_min"])) and (not profile.has("prey_max") or prey_size <= int(profile["prey_max"]))
 		var score := distance * (0.78 if preferred_size else 1.0)
 		if game.world is EcoWorld:
@@ -3192,11 +3347,51 @@ func _best_wild_food(search_range: float) -> Node3D:
 	if not is_instance_valid(candidate) or not candidate is FoodPatch or not candidate.ecology_hotspot:
 		return candidate
 	var risk := str(game.ecology_hotspot_risk_level()) if game.has_method("ecology_hotspot_risk_level") else "平稳"
-	var risk_averse := int(data["size"]) <= 3 and float(data["courage"]) < 0.50 and hunger < 78.0
+	var risk_averse := effective_size <= 3.45 and float(data["courage"]) < 0.50 and hunger < 78.0
 	if risk != "高危" or not risk_averse:
 		return candidate
 	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false, excluded_id, water_breath_ratio(), hunger)
 	return safer_food if is_instance_valid(safer_food) else null
+
+
+func _best_nutrient_food(search_range: float, living_actors: Array[EcoActor]) -> FoodPatch:
+	if game.world == null or not (game.world is EcoWorld):
+		return null
+	var origin := global_position if is_inside_tree() else position
+	var best_patch: FoodPatch
+	var best_score := -INF
+	for candidate_node in game.world.food_patches:
+		if not is_instance_valid(candidate_node) or candidate_node.is_queued_for_deletion() or not candidate_node is FoodPatch:
+			continue
+		var patch := candidate_node as FoodPatch
+		if not patch.active or not patch.can_be_eaten_by(species_id) or rewarded_food_sources.has(str(patch.get_instance_id())):
+			continue
+		if not _water_resource_is_safe(patch) or not _habit_resource_inside_active_area(patch):
+			continue
+		var distance := origin.distance_to(patch.global_position)
+		if distance > search_range:
+			continue
+		var tier := str(patch.get("nutrient_tier"))
+		if tier == "common" and hunger < 24.0 and effective_size > 2.6:
+			continue
+		var region_id := str(game.world.region_id_at(patch.global_position))
+		var reward := float(patch.get_experience_reward(species_id, region_id))
+		var danger_penalty := 0.0
+		for other in living_actors:
+			if other == self or other.dead or other.species_id == species_id:
+				continue
+			var competitor_distance := other.global_position.distance_to(patch.global_position)
+			if competitor_distance <= 8.0 and (other.threat_gap_to(self) <= 0 or Catalog.considers_prey(other.species_id, species_id)):
+				danger_penalty += 4.0 + maxf(8.0 - competitor_distance, 0.0) * 0.7
+		var score := reward * 2.6 - distance * 0.34 - danger_penalty
+		if tier == "rare":
+			score += 8.0
+		elif tier == "rich":
+			score += 2.5
+		if score > best_score:
+			best_score = score
+			best_patch = patch
+	return best_patch if best_score > -1.0 else null
 
 
 func _best_nearby_food(search_range: float, living_actors: Array[EcoActor] = []) -> Node3D:
@@ -3269,10 +3464,10 @@ func _begin_ecology_trace_investigation() -> bool:
 func _begin_danger_memory_avoidance() -> bool:
 	if game.world == null or game.world.collapse_active:
 		return false
-	if not should_avoid_danger_memory(float(data["courage"]), hunger, health / maxf(max_health, 1.0), int(data["size"]), Catalog.has_trait(species_id, "scavenger")):
+	if not should_avoid_danger_memory(float(data["courage"]), hunger, health / maxf(max_health, 1.0), runtime_size_class(), Catalog.has_trait(species_id, "scavenger")):
 		return false
 	var origin := global_position if is_inside_tree() else position
-	var awareness_range := 10.0 + float(3 - mini(int(data["size"]), 3)) * 2.2
+	var awareness_range := 10.0 + maxf(3.0 - effective_size, 0.0) * 2.2
 	var memory: Dictionary = game.world.nearest_danger_memory(origin, awareness_range, avoided_danger_sequences)
 	if memory.is_empty():
 		return false
@@ -3347,7 +3542,7 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 		if blocked_route_timer > 0.0 and other.get_instance_id() == blocked_route_instance_id:
 			continue
 		var considers_target: bool = Catalog.considers_prey(species_id, other.species_id)
-		var brave_opportunity: bool = Catalog.has_trait(species_id, "brave_vs_large") and other.is_opportunity_exposed() and Catalog.opportunity_threat_gap(species_id, other.species_id) > 0
+		var brave_opportunity: bool = Catalog.has_trait(species_id, "brave_vs_large") and other.is_opportunity_exposed() and threat_gap_to(other) > 0
 		if not considers_target and not brave_opportunity:
 			continue
 		if other.is_airborne() and not Catalog.has_trait(species_id, "flying"):
@@ -3358,7 +3553,7 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 		if other.scent_mark_timer > 0.0:
 			score *= 1.35
 		if other.is_opportunity_exposed():
-			score *= 1.18 + float(Catalog.opportunity_threat_gap(species_id, other.species_id)) * 0.10
+			score *= 1.18 + float(threat_gap_to(other)) * 0.10
 		if score >= AI_MIN_PREY_UTILITY and score > best_score:
 			best_score = score
 			best = other
@@ -3377,7 +3572,7 @@ func _prey_utility(target: EcoActor, pack_support: int = 0, target_pressure: int
 	var water_risk := 0.0
 	if target_water_depth > 0.01:
 		water_advantage = float(Catalog.water_grade(species_id) - Catalog.water_grade(target.species_id)) / 4.0
-		water_risk = maxf(target_water_depth - Catalog.ai_water_entry_depth(species_id, hunger, water_breath_ratio(), false, false), 0.0)
+		water_risk = maxf(target_water_depth - effective_water_entry_depth(false, false), 0.0)
 	var context := {
 		"hunter_health": health / maxf(max_health, 1.0),
 		"hunter_stamina": stamina / maxf(max_stamina, 1.0),
@@ -3387,18 +3582,18 @@ func _prey_utility(target: EcoActor, pack_support: int = 0, target_pressure: int
 		"aggression": float(data["aggression"]),
 		"distance": global_position.distance_to(target.global_position),
 		"speed_ratio": float(data["speed"]) / maxf(float(target.data["speed"]), 0.1),
-		"tier_delta": Catalog.combat_tier(species_id) - Catalog.combat_tier(target.species_id),
-		"size_delta": int(data["size"]) - int(target.data["size"]),
+		"tier_delta": clampf((combat_power_rating() / maxf(target.combat_power_rating(), 0.01) - 1.0) * 2.0, -4.0, 4.0),
+		"size_delta": effective_size - target.effective_size,
 		"support": pack_support,
 		"target_pressure": target_pressure,
 		"habitat_delta": habitat_delta,
-		"threat_gap": Catalog.opportunity_threat_gap(species_id, target.species_id),
+		"threat_gap": threat_gap_to(target),
 		"target_exposed": target.is_opportunity_exposed(),
 		"finisher": Catalog.has_trait(species_id, "finisher"),
 		"pack_hunter": Catalog.has_trait(species_id, "pack_hunter"),
 		"scavenger": Catalog.has_trait(species_id, "scavenger"),
 		"ambush_ready": has_cover_ambush(),
-		"aerial_small_prey": Catalog.has_trait(species_id, "flying") and int(target.data["size"]) <= 2,
+		"aerial_small_prey": Catalog.has_trait(species_id, "flying") and target.effective_size <= 2.45,
 		"water_advantage": water_advantage,
 		"water_risk": water_risk,
 		"attack_range": float(data["attack_range"]),
@@ -3422,7 +3617,7 @@ func _apply_movement(delta: float) -> void:
 			var toward_center := Vector3(-global_position.x, 0.0, -global_position.z).normalized()
 			flat_direction = (flat_direction + toward_center * 1.25).normalized()
 	if not is_player and game.world != null and flat_direction.length() > 0.1 and (not uses_height_domain or global_position.y < 1.35):
-		var steering_radius := 0.52 + int(data["size"]) * 0.09
+		var steering_radius := 0.52 + effective_size * 0.09
 		if Catalog.has_trait(species_id, "climber"):
 			steering_radius *= 0.80
 		var look_ahead_scale := 1.72 if species_id == "cheetah" else 1.0
@@ -3473,10 +3668,11 @@ func _apply_movement(delta: float) -> void:
 		wants_sprint = false
 	var water_depth := current_water_depth
 	var in_wetland: bool = water_depth > 0.01
-	var swimming_water := not uses_height_domain and water_depth > Catalog.water_wade_depth(species_id)
+	var swimming_water := not uses_height_domain and water_depth > effective_wade_depth()
 	var speed := float(data["speed"])
 	if game.world != null and game.world.has_method("movement_multiplier"):
-		speed *= game.world.movement_multiplier(species_id, global_position)
+		speed *= game.world.movement_multiplier(species_id, global_position, effective_size)
+	speed *= habitat_adaptation_multiplier()
 	if swimming_water:
 		speed *= Catalog.water_speed_multiplier(species_id)
 	elif not uses_height_domain and in_wetland:
@@ -3500,7 +3696,7 @@ func _apply_movement(delta: float) -> void:
 	if sprinting:
 		sprint_seconds += delta
 		speed *= float(data["sprint"])
-		var sprint_cost := 8.5 + int(data["size"]) * 1.7
+		var sprint_cost := 8.5 + effective_size * 1.7
 		if Catalog.has_trait(species_id, "straight_runner") and straight_run_timer > 2.0:
 			sprint_cost *= 0.82
 		if has_habit_buff("escape"):
@@ -3511,17 +3707,20 @@ func _apply_movement(delta: float) -> void:
 			sprint_cost *= game.world.flight_stamina_multiplier()
 		if game.world != null and game.world.has_method("stamina_cost_multiplier"):
 			sprint_cost *= game.world.stamina_cost_multiplier(species_id, global_position)
+		if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD:
+			sprint_cost *= 1.0 - float(int(adaptation_ranks.get("habitat", 0))) * 0.06
 		stamina = maxf(stamina - sprint_cost * delta, 0.0)
 	elif can_regenerate_stamina(sprinting, stamina_regen_delay):
 		var hunger_factor := 1.0 if hunger < 60.0 else (0.85 if hunger < 80.0 else 0.65)
 		var environment_regen: float = float(game.world.stamina_regen_multiplier(species_id, global_position)) if game.world != null and game.world.has_method("stamina_regen_multiplier") else 1.0
 		var habit_regen := 1.30 if has_habit_buff("recover") else 1.0
-		stamina = minf(stamina + float(data["regen"]) * hunger_factor * environment_regen * habit_regen * delta * (1.0 if flat_direction.length() < 0.1 else 0.70), max_stamina)
+		var adaptation_regen := 1.0 + float(int(adaptation_ranks.get("habitat", 0))) * 0.07 if environment_affinity >= TERRAIN_AFFINITY_THRESHOLD else 1.0
+		stamina = minf(stamina + float(data["regen"]) * hunger_factor * environment_regen * habit_regen * adaptation_regen * delta * (1.0 if flat_direction.length() < 0.1 else 0.70), max_stamina)
 	if dash_timer > 0.0:
 		dash_timer -= delta
 		flat_direction = dash_direction
 		var dash_factor := 2.85 if species_id == "cheetah" else (2.55 if is_flying else 2.25)
-		var environment_factor: float = game.world.movement_multiplier(species_id, global_position) if game.world != null and game.world.has_method("movement_multiplier") else 1.0
+		var environment_factor: float = game.world.movement_multiplier(species_id, global_position, effective_size) if game.world != null and game.world.has_method("movement_multiplier") else 1.0
 		var water_dash_factor := Catalog.water_speed_multiplier(species_id) if swimming_water else (0.94 if in_wetland and not is_flying else 1.0)
 		speed = float(data["speed"]) * dash_factor * environment_factor * water_dash_factor
 	velocity.x = move_toward(velocity.x, flat_direction.x * speed, delta * speed * 8.0)
@@ -3572,7 +3771,8 @@ func _apply_movement(delta: float) -> void:
 			pending_food_resource = null
 	if flat_direction.length() > 0.12:
 		var target_angle := atan2(-flat_direction.x, -flat_direction.z)
-		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-delta * (7.0 if int(data["size"]) < 4 else 4.2)))
+		var turn_rate := lerpf(7.0, 4.0, clampf((effective_size - 3.0) / 3.4, 0.0, 1.0))
+		rotation.y = lerp_angle(rotation.y, target_angle, 1.0 - exp(-delta * turn_rate))
 	var flat_speed := Vector2(velocity.x, velocity.z).length()
 	still_timer = still_timer + delta if flat_speed < 0.35 else 0.0
 	_update_exhaustion_state()
@@ -3613,7 +3813,7 @@ func _try_attack() -> void:
 	var target := ai_target if not is_player else _nearest_living_actor(float(data["attack_range"]) + 0.9)
 	if not is_instance_valid(target) or target.dead:
 		return
-	var reach := float(data["attack_range"]) + (int(data["size"]) + int(target.data["size"])) * 0.08
+	var reach := float(data["attack_range"]) + (effective_size + target.effective_size) * 0.08
 	if global_position.distance_to(target.global_position) > reach:
 		return
 	attack_timer = float(data["attack_interval"])
@@ -3633,7 +3833,7 @@ func _try_attack() -> void:
 		damage *= game.get_ai_damage_multiplier()
 	if Catalog.has_trait(species_id, "finisher") and target.health / target.max_health < 0.30:
 		damage *= 1.12
-	if Catalog.has_trait(species_id, "brave_vs_large") and int(target.data["size"]) > int(data["size"]):
+	if Catalog.has_trait(species_id, "brave_vs_large") and target.effective_size > effective_size:
 		damage *= 1.12
 	if rage_timer > 0.0:
 		damage *= 1.1
@@ -3701,7 +3901,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.take_damage(_skill_damage(1.35), self)
 					other.apply_knockback((other.global_position - global_position).normalized(), 8.2)
 					used = true
-				if deer_distance < 7.2 and int(other.data["size"]) <= int(data["size"]):
+				if deer_distance < 7.2 and other.effective_size <= effective_size:
 					other.apply_panic(self, 2.35)
 					affected_count += 1
 					used = true
@@ -3740,7 +3940,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.take_damage(bear_damage, self)
 					other.apply_knockback((other.global_position - global_position).normalized(), 9.0)
 					used = true
-				if bear_distance < 7.0 and int(other.data["size"]) < int(data["size"]):
+				if bear_distance < 7.0 and other.effective_size < effective_size:
 					other.apply_panic(self, 2.8)
 					affected_count += 1
 					used = true
@@ -3854,7 +4054,7 @@ func use_skill(target: EcoActor = null) -> bool:
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 5.6:
 				dash_direction = (target.global_position - global_position).normalized()
 				dash_timer = 0.34
-				var wolverine_factor := 1.72 if int(target.data["size"]) > int(data["size"]) else 1.42
+				var wolverine_factor := 1.72 if target.effective_size > effective_size else 1.42
 				target.take_damage(_skill_damage(wolverine_factor), self)
 				target.apply_slow(0.82, 2.0)
 				stamina = minf(max_stamina, stamina + 12.0)
@@ -3869,7 +4069,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				target.take_damage(_skill_damage(1.42), self)
 				target.apply_knockback(dash_direction, 10.5)
 				for other in game.get_living_actors():
-					if other != self and other != target and not other.dead and int(other.data["size"]) < int(data["size"]) and global_position.distance_to(other.global_position) < 6.5:
+					if other != self and other != target and not other.dead and other.effective_size < effective_size and global_position.distance_to(other.global_position) < 6.5:
 						other.apply_panic(self, 2.0)
 						affected_count += 1
 				SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.15), 4.8, 10)
@@ -3886,7 +4086,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.apply_knockback((other.global_position - global_position).normalized(), 14.0)
 					affected_count += 1
 					used = true
-				elif elephant_distance < 9.0 and int(other.data["size"]) < int(data["size"]):
+				elif elephant_distance < 9.0 and other.effective_size < effective_size:
 					other.apply_panic(self, 3.2)
 					affected_count += 1
 					used = true
@@ -3940,7 +4140,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				dash_timer = 0.42
 				target.take_damage(_skill_damage(1.68), self)
 				for other in game.get_living_actors():
-					if other != self and other != target and not other.dead and int(other.data["size"]) < int(data["size"]) and target.global_position.distance_to(other.global_position) < 5.4:
+					if other != self and other != target and not other.dead and other.effective_size < effective_size and target.global_position.distance_to(other.global_position) < 5.4:
 						other.apply_panic(self, 2.2)
 						affected_count += 1
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 5.0)
@@ -4032,7 +4232,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.take_damage(_skill_damage(1.42), self)
 					other.apply_knockback((other.global_position - global_position).normalized(), 10.8)
 					affected_count += 1
-				elif gorilla_distance < 8.2 and int(other.data["size"]) < int(data["size"]):
+				elif gorilla_distance < 8.2 and other.effective_size < effective_size:
 					other.apply_panic(self, 3.0)
 					affected_count += 1
 			SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.28), 5.7, 14)
@@ -4067,7 +4267,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					other.take_damage(_skill_damage(1.62), self)
 					other.apply_knockback((other.global_position - global_position).normalized(), 10.0)
 					used = true
-				if hippo_distance < 7.2 and int(other.data["size"]) < int(data["size"]):
+				if hippo_distance < 7.2 and other.effective_size < effective_size:
 					other.apply_panic(self, 2.8)
 					affected_count += 1
 					used = true
@@ -4096,7 +4296,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				for other in game.get_living_actors():
 					if other == self or other == target or other.dead:
 						continue
-					if target.global_position.distance_to(other.global_position) < 6.5 and int(other.data["size"]) < int(data["size"]):
+					if target.global_position.distance_to(other.global_position) < 6.5 and other.effective_size < effective_size:
 						other.apply_panic(self, 2.7)
 						affected_count += 1
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 5.2)
@@ -4113,7 +4313,9 @@ func use_skill(target: EcoActor = null) -> bool:
 		stamina = maxf(stamina - float(data["skill_cost"]), 0.0)
 		stamina_regen_delay = STAMINA_REGEN_COMBAT_DELAY
 		skill_timer = float(data["skill_cooldown"])
-		exposed_timer = maxf(exposed_timer, Catalog.skill_exposure_duration(species_id))
+		var growth_exposure := maxf(effective_size - float(Catalog.body_growth_profile(species_id)["start"]), 0.0) * 0.10
+		var adaptation_recovery := float(int(adaptation_ranks.get("combat", 0))) * 0.08
+		exposed_timer = maxf(exposed_timer, maxf(Catalog.skill_exposure_duration(species_id) + growth_exposure - adaptation_recovery, 0.65))
 		_update_exhaustion_state()
 		if game.has_method("play_sfx_near"):
 			game.play_sfx_near("skill_%s" % species_id, global_position, is_player)
@@ -4230,7 +4432,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	var ambush_strike := false
 	var terrain_strike := false
 	if is_instance_valid(source):
-		threat_gap = Catalog.opportunity_threat_gap(source.species_id, species_id)
+		threat_gap = source.threat_gap_to(self)
 		ambush_strike = threat_gap > 0 and source.ambush_attack_armed
 		terrain_strike = threat_gap > 0 and source.terrain_attack_armed
 		opportunity_strike = threat_gap > 0 and (is_opportunity_exposed() or ambush_strike or terrain_strike) and source.opportunity_strike_timer <= 0.0
@@ -4240,19 +4442,20 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	var reduction := armor / (armor + 100.0)
 	var size_scale := 1.0
 	if is_instance_valid(source):
-		size_scale = clampf(1.0 + (int(source.data["size"]) - int(data["size"])) * 0.12, 0.65, 1.45)
+		size_scale = clampf(1.0 + (source.effective_size - effective_size) * 0.12, 0.65, 1.45)
 		calm_timer = 0.0
 		last_attacker = source
 		register_ecology_influence(source, 8.0)
 		_break_cover()
 		if not is_player:
-			var source_gap := Catalog.opportunity_threat_gap(species_id, source.species_id)
+			var source_gap := threat_gap_to(source)
 			var safe_to_counter := source_gap <= 0 or source.is_opportunity_exposed() or Catalog.has_trait(species_id, "brave_vs_large")
 			_switch_state("hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 and safe_to_counter else "flee", source)
 	var final_damage := maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
 	var opportunity_bonus := 0.0
 	if opportunity_strike:
 		opportunity_bonus = max_health * Catalog.opportunity_health_ratio(threat_gap)
+		opportunity_bonus += max_health * 0.004 * float(int(source.adaptation_ranks.get("combat", 0)))
 		final_damage += opportunity_bonus
 		stamina = maxf(stamina - max_stamina * OPPORTUNITY_STAMINA_DAMAGE_RATIO, 0.0)
 		source.opportunity_strike_timer = OPPORTUNITY_COOLDOWN
@@ -4268,7 +4471,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			var counter_color := Color("#8fe8b7") if ambush_strike else Color("#70cfe8")
 			SkillVFX.radial_burst(_skill_effect_parent(), global_position, counter_color, 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
 	if shell_guard_timer > 0.0:
-		final_damage *= 0.42 if _collapse_competition_active() else 0.24
+		final_damage *= 0.42 if _collapse_competition_active() else 0.20
 		final_damage = maxf(final_damage, 1.0)
 	if has_habit_buff("guard"):
 		final_damage *= 0.90
@@ -4321,7 +4524,7 @@ func apply_scent_mark(duration: float, source: EcoActor, color: Color = Color("#
 		last_attacker = source
 		register_ecology_influence(source, duration + 2.0)
 	if _should_show_skill_vfx():
-		SkillVFX.status_aura(self, color, duration, 0.66 + int(data["size"]) * 0.08)
+		SkillVFX.status_aura(self, color, duration, 0.66 + effective_size * 0.08)
 
 
 func apply_slow(multiplier: float, duration: float) -> void:
@@ -4407,7 +4610,7 @@ func register_counterplay(target: EcoActor, route_id: String) -> Dictionary:
 	var result: Dictionary = {"xp": 0, "chain": 0, "mastery": false, "health": 0.0, "stamina": 0.0}
 	if dead or not is_instance_valid(target) or target == self or target.dead:
 		return result
-	if Catalog.opportunity_threat_gap(species_id, target.species_id) <= 0:
+	if threat_gap_to(target) <= 0:
 		return result
 	var route_flag: int = int({"opportunity": 1, "ambush": 2, "terrain": 4, "ecology": 8}.get(route_id, 0))
 	if route_flag == 0:
@@ -4418,8 +4621,10 @@ func register_counterplay(target: EcoActor, route_id: String) -> Dictionary:
 		counterplay_route_awards[award_key] = true
 		tactical_actions += 1
 		var earned := int(counterplay_xp_by_target.get(target_key, 0))
-		var cap: int = Catalog.counterplay_experience_cap(target.species_id, target.level)
-		var xp_award: int = mini(Catalog.counterplay_experience_reward(target.species_id, target.level), maxi(cap - earned, 0))
+		var live_target_reward := Catalog.combat_experience_reward(species_id, target.species_id, target.level, effective_size, target.effective_size, combat_power_rating(), target.combat_power_rating())
+		var cap: int = maxi(roundi(float(live_target_reward) * Catalog.COUNTERPLAY_TARGET_XP_CAP_RATIO), 1)
+		var route_reward := maxi(roundi(float(live_target_reward) * Catalog.COUNTERPLAY_ROUTE_XP_RATIO), 1)
+		var xp_award: int = mini(route_reward, maxi(cap - earned, 0))
 		if level >= MAX_LEVEL:
 			xp_award = 0
 		if xp_award > 0:
@@ -4534,6 +4739,7 @@ func try_consume_resource(resource: Node3D) -> bool:
 		fish_catches += 1
 	eat_timer = 1.0
 	var nutrition_multiplier: float = resource.get_nutrition_multiplier() if resource is FoodPatch else 1.0
+	nutrition_multiplier *= ecology_adaptation_multiplier()
 	var satiety_efficiency := 0.55 if Catalog.has_trait(species_id, "giant") else 0.85
 	if caught_fish:
 		satiety_efficiency *= 1.12
@@ -4549,7 +4755,8 @@ func try_consume_resource(resource: Node3D) -> bool:
 		var source_key := str(resource.get_instance_id())
 		if not rewarded_food_sources.has(source_key):
 			rewarded_food_sources[source_key] = true
-			var forage_xp := maxi(roundi(eaten * nutrition_multiplier * 0.24), 2)
+			var forage_xp := int(resource.get_experience_reward(species_id, environment_region_id)) if resource.has_method("get_experience_reward") else maxi(roundi(eaten * nutrition_multiplier * 0.24), 2)
+			forage_xp = maxi(roundi(float(forage_xp) * (1.0 + float(int(adaptation_ranks.get("ecology", 0))) * 0.12)), 1)
 			gain_experience(forage_xp, resource.get_food_name(), "觅食")
 	if int(habit_result.get("xp", 0)) > 0:
 		gain_experience(int(habit_result["xp"]), str(habit_result.get("name", "生态习性")), "觅食")
@@ -4583,12 +4790,12 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 	if game != null and game.world is EcoWorld:
 		var eco_world := game.world as EcoWorld
 		region_id = str(eco_world.region_id_at(resource.global_position))
-		in_cover = float(eco_world.cover_strength_at(resource.global_position, species_id)) >= 0.40
+		in_cover = float(eco_world.cover_strength_at(resource.global_position, species_id, effective_size)) >= 0.40
 		time_phase = eco_world.time_phase
 		weather_id = eco_world.weather_id
 	var prey_size := 0
 	if resource is EcoCorpse:
-		prey_size = Catalog.body_size(resource.species_id)
+		prey_size = roundi(float(resource.effective_size))
 	var effect := Catalog.habit_food_effect(species_id, food_kind, region_id, in_cover, time_phase, weather_id, health / maxf(max_health, 1.0), prey_size)
 	if effect.is_empty():
 		return {}
@@ -4598,8 +4805,9 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 	habit_guidance_cache = ""
 	var health_before := health
 	var stamina_before := stamina
-	health = minf(health + max_health * float(effect.get("health_ratio", 0.0)), max_health)
-	stamina = minf(stamina + max_stamina * float(effect.get("stamina_ratio", 0.0)), max_stamina)
+	var ecology_multiplier := ecology_adaptation_multiplier()
+	health = minf(health + max_health * float(effect.get("health_ratio", 0.0)) * ecology_multiplier, max_health)
+	stamina = minf(stamina + max_stamina * float(effect.get("stamina_ratio", 0.0)) * ecology_multiplier, max_stamina)
 	hunger = maxf(hunger - float(effect.get("hunger_bonus", 0.0)), 0.0)
 	habit_buff_kind = str(effect.get("buff", "recover"))
 	habit_buff_name = str(effect.get("name", "生态习性"))
@@ -4612,8 +4820,8 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 			"hunt": Color("#ef866c"),
 			"conceal": Color("#a99be8"),
 		}.get(habit_buff_kind, Color("#9bd8a3"))
-		SkillVFX.status_aura(self, habit_color, habit_buff_timer, 0.62 + int(data["size"]) * 0.07)
-		SkillVFX.radial_burst(_skill_effect_parent(), global_position + Vector3.UP * 0.18, habit_color, 1.5 + int(data["size"]) * 0.18, 8, 0.10, 0.34)
+		SkillVFX.status_aura(self, habit_color, habit_buff_timer, 0.62 + effective_size * 0.07)
+		SkillVFX.radial_burst(_skill_effect_parent(), global_position + Vector3.UP * 0.18, habit_color, 1.5 + effective_size * 0.18, 8, 0.10, 0.34)
 	_update_exhaustion_state()
 	return {
 		"triggered": true,
@@ -4628,7 +4836,7 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 func experience_to_next_level() -> int:
 	if level >= MAX_LEVEL:
 		return 0
-	return 45 + (level - 1) * 32 + (level - 1) * (level - 1) * 5
+	return Catalog.experience_threshold(level, effective_size)
 
 
 func gain_experience(amount: int, defeated_species: String = "", reason: String = "击杀") -> void:
@@ -4645,25 +4853,21 @@ func gain_experience(amount: int, defeated_species: String = "", reason: String 
 
 
 func _level_up() -> void:
-	level += 1
-	var growth := Catalog.growth_profile(species_id)
 	var old_max_health := max_health
 	var old_max_stamina := max_stamina
 	var old_attack := float(data["attack"])
 	var old_armor := float(data["armor"])
 	var old_speed := float(data["speed"])
 	var old_regen := float(data["regen"])
-	max_health *= 1.0 + float(growth["health"])
-	max_stamina *= 1.0 + float(growth["stamina"])
-	data["attack"] = old_attack * (1.0 + float(growth["attack"]))
-	data["armor"] = old_armor + float(growth["armor"])
-	data["speed"] = old_speed * (1.0 + float(growth["speed"]))
-	data["regen"] = float(data["regen"]) * (1.0 + float(growth["regen"]))
-	# Leveling grows the health pool and also restores enough current health to
-	# make the power increase immediately useful during a difficult fight.
-	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.30)
-	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.42)
+	var old_effective_size := effective_size
+	level += 1
+	_recalculate_growth_stats()
+	# Abundant nutrient food is the primary recovery loop. Level-up grants the
+	# newly added pool plus a small rescue buffer, not a repeatable full heal.
+	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.12)
+	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.22)
 	_update_exhaustion_state()
+	_update_growth_presentation()
 	health_changed.emit(health, max_health)
 	stamina_changed.emit(stamina, max_stamina)
 	_update_health_bar()
@@ -4671,14 +4875,20 @@ func _level_up() -> void:
 		game.on_actor_level_up(self, level)
 	if is_player and game.has_method("on_player_level_up"):
 		game.on_player_level_up(level, {
-			"profile": str(growth["name"]),
+			"profile": str(Catalog.growth_profile(species_id)["name"]),
 			"health": max_health - old_max_health,
 			"stamina": max_stamina - old_max_stamina,
 			"attack": float(data["attack"]) - old_attack,
 			"armor": float(data["armor"]) - old_armor,
 			"speed": float(data["speed"]) - old_speed,
 			"regen": float(data["regen"]) - old_regen,
+			"size": effective_size - old_effective_size,
 		})
+	if level in Catalog.GROWTH_MILESTONES:
+		if is_player and game.has_method("request_player_adaptation"):
+			game.request_player_adaptation(self, level)
+		elif not is_player:
+			apply_adaptation(choose_ai_adaptation())
 
 
 func die(killer: EcoActor) -> void:
@@ -4904,11 +5114,11 @@ func _update_visual_motion(delta: float) -> void:
 			external_animation_player.advance(delta)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
-		var target_immersion := water_visual_immersion(current_water_depth, Catalog.water_wade_depth(species_id), int(data["size"]), Catalog.water_grade(species_id), is_airborne())
+		var target_immersion := water_visual_immersion(current_water_depth, effective_wade_depth(), runtime_size_class(), Catalog.water_grade(species_id), is_airborne())
 		visual_immersion_offset = lerpf(visual_immersion_offset, target_immersion, 1.0 - exp(-delta * 5.6))
 		var swimming_bob := sin(move_time * 0.72 + float(actor_id) * 0.31) * 0.026 if is_swimming() else 0.0
 		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height + swimming_bob - visual_immersion_offset
-		var body_pitch_scale := 0.42 if int(data["size"]) >= 4 else 1.0
+		var body_pitch_scale := 0.42 if effective_size >= 3.55 else 1.0
 		body_root.rotation.x = sin(move_time * 2.0 + 0.65) * minf(flat_speed * 0.0038, 0.021) * gait_blend * body_pitch_scale
 		body_root.rotation.z = sin(move_time) * minf(flat_speed * 0.007, 0.032) * gait_blend
 		if species_id == "snake":
