@@ -30,7 +30,7 @@
 - Keep eating a shared risk: after food is consumed, player and AI spend one second chewing with reduced movement and no sprint, attack, or skill.
 - Provide a home-page free mode that selects any level and any species. Insert the selected species into the roster when that level would not normally unlock it.
 - Keep free mode at zero world threat. Free-mode victory/death must not change `campaign_level`, `last_completed_level`, `total_deaths`, `threat_level`, or `last_player_species`.
-- Cap in-run level at 8. Every level improves health, current survivability, attack, speed, stamina, armor, and stamina regeneration according to the species growth profile.
+- Cap in-run level at 10. Every level improves effective body size, health, current survivability, attack, speed, stamina, armor, stamina regeneration, collision and water reach according to the species growth profile.
 - Show exact player and enemy health values, player combat statistics, experience, hunger, stamina, region, weather, level, and mode.
 - Rank all living actors by level, current XP, kills, health ratio, then stable actor ID. Keep the player visible in the compact board.
 - Rotate key battle events every four seconds and let click/touch open a paused, timestamped 60-entry battle report with the full living ranking.

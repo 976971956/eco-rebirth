@@ -8,6 +8,9 @@ var knob_position := Vector2.ZERO
 var radius: float = 88.0
 var active: bool = false
 
+const NO_POINTER := -1
+const MOUSE_POINTER := -2
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -25,29 +28,45 @@ func _on_resized() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if _handle_pointer_event(event):
+		accept_event()
+
+
+func _handle_pointer_event(event: InputEvent) -> bool:
 	if event is InputEventScreenTouch:
-		if event.pressed and touch_index == -1:
+		if event.pressed and touch_index == NO_POINTER:
 			touch_index = event.index
 			_activate_at(event.position)
 			_set_from_position(event.position)
-			accept_event()
 		elif not event.pressed and event.index == touch_index:
-			touch_index = -1
+			touch_index = NO_POINTER
 			_reset()
-			accept_event()
+		else:
+			return false
+		return true
 	elif event is InputEventScreenDrag and event.index == touch_index:
 		_set_from_position(event.position)
-		accept_event()
+		return true
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			touch_index = -2
+			# Mobile browsers and platform compatibility layers can emit a mouse
+			# press while a real touch is already steering. Never let that fallback
+			# event steal the active finger and relocate the dynamic stick.
+			if touch_index != NO_POINTER:
+				return false
+			touch_index = MOUSE_POINTER
 			_activate_at(event.position)
 			_set_from_position(event.position)
-		elif touch_index == -2:
-			touch_index = -1
+		elif touch_index == MOUSE_POINTER:
+			touch_index = NO_POINTER
 			_reset()
-	elif event is InputEventMouseMotion and touch_index == -2:
+		else:
+			return false
+		return true
+	elif event is InputEventMouseMotion and touch_index == MOUSE_POINTER:
 		_set_from_position(event.position)
+		return true
+	return false
 
 
 func _activate_at(local_position: Vector2) -> void:

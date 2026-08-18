@@ -6,6 +6,7 @@ const ActorScript = preload("res://scripts/eco_actor.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
+const JoystickScript = preload("res://scripts/virtual_joystick.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
@@ -51,6 +52,7 @@ func _run_validation() -> void:
 	_validate_world_navigation_contract()
 	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
+	_validate_multitouch_joystick_contract()
 	_validate_opportunity_contract()
 	_validate_cover_ambush_contract()
 	_validate_terrain_counter_contract()
@@ -62,7 +64,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.57 发布候选校验通过：Lv.10 实时体型成长、营养食物簇、宽河渡口、三路线适应、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.57.1 发布候选校验通过：移动摇杆多点触控锁、Lv.10 实时体型成长、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +296,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.57.0\"") and presets.contains("application/short_version=\"1.57.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=670") and presets.contains("application/version=\"670\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.57.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.57.1\"") and presets.contains("application/short_version=\"1.57.1\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=680") and presets.contains("application/version=\"680\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.57.1", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1302,6 +1304,51 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
 	_expect(ui_source.contains("PRESET_CENTER_BOTTOM") and ui_source.contains("DeepWaterBreath") and ui_source.contains("_update_breath_indicator"), "深水屏息进度条没有放在中下 HUD 或接入逐帧更新")
+
+
+func _validate_multitouch_joystick_contract() -> void:
+	var joystick := JoystickScript.new()
+	joystick.size = Vector2(640.0, 420.0)
+	joystick._ready()
+
+	var steer_press := InputEventScreenTouch.new()
+	steer_press.index = 0
+	steer_press.position = Vector2(180.0, 300.0)
+	steer_press.pressed = true
+	_expect(joystick._handle_pointer_event(steer_press), "第一根手指没有成功唤醒动态摇杆")
+
+	var steer_drag := InputEventScreenDrag.new()
+	steer_drag.index = 0
+	steer_drag.position = Vector2(238.0, 264.0)
+	_expect(joystick._handle_pointer_event(steer_drag), "摇杆没有继续跟踪首指拖动")
+	var locked_center: Vector2 = joystick.center
+	var locked_knob: Vector2 = joystick.knob_position
+	var locked_output: Vector2 = joystick.output
+
+	var sprint_touch := InputEventScreenTouch.new()
+	sprint_touch.index = 1
+	sprint_touch.position = Vector2(540.0, 360.0)
+	sprint_touch.pressed = true
+	_expect(not joystick._handle_pointer_event(sprint_touch), "第二根手指按下冲刺时错误接管了摇杆")
+
+	var emulated_mouse := InputEventMouseButton.new()
+	emulated_mouse.button_index = MOUSE_BUTTON_LEFT
+	emulated_mouse.position = sprint_touch.position
+	emulated_mouse.pressed = true
+	_expect(not joystick._handle_pointer_event(emulated_mouse), "冲刺触摸产生的模拟鼠标事件错误接管了摇杆")
+	_expect(joystick.touch_index == 0 and joystick.center.is_equal_approx(locked_center), "按住冲刺后摇杆中心发生跳动")
+	_expect(joystick.knob_position.is_equal_approx(locked_knob) and joystick.output.is_equal_approx(locked_output), "按住冲刺后摇杆方向发生跳动")
+
+	steer_drag.position = Vector2(252.0, 248.0)
+	_expect(joystick._handle_pointer_event(steer_drag) and joystick.touch_index == 0, "按住冲刺时首指无法继续控制摇杆")
+	_expect(joystick.center.is_equal_approx(locked_center), "首指继续移动时动态摇杆中心被重新定位")
+
+	sprint_touch.pressed = false
+	_expect(not joystick._handle_pointer_event(sprint_touch) and joystick.active, "松开冲刺错误取消了仍按住的摇杆")
+	steer_press.pressed = false
+	_expect(joystick._handle_pointer_event(steer_press), "松开首指没有结束摇杆输入")
+	_expect(not joystick.active and joystick.touch_index == JoystickScript.NO_POINTER and joystick.output == Vector2.ZERO, "摇杆结束后没有清空输入状态")
+	joystick.free()
 
 
 func _validate_opportunity_contract() -> void:
