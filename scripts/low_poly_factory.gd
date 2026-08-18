@@ -197,16 +197,20 @@ void fragment() {
 	return mat
 
 
-static func water_material(shallow_color: Color, deep_color: Color, opacity: float = 0.82) -> ShaderMaterial:
+static func water_material(shallow_color: Color, deep_color: Color, opacity: float = 0.82, visual_depth: float = 0.35) -> ShaderMaterial:
 	if _water_shader == null:
 		_water_shader = Shader.new()
 		_water_shader.code = """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+// Transparent water must not become an opaque depth mask.  Writing the water
+// plane into the depth buffer hid submerged skinned meshes while a few
+// no-depth-test details remained visible, which looked like a moving skeleton.
+render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_schlick_ggx;
 
 uniform vec4 shallow_color : source_color;
 uniform vec4 deep_color : source_color;
 uniform float opacity = 0.82;
+uniform float visual_depth = 0.35;
 
 void fragment() {
 	vec2 wave_uv = UV * vec2(10.0, 13.0);
@@ -215,12 +219,13 @@ void fragment() {
 	float wave_c = sin((wave_uv.x - wave_uv.y) * 0.43 + TIME * 0.46);
 	float ripple = wave_a * 0.38 + wave_b * 0.37 + wave_c * 0.25;
 	float edge_glint = smoothstep(0.68, 0.98, abs(ripple));
+	float depth_mix = clamp(visual_depth + ripple * 0.035, 0.0, 1.0);
 	vec3 ripple_normal = normalize(vec3(cos(wave_uv.x + TIME * 1.08) * 0.15, 1.0, cos(wave_uv.y * 1.47 - TIME * 0.79) * 0.12));
 	NORMAL_MAP = ripple_normal * 0.5 + 0.5;
 	NORMAL_MAP_DEPTH = 0.62;
-	ALBEDO = mix(deep_color.rgb, shallow_color.rgb, 0.43 + ripple * 0.075) * 0.66;
-	EMISSION = shallow_color.rgb * edge_glint * 0.022;
-	ROUGHNESS = 0.13 + (1.0 - edge_glint) * 0.12;
+	ALBEDO = mix(shallow_color.rgb, deep_color.rgb, depth_mix) * mix(0.76, 0.58, visual_depth);
+	EMISSION = shallow_color.rgb * edge_glint * mix(0.035, 0.012, visual_depth);
+	ROUGHNESS = 0.12 + (1.0 - edge_glint) * 0.11 + visual_depth * 0.035;
 	SPECULAR = 0.86;
 	ALPHA = opacity;
 }
@@ -230,6 +235,7 @@ void fragment() {
 	mat.set_shader_parameter("shallow_color", shallow_color)
 	mat.set_shader_parameter("deep_color", deep_color)
 	mat.set_shader_parameter("opacity", opacity)
+	mat.set_shader_parameter("visual_depth", clampf(visual_depth, 0.0, 1.0))
 	return mat
 
 

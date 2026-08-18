@@ -52,6 +52,8 @@ const AI_PROXIMITY_HUNT_MAX_RADIUS := 11.5
 const AI_BLOCKED_ROUTE_MEMORY := 5.5
 const AI_STUCK_CHAIN_WINDOW := 6.0
 const AI_STUCK_REPLAN_COUNT := 3
+static var waterline_mesh_cache: Dictionary = {}
+static var waterline_material: StandardMaterial3D
 
 signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
@@ -204,6 +206,8 @@ var sprint_seconds: float = 0.0
 var visual_root: Node3D
 var body_root: Node3D
 var selection_ring: MeshInstance3D
+var waterline_ring: MeshInstance3D
+var visual_immersion_offset: float = 0.0
 var base_visual_scale := Vector3.ONE
 var move_time: float = 0.0
 var gait_blend: float = 0.0
@@ -315,6 +319,26 @@ static func drowning_health_after(current_health: float, maximum_health: float, 
 	if current_health <= 0.0:
 		return 0.0
 	return maxf(current_health - maximum_health * DROWNING_DAMAGE_PER_SECOND * delta, 0.0)
+
+
+static func water_visual_immersion(current_depth: float, safe_wade_depth: float, size_level: int, water_grade: int, airborne: bool) -> float:
+	if airborne or current_depth <= 0.01:
+		return 0.0
+	var wade_depth := maxf(safe_wade_depth, 0.05)
+	var size_value := float(clampi(size_level, 1, 5))
+	var shallow_cap := 0.055 + size_value * 0.025
+	var shallow_sink := minf(current_depth * 0.42, shallow_cap) * smoothstep(0.01, wade_depth, current_depth)
+	if current_depth <= wade_depth:
+		return shallow_sink
+	var swim_progress := smoothstep(wade_depth, wade_depth + 0.72, current_depth)
+	var buoyancy := float(clampi(water_grade, 0, 4)) / 4.0
+	# Imported animals have their visible belly close to the actor origin.  A
+	# world-metre-for-metre sink pushed the skin completely below the water plane
+	# and left only tiny articulated extremities visible.  This presentation cap
+	# keeps the back/head readable while logical depth, breath and movement still
+	# use the full measured water depth.
+	var maximum_sink := (0.14 + size_value * 0.035) * lerpf(1.0, 0.86, buoyancy)
+	return lerpf(shallow_sink, maximum_sink, swim_progress)
 
 
 static func hunting_motivation(hunger_value: float, aggression: float, diet: String, size_level: int, pack_support: int = 0) -> float:
@@ -700,6 +724,32 @@ func _build_player_ring() -> void:
 	player_label.pixel_size = 0.012
 	player_label.position = Vector3(0.0, marker_height + 0.56, 0.0)
 	add_child(player_label)
+
+
+func _build_waterline_ring() -> void:
+	if waterline_ring != null:
+		return
+	waterline_ring = MeshInstance3D.new()
+	waterline_ring.name = "WaterlineRipple"
+	var size_level := int(data["size"])
+	if not waterline_mesh_cache.has(size_level):
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.52 + size_level * 0.13
+		torus.outer_radius = torus.inner_radius + 0.045
+		torus.rings = 12
+		torus.ring_segments = 4
+		waterline_mesh_cache[size_level] = torus
+	waterline_ring.mesh = waterline_mesh_cache[size_level] as TorusMesh
+	if waterline_material == null:
+		waterline_material = Factory.material(Color(0.62, 0.92, 0.94, 0.58), 0.24, Color(0.20, 0.72, 0.78, 0.46))
+		waterline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		waterline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		waterline_material.no_depth_test = false
+	waterline_ring.material_override = waterline_material
+	waterline_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	waterline_ring.position.y = 0.064
+	waterline_ring.visible = false
+	add_child(waterline_ring)
 
 
 const HEALTH_BAR_WIDTH := 1.55
@@ -4854,7 +4904,10 @@ func _update_visual_motion(delta: float) -> void:
 			external_animation_player.advance(delta)
 	if body_root != null:
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
-		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height
+		var target_immersion := water_visual_immersion(current_water_depth, Catalog.water_wade_depth(species_id), int(data["size"]), Catalog.water_grade(species_id), is_airborne())
+		visual_immersion_offset = lerpf(visual_immersion_offset, target_immersion, 1.0 - exp(-delta * 5.6))
+		var swimming_bob := sin(move_time * 0.72 + float(actor_id) * 0.31) * 0.026 if is_swimming() else 0.0
+		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height + swimming_bob - visual_immersion_offset
 		var body_pitch_scale := 0.42 if int(data["size"]) >= 4 else 1.0
 		body_root.rotation.x = sin(move_time * 2.0 + 0.65) * minf(flat_speed * 0.0038, 0.021) * gait_blend * body_pitch_scale
 		body_root.rotation.z = sin(move_time) * minf(flat_speed * 0.007, 0.032) * gait_blend
@@ -4865,6 +4918,16 @@ func _update_visual_motion(delta: float) -> void:
 		if species_id == "turtle":
 			var shell_scale := base_visual_scale * (Vector3(1.08, 0.72, 1.08) if shell_guard_timer > 0.0 else Vector3.ONE)
 			body_root.scale = body_root.scale.lerp(shell_scale, 1.0 - exp(-delta * 12.0))
+	var water_contact := not is_airborne() and current_water_depth > 0.025
+	if water_contact and waterline_ring == null:
+		_build_waterline_ring()
+	if waterline_ring != null:
+		waterline_ring.visible = water_contact
+		if water_contact:
+			var ripple_pulse := 1.0 + sin(move_time * 1.35 + float(actor_id) * 0.53) * 0.045 + minf(flat_speed * 0.006, 0.08)
+			waterline_ring.scale = Vector3(ripple_pulse, 1.0, ripple_pulse)
+			waterline_ring.rotation.y += delta * (0.16 + minf(flat_speed * 0.025, 0.24))
+			waterline_ring.transparency = 0.12 if is_swimming() else 0.34
 	if selection_ring != null:
 		selection_ring.rotation.y += delta * 0.35
 		selection_ring.position.y = -global_position.y + 0.08 if is_airborne() else 0.07

@@ -62,7 +62,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.54 发布候选校验通过：深水中央屏息条、连续可见边界、附近主动捕猎、30 种 Hero/Mobile 与三端发布契约正常")
+		print("[release] V1.55 发布候选校验通过：浅/中/深水视觉、动物浸没水纹、中央屏息条、30 种 Hero/Mobile 与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -294,9 +294,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.54.0\"") and presets.contains("application/short_version=\"1.54.0\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=640") and presets.contains("application/version=\"640\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.54.0", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.55.0\"") and presets.contains("application/short_version=\"1.55.0\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=650") and presets.contains("application/version=\"650\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.55.0", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -477,6 +477,8 @@ func _validate_world_navigation_contract() -> void:
 		_expect(world.find_children("BoundaryGroundBand_*", "MeshInstance3D", true, false).size() == 4, "第%d关没有生成四向连续地表边界带" % int(level_case["level"]))
 		_expect(world.find_children("BoundaryGuideLine_*", "MeshInstance3D", true, false).size() == 4, "第%d关缺少四向边界引导线" % int(level_case["level"]))
 		_expect(world.find_children("BoundaryMarker_*", "Node3D", true, false).size() == 4, "第%d关没有生成四向生态边界界碑" % int(level_case["level"]))
+		_expect(world.find_children("StreamMediumChannel", "MeshInstance3D", true, false).size() == 1 and world.find_children("StreamDeepChannel", "MeshInstance3D", true, false).size() == 1, "第%d关河流没有独立浅/中/深水视觉带" % int(level_case["level"]))
+		_expect(world.find_children("MediumWaterBand", "MeshInstance3D", true, false).size() == 1 and world.find_children("DeepWaterBand", "MeshInstance3D", true, false).size() == 1, "第%d关湿地池塘没有独立浅/中/深水视觉带" % int(level_case["level"]))
 		_expect(world.boundary_status_at(Vector3(float(level_case["size"]) * 0.5 - 3.0, 0.0, 0.0)).contains("生态边界"), "第%d关靠近边缘时 HUD 没有边界距离预警" % int(level_case["level"]))
 		_expect(world.boundary_status_at(Vector3.ZERO).is_empty(), "第%d关地图中心错误显示边界预警" % int(level_case["level"]))
 		for region_id in WorldScript.REGION_ORDER:
@@ -723,6 +725,13 @@ func _validate_external_species_model_contract() -> void:
 	game_stub.add_child(mobile_actor)
 	mobile_actor.setup(game_stub, 902, "wolf", false, Vector3.ZERO, 0)
 	_expect(mobile_actor.uses_external_model and mobile_actor.external_model_profile == "mobile", "真实角色流程没有为 AI 加载 Mobile GLB")
+	_expect(mobile_actor.waterline_ring == null, "陆地 AI 在从未接触水面时预建了无效水纹节点")
+	mobile_actor.current_water_depth = 0.92
+	mobile_actor._update_visual_motion(0.25)
+	_expect(is_instance_valid(mobile_actor.waterline_ring) and mobile_actor.waterline_ring.visible and mobile_actor.visual_immersion_offset > 0.0, "AI 进入深水后没有懒创建贴身水纹或产生视觉浸没")
+	mobile_actor.current_water_depth = 0.0
+	mobile_actor._update_visual_motion(0.25)
+	_expect(not mobile_actor.waterline_ring.visible, "AI 离开水域后贴身水纹没有隐藏")
 	_expect(is_instance_valid(mobile_actor.external_skeleton) and mobile_actor.external_skeleton.get_bone_count() >= 12, "真实角色流程没有为灰狼 Mobile 模型绑定连续躯干骨链")
 	_expect(is_instance_valid(mobile_actor.external_animation_player) and mobile_actor.external_baked_animation == "idle", "真实灰狼 AI 没有启用 Mobile 烘焙动作")
 	_expect(mobile_actor.external_skill_sockets.size() == 2, "真实灰狼角色流程没有绑定两个技能挂点")

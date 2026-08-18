@@ -97,6 +97,15 @@ func _run_validation() -> void:
 		failures.append("饱腹耗尽后生命仍被锁在 1 点，无法触发饥饿死亡")
 	if not is_equal_approx(ActorScript.drowning_health_after(100.0, 100.0, 1.0), 94.0) or not is_zero_approx(ActorScript.drowning_health_after(3.0, 100.0, 1.0)):
 		failures.append("屏息耗尽后的溺水伤害没有按最大生命 6%/秒结算")
+	var dry_immersion := ActorScript.water_visual_immersion(0.0, 0.24, 3, 2, false)
+	var shallow_immersion := ActorScript.water_visual_immersion(0.16, 0.24, 3, 2, false)
+	var deep_immersion := ActorScript.water_visual_immersion(0.92, 0.24, 3, 2, false)
+	if not is_zero_approx(dry_immersion) or shallow_immersion <= 0.0 or deep_immersion <= shallow_immersion:
+		failures.append("动物视觉浸没没有随陆地、浅水、深水递增")
+	if not is_zero_approx(ActorScript.water_visual_immersion(0.92, 0.24, 3, 2, true)):
+		failures.append("飞行动物掠过水面时被错误浸没")
+	if ActorScript.water_visual_immersion(3.0, 0.14, 1, 0, false) > 0.20 or ActorScript.water_visual_immersion(3.0, 0.72, 5, 4, false) > 0.29:
+		failures.append("深水浸没超出物种体型上限，可能把整只动物埋入地面")
 	if Catalog.WATER_PROFILES.size() != Catalog.ORDER.size():
 		failures.append("30 种动物没有全部配置独立水性")
 	var breath_values := {}

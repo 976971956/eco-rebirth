@@ -420,7 +420,7 @@ func _build_landmark_motif(marker: Node3D, region_id: String, tint: Color) -> vo
 					marker.add_child(Factory.sphere("ReedLight", accent, Vector3(0.12, 0.25, 0.12), Vector3(spread, height + 0.05, -0.24), 7, 4))
 			var pool := Factory.disc("WetlandSignalPool", Color(accent, 0.76), 1.42, 0.026, Vector3(0.0, 0.012, -0.18), 16)
 			pool.scale.z = 0.56
-			pool.material_override = Factory.water_material(accent.lightened(0.10), accent.darkened(0.36), 0.72)
+			pool.material_override = Factory.water_material(accent.lightened(0.10), accent.darkened(0.36), 0.72, 0.24)
 			marker.add_child(pool)
 		"stone_peak":
 			for stone_index in range(4):
@@ -465,10 +465,12 @@ func _build_paths_and_pond() -> void:
 	var water_scale := float(level_profile_data.get("water", 1.0))
 	var bank_material := Factory.terrain_material(Color("#3f5643"), Color("#6d775a"), 7.0, WETLAND_GROUND_TEXTURE, 2.7, 0.38)
 	_add_ground_ribbon("StreamBank", stream_points, 7.6 * water_scale, 0.030, bank_material, true)
-	var stream_material := Factory.water_material(Color("#527f75"), Color("#183f46"), 0.78)
+	var stream_material := Factory.water_material(Color("#719b87"), Color("#315f61"), 0.70, 0.16)
 	_add_ground_ribbon("ShallowStream", stream_points, 5.4 * water_scale, 0.044, stream_material, true)
-	var deep_stream_material := Factory.water_material(Color("#355f62"), Color("#102f3b"), 0.84)
-	_add_ground_ribbon("StreamDeepChannel", stream_points, 2.15 * water_scale, 0.047, deep_stream_material, true)
+	var medium_stream_material := Factory.water_material(Color("#4d7d75"), Color("#183f49"), 0.76, 0.56)
+	_add_ground_ribbon("StreamMediumChannel", stream_points, 3.65 * water_scale, 0.047, medium_stream_material, true)
+	var deep_stream_material := Factory.water_material(Color("#315e64"), Color("#092a38"), 0.86, 0.94)
+	_add_ground_ribbon("StreamDeepChannel", stream_points, 2.15 * water_scale, 0.050, deep_stream_material, true)
 	var crossing_center := stream_points[2].lerp(stream_points[3], 0.52)
 	var crossing_tangent := (stream_points[3] - stream_points[2]).normalized()
 	var crossing_normal := Vector2(-crossing_tangent.y, crossing_tangent.x)
@@ -485,9 +487,11 @@ func _build_paths_and_pond() -> void:
 	var basin_radius_z := basin_radius_x * 0.72
 	var shore_material := Factory.terrain_material(Color("#3e5546"), Color("#62705a"), 7.0, WETLAND_GROUND_TEXTURE, 2.5, 0.40)
 	_add_irregular_ground_patch("WetlandShore", basin_center - Vector3.UP * 0.012, basin_radius_x * 1.08, basin_radius_z * 1.10, shore_material, 0.35)
-	_add_irregular_ground_patch("WetlandBasin", basin_center, basin_radius_x, basin_radius_z, Factory.water_material(Color("#527f75"), Color("#173f47"), 0.76), 1.15)
-	var deep_position := basin_center + Vector3(basin_radius_x * 0.09, 0.004, -basin_radius_z * 0.07)
-	_add_irregular_ground_patch("DeepWaterBand", deep_position, basin_radius_x * 0.55, basin_radius_z * 0.52, Factory.water_material(Color("#3e6f70"), Color("#12343f"), 0.82), 2.40)
+	_add_irregular_ground_patch("WetlandBasin", basin_center, basin_radius_x, basin_radius_z, Factory.water_material(Color("#719b87"), Color("#315d5d"), 0.68, 0.14), 1.15)
+	var medium_position := basin_center + Vector3(basin_radius_x * 0.04, 0.003, -basin_radius_z * 0.03)
+	_add_irregular_ground_patch("MediumWaterBand", medium_position, basin_radius_x * 0.78, basin_radius_z * 0.76, Factory.water_material(Color("#4d7c73"), Color("#163f48"), 0.75, 0.56), 1.72)
+	var deep_position := basin_center + Vector3(basin_radius_x * 0.09, 0.006, -basin_radius_z * 0.07)
+	_add_irregular_ground_patch("DeepWaterBand", deep_position, basin_radius_x * 0.53, basin_radius_z * 0.50, Factory.water_material(Color("#315f65"), Color("#082936"), 0.86, 0.95), 2.40)
 
 
 func _build_level_signature() -> void:
