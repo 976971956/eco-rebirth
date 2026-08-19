@@ -7,6 +7,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
 const JoystickScript = preload("res://scripts/virtual_joystick.gd")
+const TouchActionIconScript = preload("res://scripts/touch_action_icon.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
@@ -64,7 +65,7 @@ func _run_validation() -> void:
 	_validate_ecological_habit_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.58 发布候选校验通过：高密度落果疗养、尸体体型回血、近身强弱反应、Lv.10 实时体型成长与三端发布契约正常")
+		print("[release] V1.59 发布候选校验通过：深水身体浸没、30 物种技能图标、右侧四键安全布局与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -296,9 +297,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.58\"") and presets.contains("application/short_version=\"1.58\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=700") and presets.contains("application/version=\"700\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.58", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.59\"") and presets.contains("application/short_version=\"1.59\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=710") and presets.contains("application/version=\"710\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.59", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1280,6 +1281,12 @@ func _validate_adaptive_ui_contract() -> void:
 		_expect(Rect2(Vector2.ZERO, safe_viewport).encloses(touch_rects[first_index]), "触控按钮超出安全 HUD 区域")
 		for second_index in range(first_index + 1, touch_rects.size()):
 			_expect(not touch_rects[first_index].intersects(touch_rects[second_index]), "右侧触控按钮彼此重叠")
+	var skill_icon_families := {}
+	for species_id in Catalog.ORDER:
+		var icon_family := TouchActionIconScript.skill_icon_family(species_id)
+		_expect(icon_family != "paw", "%s 没有分配物种专属技能图标" % species_id)
+		skill_icon_families[icon_family] = true
+	_expect(skill_icon_families.size() == 27, "30 种技能没有保持 27 类明确的图标语义")
 	var status_rect := Rect2(Vector2(12.0, 12.0), UIScript.COMPACT_STATUS_SIZE)
 	var info_rect := Rect2(Vector2(safe_viewport.x - 368.0, 12.0), UIScript.COMPACT_INFO_SIZE)
 	var leaderboard_rect := Rect2(Vector2(safe_viewport.x - 368.0, 190.0), UIScript.COMPACT_LEADERBOARD_SIZE)
@@ -1304,6 +1311,7 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
 	_expect(ui_source.contains("PRESET_CENTER_BOTTOM") and ui_source.contains("DeepWaterBreath") and ui_source.contains("_update_breath_indicator"), "深水屏息进度条没有放在中下 HUD 或接入逐帧更新")
+	_expect(ui_source.contains("ActionIcon") and ui_source.contains("skill_button_name_label") and ui_source.contains("skill_button_state_label"), "右侧战斗按钮仍以纯文字显示主动技能")
 
 
 func _validate_multitouch_joystick_contract() -> void:

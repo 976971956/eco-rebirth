@@ -3,6 +3,7 @@ extends CanvasLayer
 
 const JoystickScript = preload("res://scripts/virtual_joystick.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
+const TouchActionIconScript = preload("res://scripts/touch_action_icon.gd")
 
 signal start_requested
 signal free_mode_requested(level: int, species_id: String)
@@ -18,14 +19,14 @@ signal adaptation_selected(route_id: String)
 const MENU_MARGIN := Vector4(64.0, 54.0, 64.0, 42.0)
 const MOBILE_EDGE_PADDING := Vector4(12.0, 10.0, 12.0, 14.0)
 const TOUCH_PREVIEW_PADDING := Vector4(30.0, 12.0, 30.0, 18.0)
-const TOUCH_ATTACK_OFFSET := Vector2(-174.0, -166.0)
-const TOUCH_ATTACK_SIZE := Vector2(150.0, 150.0)
-const TOUCH_SKILL_OFFSET := Vector2(-174.0, -310.0)
-const TOUCH_SKILL_SIZE := Vector2(132.0, 132.0)
-const TOUCH_EAT_OFFSET := Vector2(-306.0, -224.0)
-const TOUCH_EAT_SIZE := Vector2(112.0, 96.0)
-const TOUCH_SPRINT_OFFSET := Vector2(-306.0, -116.0)
-const TOUCH_SPRINT_SIZE := Vector2(112.0, 96.0)
+const TOUCH_ATTACK_OFFSET := Vector2(-166.0, -162.0)
+const TOUCH_ATTACK_SIZE := Vector2(146.0, 146.0)
+const TOUCH_SKILL_OFFSET := Vector2(-166.0, -316.0)
+const TOUCH_SKILL_SIZE := Vector2(136.0, 136.0)
+const TOUCH_EAT_OFFSET := Vector2(-288.0, -280.0)
+const TOUCH_EAT_SIZE := Vector2(110.0, 100.0)
+const TOUCH_SPRINT_OFFSET := Vector2(-288.0, -162.0)
+const TOUCH_SPRINT_SIZE := Vector2(110.0, 100.0)
 const COMPACT_TOUCH_MAX_HEIGHT := 760.0
 const COMPACT_TOUCH_MAX_WIDTH := 1120.0
 const COMPACT_STATUS_SIZE := Vector2(340.0, 230.0)
@@ -115,6 +116,12 @@ var attack_button: Button
 var skill_button: Button
 var eat_button: Button
 var sprint_button: Button
+var attack_button_icon: TouchActionIcon
+var skill_button_icon: TouchActionIcon
+var eat_button_icon: TouchActionIcon
+var sprint_button_icon: TouchActionIcon
+var skill_button_name_label: Label
+var skill_button_state_label: Label
 var settings_from_pause: bool = false
 var tutorial_panel: PanelContainer
 var tutorial_title: Label
@@ -857,30 +864,72 @@ func _build_touch_controls() -> void:
 	joystick.offset_bottom = 0.0
 	touch_root.add_child(joystick)
 
-	attack_button = _make_touch_button("攻击", TOUCH_ATTACK_OFFSET, TOUCH_ATTACK_SIZE, Color("#a94c45"))
+	attack_button = _make_touch_button("attack", "攻击", TOUCH_ATTACK_OFFSET, TOUCH_ATTACK_SIZE, Color("#a94c45"))
+	attack_button_icon = attack_button.get_node("ActionIcon") as TouchActionIcon
 	attack_button.button_down.connect(func(): attack_held = true)
 	attack_button.button_up.connect(func(): attack_held = false)
-	skill_button = _make_touch_button("技能", TOUCH_SKILL_OFFSET, TOUCH_SKILL_SIZE, Color("#338c68"))
+	skill_button = _make_touch_button("skill", "主动技能", TOUCH_SKILL_OFFSET, TOUCH_SKILL_SIZE, Color("#338c68"))
+	skill_button_icon = skill_button.get_node("ActionIcon") as TouchActionIcon
+	skill_button_name_label = skill_button.get_node("ActionName") as Label
+	skill_button_state_label = skill_button.get_node("ActionState") as Label
 	skill_button.pressed.connect(func(): skill_requested = true)
-	eat_button = _make_touch_button("进食", TOUCH_EAT_OFFSET, TOUCH_EAT_SIZE, Color("#6b863b"))
+	eat_button = _make_touch_button("eat", "进食", TOUCH_EAT_OFFSET, TOUCH_EAT_SIZE, Color("#6b863b"))
+	eat_button_icon = eat_button.get_node("ActionIcon") as TouchActionIcon
 	eat_button.pressed.connect(func(): interact_requested = true)
-	sprint_button = _make_touch_button("冲刺", TOUCH_SPRINT_OFFSET, TOUCH_SPRINT_SIZE, Color("#9d7f34"))
+	sprint_button = _make_touch_button("sprint", "冲刺", TOUCH_SPRINT_OFFSET, TOUCH_SPRINT_SIZE, Color("#9d7f34"))
+	sprint_button_icon = sprint_button.get_node("ActionIcon") as TouchActionIcon
 	sprint_button.button_down.connect(func(): sprint_held = true)
 	sprint_button.button_up.connect(func(): sprint_held = false)
 
 
-func _make_touch_button(text_value: String, offset: Vector2, size_value: Vector2, color: Color, right_anchor: bool = true) -> Button:
+func _make_touch_button(action_kind: String, text_value: String, offset: Vector2, size_value: Vector2, color: Color, right_anchor: bool = true) -> Button:
 	var button := Button.new()
-	button.text = text_value
+	button.name = "%sButton" % action_kind.capitalize()
+	button.text = ""
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
-	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT if right_anchor else Control.PRESET_BOTTOM_LEFT)
 	button.position = offset
 	button.size = size_value
-	button.add_theme_font_size_override("font_size", _font_size(24, 28))
-	button.add_theme_stylebox_override("normal", _panel_style(Color(color, 0.78), 42, Color(1, 1, 1, 0.42), 3))
-	button.add_theme_stylebox_override("pressed", _panel_style(Color(color.lightened(0.18), 0.96), 42, Color(1, 1, 1, 0.78), 4))
+	var corner_radius := roundi(minf(size_value.x, size_value.y) * 0.38)
+	button.add_theme_stylebox_override("normal", _panel_style(Color(color.darkened(0.12), 0.84), corner_radius, Color(color.lightened(0.58), 0.62), 3))
+	button.add_theme_stylebox_override("hover", _panel_style(Color(color, 0.90), corner_radius, Color(color.lightened(0.68), 0.80), 3))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color(color.lightened(0.14), 0.98), corner_radius, Color.WHITE, 4))
+
+	var icon: TouchActionIcon = TouchActionIconScript.new()
+	icon.name = "ActionIcon"
+	var icon_side := minf(size_value.x, size_value.y) * (0.54 if action_kind == "skill" else (0.50 if action_kind in ["eat", "sprint"] else 0.56))
+	icon.position = Vector2((size_value.x - icon_side) * 0.5, 8.0)
+	icon.size = Vector2(icon_side, icon_side)
+	icon.configure(action_kind, "", color)
+	button.add_child(icon)
+
+	var action_name := Label.new()
+	action_name.name = "ActionName"
+	action_name.text = text_value
+	action_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	action_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	action_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	action_name.position = Vector2(5.0, size_value.y - (47.0 if action_kind == "skill" else 34.0))
+	action_name.size = Vector2(size_value.x - 10.0, 27.0)
+	action_name.add_theme_font_size_override("font_size", _font_size(18, 21 if action_kind in ["attack", "skill"] else 19))
+	action_name.add_theme_color_override("font_color", Color("#f5f8ec"))
+	action_name.add_theme_color_override("font_shadow_color", Color(0.01, 0.03, 0.02, 0.85))
+	action_name.add_theme_constant_override("shadow_offset_x", 1)
+	action_name.add_theme_constant_override("shadow_offset_y", 2)
+	button.add_child(action_name)
+	if action_kind == "skill":
+		var action_state := Label.new()
+		action_state.name = "ActionState"
+		action_state.text = "就绪"
+		action_state.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		action_state.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action_state.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		action_state.position = Vector2(8.0, size_value.y - 22.0)
+		action_state.size = Vector2(size_value.x - 16.0, 18.0)
+		action_state.add_theme_font_size_override("font_size", _font_size(13, 15))
+		action_state.add_theme_color_override("font_color", Color("#c7f3d7"))
+		button.add_child(action_state)
 	touch_root.add_child(button)
 	return button
 
@@ -1043,7 +1092,10 @@ func set_player(player_actor: EcoActor) -> void:
 	skill_label.add_theme_color_override("font_color", skill_color.lightened(0.18))
 	skill_bar.max_value = float(data["skill_cooldown"])
 	skill_bar.value = float(data["skill_cooldown"])
-	skill_button.text = "%s\n就绪" % str(data["skill"])
+	skill_button_name_label.text = str(data["skill"])
+	skill_button_state_label.text = "就绪"
+	skill_button_icon.configure("skill", player_actor.species_id, skill_color)
+	skill_button_icon.set_progress(1.0, true)
 	skill_button.add_theme_stylebox_override("normal", _panel_style(Color(skill_color.darkened(0.34), 0.88), 42, Color(skill_color.lightened(0.35), 0.72), 3))
 	skill_button.add_theme_stylebox_override("pressed", _panel_style(Color(skill_color.lightened(0.06), 0.98), 42, Color.WHITE, 4))
 	_update_breath_indicator(player_actor)
@@ -1114,7 +1166,14 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	var skill_ready := cooldown_remaining <= 0.0 and not player_actor.exhausted and player_actor.stamina >= float(player_actor.data["skill_cost"])
 	var skill_state := "力竭" if player_actor.exhausted else ("就绪" if skill_ready else ("耐力不足" if cooldown_remaining <= 0.0 else "%.1fs" % cooldown_remaining))
 	skill_label.text = "%s　%s" % [player_actor.data["skill"], skill_state]
-	skill_button.text = "%s\n%s" % [player_actor.data["skill"], skill_state]
+	if skill_button_icon.species_id != player_actor.species_id:
+		var skill_color := Color.from_string(str(player_actor.data.get("skill_color", "#5db98a")), Color("#5db98a"))
+		skill_button_icon.configure("skill", player_actor.species_id, skill_color)
+	skill_button_name_label.text = str(player_actor.data["skill"])
+	skill_button_state_label.text = skill_state
+	skill_button_state_label.add_theme_color_override("font_color", Color("#c7f3d7") if skill_ready else Color("#efd38c"))
+	var cooldown_progress := 1.0 if cooldown <= 0.0 else clampf((cooldown - cooldown_remaining) / cooldown, 0.0, 1.0)
+	skill_button_icon.set_progress(cooldown_progress, skill_ready)
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
 	_update_breath_indicator(player_actor)
 	_update_enemy_health_display()

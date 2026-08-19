@@ -116,12 +116,14 @@ func _run_validation() -> void:
 	var dry_immersion := ActorScript.water_visual_immersion(0.0, 0.24, 3, 2, false)
 	var shallow_immersion := ActorScript.water_visual_immersion(0.16, 0.24, 3, 2, false)
 	var deep_immersion := ActorScript.water_visual_immersion(0.92, 0.24, 3, 2, false)
-	if not is_zero_approx(dry_immersion) or shallow_immersion <= 0.0 or deep_immersion <= shallow_immersion:
+	if not is_zero_approx(dry_immersion) or shallow_immersion <= 0.0 or deep_immersion < 0.52 or deep_immersion <= shallow_immersion * 5.0:
 		failures.append("动物视觉浸没没有随陆地、浅水、深水递增")
 	if not is_zero_approx(ActorScript.water_visual_immersion(0.92, 0.24, 3, 2, true)):
 		failures.append("飞行动物掠过水面时被错误浸没")
-	if ActorScript.water_visual_immersion(3.0, 0.14, 1, 0, false) > 0.20 or ActorScript.water_visual_immersion(3.0, 0.72, 5, 4, false) > 0.29:
-		failures.append("深水浸没超出物种体型上限，可能把整只动物埋入地面")
+	var small_deep_immersion := ActorScript.water_visual_immersion(3.0, 0.14, 1, 0, false)
+	var large_deep_immersion := ActorScript.water_visual_immersion(3.0, 0.72, 5, 4, false)
+	if small_deep_immersion < 0.45 or small_deep_immersion > 0.55 or large_deep_immersion < 0.65 or large_deep_immersion > 0.76:
+		failures.append("深水浸没没有覆盖身体或超出保留头背轮廓的体型上限")
 	if Catalog.WATER_PROFILES.size() != Catalog.ORDER.size():
 		failures.append("30 种动物没有全部配置独立水性")
 	var breath_values := {}

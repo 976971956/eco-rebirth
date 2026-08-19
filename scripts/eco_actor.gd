@@ -454,19 +454,17 @@ static func water_visual_immersion(current_depth: float, safe_wade_depth: float,
 	if airborne or current_depth <= 0.01:
 		return 0.0
 	var wade_depth := maxf(safe_wade_depth, 0.05)
-	var size_value := float(clampi(size_level, 1, 5))
-	var shallow_cap := 0.055 + size_value * 0.025
-	var shallow_sink := minf(current_depth * 0.42, shallow_cap) * smoothstep(0.01, wade_depth, current_depth)
+	var size_value := float(clampi(size_level, 1, 6))
+	var shallow_cap := 0.085 + size_value * 0.032
+	var shallow_sink := minf(current_depth * 0.58, shallow_cap) * smoothstep(0.01, wade_depth, current_depth)
 	if current_depth <= wade_depth:
 		return shallow_sink
 	var swim_progress := smoothstep(wade_depth, wade_depth + 0.72, current_depth)
 	var buoyancy := float(clampi(water_grade, 0, 4)) / 4.0
-	# Imported animals have their visible belly close to the actor origin.  A
-	# world-metre-for-metre sink pushed the skin completely below the water plane
-	# and left only tiny articulated extremities visible.  This presentation cap
-	# keeps the back/head readable while logical depth, breath and movement still
-	# use the full measured water depth.
-	var maximum_sink := (0.14 + size_value * 0.035) * lerpf(1.0, 0.86, buoyancy)
+	# The water plane stays horizontal while logical depth describes the ground
+	# below it.  Sink the visible body far enough for deep water to cover the torso,
+	# but retain the head/back silhouette; stronger swimmers ride slightly higher.
+	var maximum_sink := (0.38 + size_value * 0.105) * lerpf(1.0, 0.78, buoyancy)
 	return lerpf(shallow_sink, maximum_sink, swim_progress)
 
 
