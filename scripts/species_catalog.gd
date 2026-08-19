@@ -191,6 +191,12 @@ const ADAPTATION_ROUTE_DISPLAY_NAMES := {
 	"combat": "战斗技艺",
 	"ecology": "生态关系",
 }
+const INSTINCT_STAGE_ORDER: Array[String] = ["prepare", "survive", "compete"]
+const INSTINCT_STAGE_REWARDS := [
+	{"xp": 8, "health_ratio": 0.0, "stamina_ratio": 0.08},
+	{"xp": 12, "health_ratio": 0.05, "stamina_ratio": 0.12},
+	{"xp": 18, "health_ratio": 0.08, "stamina_ratio": 0.16},
+]
 const SPECIES_ADAPTATION_NAMES := {
 	"rabbit": ["草影", "折返", "多点觅食"],
 	"fox": ["林缘", "佯攻扩散", "机会食腐"],
@@ -1429,6 +1435,66 @@ static func adaptation_choices(species_id: String, current_ranks: Dictionary = {
 			"description": adaptation_description(species_id, route_id, next_rank),
 		})
 	return choices
+
+
+static func instinct_chain(species_id: String) -> Array[Dictionary]:
+	var species_data: Dictionary = DATA.get(species_id, DATA["rabbit"])
+	var traits: Array = TRAITS.get(species_id, [])
+	var favored_foods := habit_foods_display_text(species_id)
+	var prepare_title := "觅食立足"
+	var survive_title := "熟悉猎场"
+	var compete_title := "生态竞争"
+	if "flying" in traits:
+		survive_title = "巡航落点"
+	elif water_grade(species_id) >= 3:
+		survive_title = "水陆迁徙"
+	elif "escape" in traits or "canopy_mover" in traits or "herd_mover" in traits:
+		survive_title = "安全迁徙"
+	elif "territorial" in traits or "retaliator" in traits:
+		survive_title = "巡守主场"
+	if "pack_hunter" in traits or "leader" in traits:
+		compete_title = "群体争胜"
+	elif "territorial" in traits or "retaliator" in traits:
+		compete_title = "领地反击"
+	elif str(species_data.get("diet", "herbivore")) == "carnivore":
+		compete_title = "合理捕食"
+	elif "escape" in traits or "canopy_mover" in traits or str(species_data.get("diet", "herbivore")) == "herbivore":
+		compete_title = "生态借力"
+	var habit_name := str(habit_profile(species_id).get("name", "生态习性"))
+	return [
+		{
+			"id": INSTINCT_STAGE_ORDER[0],
+			"phase": "准备本能",
+			"title": prepare_title,
+			"description": "进食%s并触发「%s」；找不到时，完成两次普通进食也能立足。" % [favored_foods, habit_name],
+		}.merged(INSTINCT_STAGE_REWARDS[0], true),
+		{
+			"id": INSTINCT_STAGE_ORDER[1],
+			"phase": "生存本能",
+			"title": survive_title,
+			"description": "在适应区域迁徙24米，或对更强动物完成一次环境反制。",
+		}.merged(INSTINCT_STAGE_REWARDS[1], true),
+		{
+			"id": INSTINCT_STAGE_ORDER[2],
+			"phase": "竞争本能",
+			"title": compete_title,
+			"description": "通过击倒、生态助攻或新的逆袭路线影响一次竞争。",
+		}.merged(INSTINCT_STAGE_REWARDS[2], true),
+	]
+
+
+static func instinct_stage_data(species_id: String, stage_index: int) -> Dictionary:
+	var chain := instinct_chain(species_id)
+	if stage_index < 0 or stage_index >= chain.size():
+		return {}
+	return chain[stage_index].duplicate(true)
+
+
+static func instinct_chain_summary(species_id: String) -> String:
+	var titles: Array[String] = []
+	for goal in instinct_chain(species_id):
+		titles.append(str(goal.get("title", "生态本能")))
+	return " → ".join(titles)
 
 
 static func growth_description(species_id: String) -> String:

@@ -20,6 +20,7 @@ class ValidationGame:
 	var actor_level_events: Array[Dictionary] = []
 	var player_level_events: Array[Dictionary] = []
 	var player_xp_events: Array[Dictionary] = []
+	var instinct_events: Array[Dictionary] = []
 
 	func get_living_actors() -> Array[EcoActor]:
 		return actors.filter(func(actor: EcoActor) -> bool: return is_instance_valid(actor) and not actor.dead)
@@ -47,6 +48,9 @@ class ValidationGame:
 
 	func on_player_experience_gained(amount: int, source_name: String, reason: String = "击杀") -> void:
 		player_xp_events.append({"amount": amount, "source": source_name, "reason": reason})
+
+	func on_instinct_stage_completed(actor: EcoActor, stage_number: int, goal: Dictionary, xp_reward: int, health_restored: float, stamina_restored: float) -> void:
+		instinct_events.append({"actor": actor, "stage": stage_number, "goal": goal.duplicate(true), "xp": xp_reward, "health": health_restored, "stamina": stamina_restored})
 
 	func nearest_corpse(origin: Vector3, max_distance: float, excluded_instance_id: int = 0) -> Node3D:
 		var nearest: Node3D
@@ -178,6 +182,19 @@ func _run_validation() -> void:
 		failures.append("受伤雪兔不会显示生态本能资源引导")
 	if ActorScript.should_show_habit_guidance(0.95, 0.90, 18.0, 0.90, false) or ActorScript.should_show_habit_guidance(0.40, 0.20, 80.0, 0.90, true):
 		failures.append("健康状态或习性已激活时仍错误显示资源引导")
+	if not ActorScript.instinct_stage_is_complete(0, 1, 0, 0.0, 0, 0, 0) or not ActorScript.instinct_stage_is_complete(0, 0, 2, 0.0, 0, 0, 0):
+		failures.append("准备本能不能通过生态习性或两次普通进食完成")
+	if not ActorScript.instinct_stage_is_complete(1, 0, 0, 24.0, 0, 0, 0) or not ActorScript.instinct_stage_is_complete(1, 0, 0, 0.0, 1, 0, 0):
+		failures.append("生存本能不能通过主场迁徙或环境反制完成")
+	if not ActorScript.instinct_stage_is_complete(2, 0, 0, 0.0, 0, 0, 1) or ActorScript.instinct_stage_is_complete(2, 0, 0, 0.0, 0, 0, 0):
+		failures.append("竞争本能没有接受生态助攻，或会在无竞争行为时自动完成")
+	for instinct_species in Catalog.ORDER:
+		var instinct_chain := Catalog.instinct_chain(instinct_species)
+		if instinct_chain.size() != 3 or Catalog.instinct_chain_summary(instinct_species).count("→") != 2:
+			failures.append("%s 没有完整三段物种本能链" % instinct_species)
+		for instinct_goal in instinct_chain:
+			if str(instinct_goal.get("title", "")).length() < 2 or str(instinct_goal.get("description", "")).length() < 12 or int(instinct_goal.get("xp", 0)) <= 0:
+				failures.append("%s 的本能目标缺少标题、说明或成长奖励" % instinct_species)
 	if Catalog.combat_experience_reward("bear", "rabbit", 1) >= Catalog.experience_reward("rabbit", 1):
 		failures.append("强物种捕杀弱小猎物仍获得完整成长经验")
 	if Catalog.combat_experience_reward("rabbit", "bear", 1) != Catalog.experience_reward("bear", 1):
@@ -232,6 +249,29 @@ func _run_validation() -> void:
 		failures.append("世界威胁没有同步提高 AI 生命、速度和感知")
 	base_threat_actor.free()
 	high_threat_actor.free()
+
+	var instinct_actor: EcoActor = ActorScript.new()
+	instinct_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(instinct_actor)
+	instinct_actor.setup(game_stub, 68, "rabbit", false, Vector3.ZERO, 0)
+	instinct_actor.habit_activation_count = 1
+	instinct_actor._update_instinct_chain()
+	if instinct_actor.instinct_stage != 1 or instinct_actor.instinct_completed_count != 1 or game_stub.instinct_events.size() != 1:
+		failures.append("生态习性没有推进准备本能或发出统一完成事件")
+	instinct_actor.environment_affinity = 1.0
+	for instinct_step in range(12):
+		instinct_actor.instinct_habitat_distance += 2.0
+	instinct_actor._update_instinct_chain()
+	if instinct_actor.instinct_stage != 2 or instinct_actor.instinct_habitat_distance > 0.01:
+		failures.append("适应区域迁徙没有推进生存本能或新阶段没有重置进度")
+	instinct_actor.assists += 1
+	instinct_actor._update_instinct_chain()
+	if instinct_actor.instinct_stage != 3 or instinct_actor.instinct_completed_count != 3 or game_stub.instinct_events.size() != 3:
+		failures.append("生态助攻没有完成竞争本能或本能链可以重复结算")
+	if instinct_actor.experience != 38:
+		failures.append("三段本能经验不等于设计总额 38")
+	instinct_actor.free()
+	game_stub.instinct_events.clear()
 
 	var growth_actor: EcoActor = ActorScript.new()
 	growth_actor.process_mode = Node.PROCESS_MODE_DISABLED
@@ -1027,7 +1067,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, distinct water profiles/breath/drowning/fishing, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, three-stage instinct chains, distinct water profiles/breath/drowning/fishing, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
 		quit(0)
 	else:
 		for failure in failures:

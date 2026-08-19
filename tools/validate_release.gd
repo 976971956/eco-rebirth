@@ -63,9 +63,10 @@ func _run_validation() -> void:
 	_validate_ecology_trace_contract()
 	_validate_ai_tactical_contract()
 	_validate_ecological_habit_contract()
+	_validate_instinct_chain_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.59 发布候选校验通过：深水身体浸没、30 物种技能图标、右侧四键安全布局与三端发布契约正常")
+		print("[release] V1.60 发布候选校验通过：30 物种三段生态本能、统一建立期、局内成长与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -297,9 +298,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.59\"") and presets.contains("application/short_version=\"1.59\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=710") and presets.contains("application/version=\"710\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.59", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.60\"") and presets.contains("application/short_version=\"1.60\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=720") and presets.contains("application/version=\"720\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.60", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -313,7 +314,7 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
-	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼与溺水行为")
+	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations,instinct_completions") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼、本能与溺水行为")
 	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
 	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
 	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
@@ -1650,6 +1651,28 @@ func _validate_ecological_habit_contract() -> void:
 	_expect(ui_source.contains("Catalog.habit_description") and ui_source.contains("habit_status_text") and ui_source.contains("生态本能"), "物种简报或 HUD 没有展示生态习性和资源引导")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("Catalog.combat_experience_reward") and main_source.contains("habit_resource_guidance_text"), "主流程没有接入反滚雪球经验或生态本能")
+
+
+func _validate_instinct_chain_contract() -> void:
+	_expect(Catalog.INSTINCT_STAGE_ORDER == ["prepare", "survive", "compete"], "局内本能没有保持准备、生存、竞争三段结构")
+	_expect(Catalog.INSTINCT_STAGE_REWARDS.size() == 3, "三段本能奖励配置不完整")
+	for species_id in Catalog.ORDER:
+		var chain := Catalog.instinct_chain(species_id)
+		_expect(chain.size() == 3, "%s 没有完整三段本能目标" % species_id)
+		_expect(Catalog.instinct_chain_summary(species_id).count("→") == 2, "%s 的入场本能链摘要不完整" % species_id)
+		for goal in chain:
+			_expect(str(goal.get("title", "")).length() >= 2 and str(goal.get("description", "")).length() >= 12, "%s 的本能目标缺少可读说明" % species_id)
+	_expect(ActorScript.instinct_stage_is_complete(0, 1, 0, 0.0, 0, 0, 0), "准备本能没有接受物种习性")
+	_expect(ActorScript.instinct_stage_is_complete(1, 0, 0, 24.0, 0, 0, 0), "生存本能没有接受主场迁徙")
+	_expect(ActorScript.instinct_stage_is_complete(2, 0, 0, 0.0, 0, 0, 1), "竞争本能没有接受生态助攻")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(actor_source.contains("func _update_instinct_chain") and actor_source.contains("func _complete_instinct_stage"), "玩家与 AI 共用的本能运行时没有接入 EcoActor")
+	_expect(actor_source.contains("instinct_stage_baseline") and actor_source.contains("instinct_habitat_distance"), "本能目标缺少局内限次与主场迁徙进度")
+	_expect(actor_source.contains("spawn_protection = 8.0"), "玩家与 AI 没有共享可阅读入场简报的生态建立期")
+	_expect(main_source.contains("func on_instinct_stage_completed") and main_source.contains("本能成长"), "主流程没有接收本能完成反馈或成长经验")
+	_expect(ui_source.contains("InstinctGoal") and ui_source.contains("instinct_status_text") and ui_source.contains("instinct_chain_summary"), "HUD 或入场简报没有展示当前本能目标")
 
 
 func _validate_growth_hud_contract() -> void:

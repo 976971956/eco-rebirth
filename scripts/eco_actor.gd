@@ -54,6 +54,9 @@ const AI_RECOVERY_HOTSPOT_HEALTH_RATIO := 0.46
 const AI_BLOCKED_ROUTE_MEMORY := 5.5
 const AI_STUCK_CHAIN_WINDOW := 6.0
 const AI_STUCK_REPLAN_COUNT := 3
+const INSTINCT_HABIT_TARGET := 1
+const INSTINCT_FOOD_FALLBACK_TARGET := 2
+const INSTINCT_HABITAT_DISTANCE_TARGET := 24.0
 static var waterline_mesh_cache: Dictionary = {}
 static var waterline_material: StandardMaterial3D
 
@@ -154,6 +157,9 @@ var avoid_timer: float = 0.0
 var avoid_direction := Vector3.ZERO
 var obstacle_steering_side: float = 0.0
 var obstacle_steering_timer: float = 0.0
+var obstacle_probe_timer: float = 0.0
+var cached_obstacle_input_direction := Vector3.ZERO
+var cached_obstacle_safe_direction := Vector3.ZERO
 var state_commit_timer: float = 0.0
 var dominance_response_timer: float = 0.0
 var dominance_target_id: int = -1
@@ -242,6 +248,10 @@ var visual_lod_elapsed: float = 0.0
 var kills: int = 0
 var assists: int = 0
 var tactical_actions: int = 0
+var instinct_stage: int = 0
+var instinct_completed_count: int = 0
+var instinct_stage_baseline: Dictionary = {}
+var instinct_habitat_distance: float = 0.0
 var counterplay_route_awards: Dictionary = {}
 var counterplay_xp_by_target: Dictionary = {}
 var counterplay_mastered_targets: Dictionary = {}
@@ -293,7 +303,10 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	collision_mask = 0 if Catalog.has_trait(species_id, "flying") else 2
 	_build_collision()
 	_build_visual()
-	spawn_protection = 6.0 if is_player else 0.0
+	# Let the generated ecosystem establish while the entry brief is readable.
+	# Player and AI use the same short shield; attacking or using a skill still
+	# removes the attacker's own protection immediately.
+	spawn_protection = 8.0
 	# Every map needs a short establishment window; dense late levels otherwise
 	# let long-range skills kill an actor on the very first simulation frame.
 	# Taking damage immediately ends this restraint, so a player cannot attack a
@@ -311,6 +324,7 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	last_sample_position = global_position
 	ecology_trace_last_position = global_position
 	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
+	_start_instinct_stage(0)
 
 
 func _recalculate_growth_stats() -> void:
@@ -391,6 +405,92 @@ func choose_ai_adaptation() -> String:
 		return float(a["score"]) > float(b["score"])
 	)
 	return str(scored[0]["id"])
+
+
+static func instinct_stage_is_complete(stage_index: int, habit_delta: int, food_delta: int, habitat_distance: float, tactical_delta: int, kill_delta: int, assist_delta: int) -> bool:
+	match stage_index:
+		0:
+			return habit_delta >= INSTINCT_HABIT_TARGET or food_delta >= INSTINCT_FOOD_FALLBACK_TARGET
+		1:
+			return habitat_distance >= INSTINCT_HABITAT_DISTANCE_TARGET or tactical_delta >= 1
+		2:
+			return kill_delta + assist_delta >= 1 or tactical_delta >= 1
+		_:
+			return false
+
+
+func instinct_status_text() -> String:
+	if instinct_stage >= Catalog.INSTINCT_STAGE_ORDER.size():
+		return "本能 3/3 · 生态路线已建立"
+	var goal := Catalog.instinct_stage_data(species_id, instinct_stage)
+	var habit_delta := maxi(habit_activation_count - int(instinct_stage_baseline.get("habits", 0)), 0)
+	var food_delta := maxi(food_bites - int(instinct_stage_baseline.get("food", 0)), 0)
+	var tactical_delta := maxi(tactical_actions - int(instinct_stage_baseline.get("tactical", 0)), 0)
+	var kill_delta := maxi(kills - int(instinct_stage_baseline.get("kills", 0)), 0)
+	var assist_delta := maxi(assists - int(instinct_stage_baseline.get("assists", 0)), 0)
+	var progress_text := ""
+	match instinct_stage:
+		0:
+			progress_text = "习性 %d/1 · 普通进食 %d/2" % [mini(habit_delta, 1), mini(food_delta, 2)]
+		1:
+			progress_text = "主场迁徙 %d/24m · 反制 %d/1" % [mini(roundi(instinct_habitat_distance), 24), mini(tactical_delta, 1)]
+		2:
+			progress_text = "竞争 %d/1 · 新反制 %d/1" % [mini(kill_delta + assist_delta, 1), mini(tactical_delta, 1)]
+	return "本能 %d/3 · %s\n%s" % [instinct_stage + 1, str(goal.get("title", "生态本能")), progress_text]
+
+
+func instinct_detail_text() -> String:
+	if instinct_stage >= Catalog.INSTINCT_STAGE_ORDER.size():
+		return "三段生态本能已经完成；继续围绕适应构筑与最终生存行动。"
+	return str(Catalog.instinct_stage_data(species_id, instinct_stage).get("description", "观察环境，完成当前生态本能。"))
+
+
+func _start_instinct_stage(stage_index: int) -> void:
+	instinct_stage = clampi(stage_index, 0, Catalog.INSTINCT_STAGE_ORDER.size())
+	instinct_stage_baseline = {
+		"habits": habit_activation_count,
+		"food": food_bites,
+		"tactical": tactical_actions,
+		"kills": kills,
+		"assists": assists,
+	}
+	instinct_habitat_distance = 0.0
+
+
+func _update_instinct_chain() -> void:
+	if instinct_stage >= Catalog.INSTINCT_STAGE_ORDER.size():
+		return
+	var habit_delta := maxi(habit_activation_count - int(instinct_stage_baseline.get("habits", 0)), 0)
+	var food_delta := maxi(food_bites - int(instinct_stage_baseline.get("food", 0)), 0)
+	var tactical_delta := maxi(tactical_actions - int(instinct_stage_baseline.get("tactical", 0)), 0)
+	var kill_delta := maxi(kills - int(instinct_stage_baseline.get("kills", 0)), 0)
+	var assist_delta := maxi(assists - int(instinct_stage_baseline.get("assists", 0)), 0)
+	if instinct_stage_is_complete(instinct_stage, habit_delta, food_delta, instinct_habitat_distance, tactical_delta, kill_delta, assist_delta):
+		_complete_instinct_stage()
+
+
+func _complete_instinct_stage() -> void:
+	var completed_stage := instinct_stage
+	var goal := Catalog.instinct_stage_data(species_id, completed_stage)
+	if goal.is_empty():
+		return
+	instinct_completed_count = mini(completed_stage + 1, Catalog.INSTINCT_STAGE_ORDER.size())
+	_start_instinct_stage(completed_stage + 1)
+	var health_before := health
+	var stamina_before := stamina
+	health = minf(max_health, health + max_health * float(goal.get("health_ratio", 0.0)))
+	stamina = minf(max_stamina, stamina + max_stamina * float(goal.get("stamina_ratio", 0.0)))
+	_update_exhaustion_state()
+	var health_restored := health - health_before
+	var stamina_restored := stamina - stamina_before
+	var xp_reward := int(goal.get("xp", 0))
+	if xp_reward > 0:
+		gain_experience(xp_reward, str(goal.get("title", "生态本能")), "本能成长")
+	health_changed.emit(health, max_health)
+	stamina_changed.emit(stamina, max_stamina)
+	_update_health_bar()
+	if game != null and game.has_method("on_instinct_stage_completed"):
+		game.on_instinct_stage_completed(self, completed_stage + 1, goal, xp_reward, health_restored, stamina_restored)
 
 
 func habitat_adaptation_multiplier() -> float:
@@ -2095,6 +2195,7 @@ func _update_timers(delta: float) -> void:
 	water_warning_timer = maxf(water_warning_timer - delta, 0.0)
 	water_steering_timer = maxf(water_steering_timer - delta, 0.0)
 	obstacle_steering_timer = maxf(obstacle_steering_timer - delta, 0.0)
+	obstacle_probe_timer = maxf(obstacle_probe_timer - delta, 0.0)
 	if obstacle_steering_timer <= 0.0:
 		obstacle_steering_side = 0.0
 	recovery_timer = maxf(recovery_timer - delta, 0.0)
@@ -2604,7 +2705,12 @@ func _request_landing(duration: float) -> void:
 
 func _update_ai(delta: float) -> void:
 	if decision_timer <= 0.0:
-		decision_timer = 0.28 + fmod(float(actor_id) * 0.037, 0.17)
+		# Perception is the expensive part of a decision because it compares this
+		# actor with the living ecosystem.  Keep locomotion, pursuit, escape and
+		# attacks fixed-step, but stagger fresh perception across a 0.34–0.54 s
+		# window.  This remains faster than a human reaction while preventing a
+		# 100-animal level from repeating thousands of identical scans per frame.
+		decision_timer = 0.34 + fmod(float(actor_id) * 0.037, 0.20)
 		_think()
 	attack_intent = false
 	wants_sprint = false
@@ -3771,8 +3877,19 @@ func _apply_movement(delta: float) -> void:
 			steering_radius *= 0.80
 		var look_ahead_scale := 1.72 if species_id == "cheetah" else 1.0
 		var obstacle_input_direction := flat_direction
-		var preferred_side := obstacle_steering_side if obstacle_steering_timer > 0.0 else 0.0
-		flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale, preferred_side)
+		# Obstacle geometry is static and an animal cannot materially cross a trunk
+		# between two 80–130 ms probes. Reuse the last safe heading while the intent
+		# remains similar; this removes the largest redundant O(actors*obstacles)
+		# fixed-step scan without changing movement, collision or stuck recovery.
+		var can_reuse_obstacle_probe := obstacle_probe_timer > 0.0 and cached_obstacle_input_direction.dot(obstacle_input_direction) >= 0.92
+		if can_reuse_obstacle_probe:
+			flat_direction = cached_obstacle_safe_direction
+		else:
+			var preferred_side := obstacle_steering_side if obstacle_steering_timer > 0.0 else 0.0
+			flat_direction = game.world.steer_around_obstacles(global_position, flat_direction, steering_radius, actor_id, look_ahead_scale, preferred_side)
+			cached_obstacle_input_direction = obstacle_input_direction
+			cached_obstacle_safe_direction = flat_direction
+			obstacle_probe_timer = 0.08 + fmod(float(actor_id) * 0.011, 0.05)
 		var obstacle_lateral := Vector3(-obstacle_input_direction.z, 0.0, obstacle_input_direction.x)
 		var lateral_amount := obstacle_lateral.dot(flat_direction)
 		if absf(lateral_amount) > 0.08 and flat_direction.dot(obstacle_input_direction) < 0.995:
@@ -3920,6 +4037,10 @@ func _apply_movement(delta: float) -> void:
 	var travelled_delta := Vector2(global_position.x - movement_origin.x, global_position.z - movement_origin.z).length()
 	if not is_player and travelled_delta < 4.0:
 		distance_travelled += travelled_delta
+	if instinct_stage == 1 and environment_affinity >= TERRAIN_AFFINITY_THRESHOLD and travelled_delta > 0.0 and travelled_delta < 4.0:
+		instinct_habitat_distance += travelled_delta
+		if instinct_habitat_distance >= INSTINCT_HABITAT_DISTANCE_TARGET:
+			_update_instinct_chain()
 	if uses_height_domain:
 		var maximum_height := float(data.get("flight_height", 4.2)) + 0.65 if is_flying else 3.75
 		global_position.y = clampf(global_position.y, 0.42, maximum_height)
@@ -4819,6 +4940,7 @@ func register_counterplay(target: EcoActor, route_id: String) -> Dictionary:
 		_update_cover_visual()
 	if game != null and game.has_method("on_counterplay_progress"):
 		game.on_counterplay_progress(self, target, route_id, int(result["xp"]), chain_count, bool(result["mastery"]), float(result["health"]), float(result["stamina"]))
+	_update_instinct_chain()
 	return result
 
 
@@ -4945,6 +5067,7 @@ func try_consume_resource(resource: Node3D) -> bool:
 			game.show_hint("捕获%s：生命 +%d、饱腹 +%d · 捕鱼效率 %.0f%%" % [food_name, ceili(health - health_before_food), ceili(hunger_before_food - hunger), catch_multiplier * 100.0])
 		else:
 			game.show_hint("进食%s：生命 +%d、饱腹 +%d" % [food_name, ceili(health - health_before_food), ceili(hunger_before_food - hunger)])
+	_update_instinct_chain()
 	return true
 
 
@@ -5075,6 +5198,7 @@ func die(killer: EcoActor) -> void:
 		collision.set_deferred("disabled", true)
 	if is_instance_valid(killer):
 		killer.kills += 1
+		killer._update_instinct_chain()
 	died.emit(self, killer)
 	if is_instance_valid(external_animation_player):
 		external_animation_state = "dead"

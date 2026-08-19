@@ -75,6 +75,7 @@ var stamina_value_label: Label
 var satiety_value_label: Label
 var xp_bar: ProgressBar
 var xp_value_label: Label
+var instinct_goal_label: Label
 var remaining_label: Label
 var leaderboard_panel: PanelContainer
 var leaderboard_content: RichTextLabel
@@ -492,6 +493,12 @@ func _build_hud() -> void:
 	xp_bar = _make_bar(Color("#63aee8"), 45.0)
 	xp_value_label = _make_value_label()
 	status_box.add_child(_bar_row("经验", xp_bar, xp_value_label))
+	instinct_goal_label = Label.new()
+	instinct_goal_label.name = "InstinctGoal"
+	instinct_goal_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	instinct_goal_label.add_theme_font_size_override("font_size", _font_size(15, 18))
+	instinct_goal_label.add_theme_color_override("font_color", Color("#f0d681"))
+	status_box.add_child(instinct_goal_label)
 
 	remaining_label = Label.new()
 	remaining_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1086,6 +1093,8 @@ func set_player(player_actor: EcoActor) -> void:
 	hunger_bar.value = 100.0 - player_actor.hunger
 	xp_bar.max_value = maxf(float(player_actor.experience_to_next_level()), 1.0)
 	xp_bar.value = player_actor.experience
+	instinct_goal_label.text = player_actor.instinct_status_text()
+	instinct_goal_label.tooltip_text = player_actor.instinct_detail_text()
 	skill_label.text = "%s　[空格]" % data["skill"]
 	skill_hint_label.text = str(data["skill_hint"])
 	var skill_color := Color.from_string(str(data.get("skill_color", "#5db98a")), Color("#5db98a"))
@@ -1110,7 +1119,7 @@ func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> v
 		level_prefix = "第%d关 · %s" % [int(level_profile.get("level", 1)), str(level_profile.get("title", "随机生态"))]
 	intro_title.text = "%s%s · %s" % [(level_prefix + "　|　") if level_prefix != "" else "", data["name"], data["subtitle"]]
 	var level_rule := ("本关生态：%s\n" % str(level_profile.get("rule", ""))) if not level_profile.is_empty() else ""
-	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n成长：探索不同营养食物获得经验，最高 Lv.10；体型会逐级变大，Lv.3/6/9 选择局内适应\n水域生存：浅滩可安全涉水；进入超过自身高度的水域会消耗屏息，鱼群可回血与补充饱腹\n黄色可逆袭目标：威胁按双方实时体型判断，抓住强敌的低耐力、技能后摇或伏击窗口\n环境反制：在适应区域持续移动蓄势，把客场强敌引入主场后反击\n反制组合：%s" % Catalog.counterplay_plan(species_id)
+	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n本局本能：%s；完成三段目标可获得经验与生存恢复\n核心反制（环境反制/生态借力）：%s" % [Catalog.instinct_chain_summary(species_id), Catalog.counterplay_plan(species_id)]
 	var level_one_stats := Catalog.growth_stats(species_id, 1)
 	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
 		int(level_one_stats["health"]), float(level_one_stats["attack"]), float(level_one_stats["speed"]), int(level_one_stats["stamina"]), float(level_one_stats["armor"]),
@@ -1148,6 +1157,8 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	xp_bar.max_value = maxf(float(needed_xp), 1.0)
 	xp_bar.value = player_actor.experience if needed_xp > 0 else 1.0
 	xp_value_label.text = ("最高等级 Lv.10" if needed_xp <= 0 else "%d / %d" % [player_actor.experience, needed_xp])
+	instinct_goal_label.text = player_actor.instinct_status_text()
+	instinct_goal_label.tooltip_text = player_actor.instinct_detail_text()
 	remaining_label.text = "存活个体　%d / %d" % [remaining, total]
 	var breath_visible := breath_indicator_should_show(player_actor.current_water_depth, player_actor.effective_wade_depth(), player_actor.is_airborne())
 	var water_status := water_location_text(player_actor.water_status_text(), breath_visible)

@@ -25,6 +25,7 @@
 - Ship 10 campaign levels with 10–100 ecological individuals and progressively larger species pools.
 - Ship 30 playable species. Normal campaign chooses the player species from the generated roster and avoids immediate repeats.
 - Give all 30 species one food-and-habitat ecological habit. Player and AI share the same trigger, one-source reward limit, recovery, and temporary buff rules.
+- Give every player and AI actor the same three-stage in-run instinct chain: preferred feeding/two-bite fallback, home-habitat travel/counterplay, then kill/assist/new counterplay. Stage baselines prevent pre-completion farming; the chain resets with the world and never mutates campaign progress.
 - When survival pressure is high, guide the player to a nearby safe habit resource without revealing the full map. Prefer that resource for manual eating and never guide actors beyond the active collapse habitat.
 - Reduce kill XP when a stronger or larger species repeatedly preys on much weaker animals; underdog kills retain the full target reward.
 - Keep eating a shared risk: after food is consumed, player and AI spend one second chewing with reduced movement and no sprint, attack, or skill.
