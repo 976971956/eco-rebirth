@@ -42,12 +42,12 @@ def bear_config() -> dict:
     # Adult brown bears are compact, broad and plantigrade.  The shared heavy
     # preset is deliberately overridden so this rig cannot drift back toward
     # the long-necked, column-legged silhouette used by the first prototype.
-    cfg.update(width=0.86, height=0.82, length=1.62, leg=0.78, paw=0.27, head=0.56, muzzle=0.46, neck=0.40, tail=0.24, ear=0.18)
+    cfg.update(width=0.90, height=0.86, length=1.54, leg=0.72, paw=0.30, head=0.53, muzzle=0.34, neck=0.32, tail=0.15, ear=0.12)
     cfg["v3"].update(
         gait="lumber",
         sprint_gait="charge",
-        stride=0.31,
-        flex=0.43,
+        stride=0.25,
+        flex=0.51,
         stance=0.78,
         upper_thickness=1.30,
         lower_thickness=1.04,
@@ -73,16 +73,16 @@ def limb_points(suffix: str):
     side = -1.0 if suffix.startswith("L") else 1.0
     if suffix.endswith("F"):
         return (
-            (side * 0.64, 1.43, -0.62),
-            (side * 0.66, 0.87, -0.69),
-            (side * 0.67, 0.29, -0.62),
-            (side * 0.68, 0.11, -0.88),
+            (side * 0.60, 1.38, -0.46),
+            (side * 0.62, 0.84, -0.38),
+            (side * 0.63, 0.29, -0.55),
+            (side * 0.63, 0.11, -0.74),
         )
     return (
-        (side * 0.62, 1.25, 0.58),
-        (side * 0.65, 0.79, 0.42),
-        (side * 0.67, 0.28, 0.69),
-        (side * 0.68, 0.11, 0.43),
+        (side * 0.59, 1.21, 0.50),
+        (side * 0.61, 0.83, 0.26),
+        (side * 0.63, 0.30, 0.57),
+        (side * 0.63, 0.11, 0.34),
     )
 
 
@@ -98,18 +98,18 @@ def build_bear_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, fl
     root.tail = PIPELINE.g2b((0.0, 0.48, 0.18))
     root.use_deform = False
 
-    spine = add_bone(edit, "Spine", (0.0, 1.22, 0.70), (0.0, 1.25, 0.06), root)
-    chest = add_bone(edit, "Chest", (0.0, 1.25, 0.06), (0.0, 1.45, -0.62), spine)
-    neck = add_bone(edit, "Neck", (0.0, 1.45, -0.62), (0.0, 1.54, -1.16), chest)
-    head = add_bone(edit, "Head", (0.0, 1.54, -1.16), (0.0, 1.42, -1.96), neck)
-    jaw = add_bone(edit, "Jaw", (0.0, 1.33, -1.56), (0.0, 1.28, -2.02), head)
+    spine = add_bone(edit, "Spine", (0.0, 1.18, 0.62), (0.0, 1.23, 0.05), root)
+    chest = add_bone(edit, "Chest", (0.0, 1.23, 0.05), (0.0, 1.41, -0.48), spine)
+    neck = add_bone(edit, "Neck", (0.0, 1.41, -0.48), (0.0, 1.40, -0.76), chest)
+    head = add_bone(edit, "Head", (0.0, 1.40, -0.76), (0.0, 1.25, -1.53), neck)
+    jaw = add_bone(edit, "Jaw", (0.0, 1.19, -1.18), (0.0, 1.12, -1.61), head)
     jaw.use_deform = False
 
     anchors = {
-        "Spine": (0.0, 1.22, 0.56),
-        "Chest": (0.0, 1.43, -0.52),
-        "Neck": (0.0, 1.52, -1.02),
-        "Head": (0.0, 1.49, -1.58),
+        "Spine": (0.0, 1.20, 0.52),
+        "Chest": (0.0, 1.38, -0.40),
+        "Neck": (0.0, 1.405, -0.66),
+        "Head": (0.0, 1.33, -1.18),
     }
     for suffix in LIMBS:
         hip, joint, ankle, toe = limb_points(suffix)
@@ -121,26 +121,26 @@ def build_bear_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, fl
         anchors[f"Paw_{suffix}"] = tuple(Vector(ankle).lerp(Vector(toe), 0.5))
 
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        base = (side * 0.34, 1.72, -1.48)
-        tip = (side * 0.43, 1.91, -1.46)
+        base = (side * 0.28, 1.58, -0.98)
+        tip = (side * 0.35, 1.72, -0.97)
         add_bone(edit, f"Ear_{suffix}", base, tip, head)
         anchors[f"Ear_{suffix}"] = tuple(Vector(base).lerp(Vector(tip), 0.5))
 
-    tail = add_bone(edit, "Tail", (0.0, 1.23, 1.05), (0.0, 1.20, 1.25), spine)
-    add_bone(edit, "TailTip", (0.0, 1.20, 1.25), (0.0, 1.15, 1.39), tail)
-    anchors["Tail"] = (0.0, 1.215, 1.15)
-    anchors["TailTip"] = (0.0, 1.175, 1.32)
+    tail = add_bone(edit, "Tail", (0.0, 1.19, 0.92), (0.0, 1.14, 1.05), spine)
+    add_bone(edit, "TailTip", (0.0, 1.14, 1.05), (0.0, 1.07, 1.13), tail)
+    anchors["Tail"] = (0.0, 1.165, 0.985)
+    anchors["TailTip"] = (0.0, 1.105, 1.09)
     bpy.ops.object.mode_set(mode="OBJECT")
 
     if len(rig.data.bones) != 22:
         raise RuntimeError(f"bear runtime rig is not the 22-bone contract: {len(rig.data.bones)}")
     rig["eco_species"] = "bear"
-    rig["rig_version"] = 6
+    rig["rig_version"] = 7
     rig["skin_mode"] = "project_authored_weighted_cinematic"
     rig["source_reference_sha256"] = SOURCE_SHA256
     rig["source_archive_sha256"] = ARCHIVE_SHA256
-    rig["anatomy_profile"] = "adult_brown_bear_shouldered_plantigrade_v1"
-    rig["locomotion_profile"] = "heavy_four_beat_plantigrade_with_articulated_knees"
+    rig["anatomy_profile"] = "adult_brown_bear_shouldered_plantigrade_v2"
+    rig["locomotion_profile"] = "bear_specific_four_beat_walk_and_rolling_charge"
     rig["surface_profile"] = "tinted_fur_pbr_wet_nose_keratin_claws"
     rig["limb_segments"] = 3
     return rig, anchors
@@ -180,10 +180,10 @@ def packed_image(path: Path, name: str, colorspace: str, hero: bool) -> bpy.type
 
 def coat_material(project_root: Path, hero: bool) -> bpy.types.Material:
     shared = project_root / "assets/textures/animals/shared"
-    albedo = tinted_fur_image(shared / "quadruped_fur_atlas_albedo.png", "bear_fur_albedo", (0.31, 0.205, 0.125), hero)
+    albedo = tinted_fur_image(shared / "quadruped_fur_atlas_albedo.png", "bear_fur_albedo", (0.255, 0.155, 0.080), hero)
     material = bpy.data.materials.new("bear_cinematic_coat_pbr")
     material.use_nodes = True
-    material.diffuse_color = (0.31, 0.205, 0.125, 1.0)
+    material.diffuse_color = (0.255, 0.155, 0.080, 1.0)
     nodes = material.node_tree.nodes
     links = material.node_tree.links
     principled = nodes.get("Principled BSDF")
@@ -199,7 +199,7 @@ def coat_material(project_root: Path, hero: bool) -> bpy.types.Material:
         normal_node = nodes.new("ShaderNodeTexImage")
         normal_node.image = normal
         normal_map = nodes.new("ShaderNodeNormalMap")
-        normal_map.inputs["Strength"].default_value = 0.48
+        normal_map.inputs["Strength"].default_value = 0.34
         links.new(normal_node.outputs["Color"], normal_map.inputs["Color"])
         links.new(normal_map.outputs["Normal"], principled.inputs["Normal"])
         roughness_node = nodes.new("ShaderNodeTexImage")
@@ -236,7 +236,7 @@ def subtle_fur_relief(body: bpy.types.Object, hero: bool) -> None:
     modifier = body.modifiers.new("BearMicroFurRelief", "DISPLACE")
     modifier.texture = texture
     modifier.texture_coords = "GLOBAL"
-    modifier.strength = 0.008 if hero else 0.005
+    modifier.strength = 0.004 if hero else 0.0025
     modifier.mid_level = 0.52
     bpy.ops.object.select_all(action="DESELECT")
     body.select_set(True)
@@ -260,10 +260,10 @@ def skin_continuous_bear(body: bpy.types.Object, rig: bpy.types.Object) -> None:
         "Leg_LH", "Lower_LH", "Paw_LH", "Leg_RH", "Lower_RH", "Paw_RH",
     ]
     radius = {
-        "Spine": 0.86, "Chest": 0.88, "Neck": 0.64, "Head": 0.58,
-        "Leg_LF": 0.38, "Leg_RF": 0.38, "Leg_LH": 0.38, "Leg_RH": 0.38,
-        "Lower_LF": 0.27, "Lower_RF": 0.27, "Lower_LH": 0.27, "Lower_RH": 0.27,
-        "Paw_LF": 0.34, "Paw_RF": 0.34, "Paw_LH": 0.34, "Paw_RH": 0.34,
+        "Spine": 0.90, "Chest": 0.92, "Neck": 0.62, "Head": 0.56,
+        "Leg_LF": 0.40, "Leg_RF": 0.40, "Leg_LH": 0.40, "Leg_RH": 0.40,
+        "Lower_LF": 0.29, "Lower_RF": 0.29, "Lower_LH": 0.29, "Lower_RH": 0.29,
+        "Paw_LF": 0.36, "Paw_RF": 0.36, "Paw_LH": 0.36, "Paw_RH": 0.36,
     }
     weights = {name: [0.0] * len(body.data.vertices) for name in deform_names}
     for vertex in body.data.vertices:
@@ -293,15 +293,15 @@ def skin_continuous_bear(body: bpy.types.Object, rig: bpy.types.Object) -> None:
 
 def build_bear_body(hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict, coat: bpy.types.Material, accent: bpy.types.Material) -> bpy.types.Object:
     elements = [
-        ((0.0, 1.22, 0.58), (0.84, 0.70, 0.66), 2.36),
-        ((0.0, 1.20, 0.04), (0.88, 0.73, 0.78), 2.42),
-        ((0.0, 1.36, -0.54), (0.96, 0.86, 0.64), 2.42),
-        ((0.0, 1.79, -0.52), (0.78, 0.54, 0.52), 2.28),
-        ((0.0, 1.50, -0.93), (0.66, 0.62, 0.54), 2.50),
-        ((0.0, 1.52, -1.30), (0.60, 0.55, 0.48), 2.46),
-        ((0.0, 1.51, -1.57), (0.57, 0.50, 0.50), 2.42),
-        ((0.0, 1.37, -1.83), (0.39, 0.30, 0.43), 2.48),
-        ((0.0, 1.31, -2.02), (0.29, 0.22, 0.30), 2.44),
+        ((0.0, 1.18, 0.56), (0.81, 0.67, 0.62), 2.34),
+        ((0.0, 1.18, 0.08), (0.89, 0.75, 0.72), 2.38),
+        ((0.0, 1.31, -0.42), (0.98, 0.84, 0.66), 2.38),
+        ((0.0, 1.59, -0.43), (0.76, 0.48, 0.48), 2.26),
+        ((0.0, 1.38, -0.70), (0.75, 0.67, 0.50), 2.46),
+        ((0.0, 1.36, -0.96), (0.65, 0.59, 0.49), 2.42),
+        ((0.0, 1.31, -1.20), (0.59, 0.51, 0.44), 2.40),
+        ((0.0, 1.21, -1.43), (0.40, 0.31, 0.31), 2.46),
+        ((0.0, 1.16, -1.61), (0.28, 0.20, 0.20), 2.42),
     ]
     # Build all four furred limbs and the top of every plantigrade paw into the
     # same metaball volume as the torso.  This creates one manifold coat surface
@@ -311,25 +311,27 @@ def build_bear_body(hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict,
         front = suffix.endswith("F")
         upper_mid = Vector(hip).lerp(Vector(joint), 0.50)
         lower_mid = Vector(joint).lerp(Vector(ankle), 0.52)
-        paw_center = Vector((toe[0], 0.13, toe[2] - (0.10 if front else 0.08)))
+        paw_center = Vector((toe[0], 0.155, toe[2] - (0.025 if front else 0.01)))
         elements.extend([
-            (tuple(Vector(hip).lerp(Vector(joint), 0.18)), (0.37 if front else 0.35, 0.38, 0.33), 2.58),
-            (tuple(upper_mid), (0.31 if front else 0.30, 0.39, 0.28), 2.62),
-            (tuple(joint), (0.27, 0.27, 0.25), 2.68),
-            (tuple(lower_mid), (0.225, 0.35, 0.22), 2.66),
-            (tuple(ankle), (0.25, 0.21, 0.25), 2.68),
-            (tuple(paw_center), (0.31, 0.16, 0.40), 2.72),
+            (tuple(Vector(hip).lerp(Vector(joint), 0.18)), (0.40 if front else 0.38, 0.40, 0.35), 2.56),
+            (tuple(upper_mid), (0.345 if front else 0.335, 0.37, 0.30), 2.60),
+            (tuple(joint), (0.30, 0.29, 0.27), 2.64),
+            (tuple(lower_mid), (0.255, 0.33, 0.24), 2.64),
+            (tuple(ankle), (0.27, 0.23, 0.26), 2.66),
+            (tuple(paw_center), (0.275, 0.18, 0.29 if front else 0.28), 2.68),
         ])
+    # OrganicBodyV2 is the established cross-species runtime validator token;
+    # keep it stable while the mesh's own versioned metadata advances to V3.
     body = PIPELINE.metaball_mesh("BearOrganicBodyV2_SourceConnected", elements, coat, hero)
-    body.data.name = "BrownBearOrganicBodyV2SourceMesh"
-    body["eco_anatomy_contract"] = "adult_brown_bear_continuous_torso_short_muzzle"
+    body.data.name = "BrownBearOrganicBodyV3SourceMesh"
+    body["eco_anatomy_contract"] = "adult_brown_bear_compact_head_deep_barrel_plantigrade_paws"
     body["eco_surface_pattern"] = "authored_brown_fur_pbr"
     accent_index = PIPELINE.append_material(body, accent)
     for polygon in body.data.polygons:
         centre = sum((body.data.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
         godot_y = centre.z
         godot_z = centre.y
-        if godot_z < -1.66 and godot_y < 1.48:
+        if godot_z < -1.34 and godot_y < 1.32:
             polygon.material_index = accent_index
     subtle_fur_relief(body, hero)
     smart_uv(body)
@@ -361,39 +363,137 @@ def build_bear_details(hero: bool, rig: bpy.types.Object, coat, accent, eye, nos
     # Short rounded pinnae are a primary bear cue; inner ear discs are inset
     # rather than modelled as the pointed leaf shared by hoofed animals.
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        sphere(f"BearRoundEarSilhouette_{suffix}", (side * 0.37, 1.73, -1.46), (0.23, 0.23, 0.15), coat, f"Ear_{suffix}")
-        sphere(f"BearInnerEarDetail_{suffix}", (side * 0.37, 1.73, -1.57), (0.125, 0.125, 0.030), paw, f"Ear_{suffix}")
+        sphere(f"BearRoundEarSilhouette_{suffix}", (side * 0.30, 1.59, -1.00), (0.125, 0.135, 0.075), coat, f"Ear_{suffix}")
+        sphere(f"BearInnerEarDetail_{suffix}", (side * 0.30, 1.59, -1.065), (0.062, 0.070, 0.015), paw, f"Ear_{suffix}")
 
     # Brow, small deep-set eyes, broad wet nose and lower muzzle.
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        sphere(f"BearBrowSilhouette_{suffix}", (side * 0.29, 1.61, -1.70), (0.16, 0.075, 0.105), coat, "Head")
-        sphere(f"V5EyeDetail_{suffix}", (side * 0.34, 1.53, -1.77), (0.040, 0.043, 0.032), eye, "Head")
-    sphere("BearWetNoseDetail", (0.0, 1.37, -2.19), (0.235, 0.17, 0.13), nose, "Head")
+        sphere(f"BearBrowSilhouette_{suffix}", (side * 0.28, 1.47, -1.26), (0.125, 0.060, 0.086), coat, "Head")
+        sphere(f"V7EyeDetail_{suffix}", (side * 0.32, 1.39, -1.34), (0.031, 0.033, 0.025), eye, "Head")
+    sphere("BearWetNoseDetail", (0.0, 1.18, -1.75), (0.20, 0.13, 0.095), nose, "Head")
     for suffix, side in (("L", -1.0), ("R", 1.0)):
-        sphere(f"BearNostrilDetail_{suffix}", (side * 0.105, 1.39, -2.295), (0.046, 0.030, 0.018), paw, "Head")
-    capsule("BearLowerJawAccent", (0.0, 1.31, -1.68), (0.0, 1.24, -2.02), 0.27, accent, "Jaw", 0.70)
-    capsule("BearMouthLineDetail", (0.0, 1.26, -1.84), (0.0, 1.245, -2.06), 0.022, paw, "Jaw", 0.45)
+        sphere(f"BearNostrilDetail_{suffix}", (side * 0.076, 1.195, -1.825), (0.032, 0.021, 0.012), paw, "Head")
+    capsule("BearLowerJawAccent", (0.0, 1.16, -1.26), (0.0, 1.10, -1.62), 0.21, accent, "Jaw", 0.72)
+    capsule("BearMouthLineDetail", (0.0, 1.115, -1.39), (0.0, 1.095, -1.67), 0.014, paw, "Jaw", 0.42)
 
-    for suffix in LIMBS:
-        _hip, _joint, _ankle, toe = limb_points(suffix)
-        front = suffix.endswith("F")
-        paw_z = toe[2] - (0.12 if front else 0.10)
-        sphere(f"BearPawPadDetail_{suffix}", (toe[0], 0.055, paw_z + 0.02), (0.22, 0.035, 0.25), paw, f"Paw_{suffix}")
-        digit_count = 5 if hero else 3
-        for digit_index in range(digit_count):
-            lateral = (digit_index - (digit_count - 1) * 0.5) * (0.105 if hero else 0.14)
-            start = (toe[0] + lateral, 0.125, paw_z - 0.20)
-            end = (toe[0] + lateral, 0.090, paw_z - 0.30)
-            claw(f"BearClawDetail_{suffix}_{digit_index}", start, end, 0.018 if hero else 0.021, f"Paw_{suffix}")
+    # Separate sole pads and cone claws are valid close-up anatomy, but from the
+    # game's oblique camera they merge into a pale horseshoe below each foot.
+    # The connected coat mesh already carries the grounded plantigrade shape, so
+    # leave underside detail to a future fur-card close-up LOD.
 
-    capsule("BearTailBaseSilhouette", (0.0, 1.23, 1.03), (0.0, 1.19, 1.25), 0.20, coat, "Tail", 0.92)
-    sphere("BearTailTipSilhouette", (0.0, 1.17, 1.32), (0.18, 0.18, 0.20), coat, "TailTip")
+    # Brown-bear tails are mostly hidden by the rump coat. Retain Tail/TailTip
+    # bones for the shared rig contract but do not add separate ball-like meshes.
     return parts
 
 
 def attach_sockets(rig: bpy.types.Object) -> None:
-    PIPELINE.attach_socket("SkillSocket_Mouth", (0.0, 1.35, -2.23), rig, "Head")
-    PIPELINE.attach_socket("SkillSocket_Chest", (0.0, 1.48, -0.58), rig, "Chest")
+    PIPELINE.attach_socket("SkillSocket_Mouth", (0.0, 1.17, -1.78), rig, "Head")
+    PIPELINE.attach_socket("SkillSocket_Chest", (0.0, 1.43, -0.45), rig, "Chest")
+
+
+def create_bear_actions(rig: bpy.types.Object) -> None:
+    """Author a grounded bear gait instead of inheriting the generic heavy preset."""
+    rig.animation_data_create()
+    flex_signs = {suffix: PIPELINE.limb_chain_flex_sign(rig, suffix) for suffix in LIMBS}
+
+    def insert_rotation(bone_name: str, frame: int, xyz: tuple[float, float, float]) -> None:
+        bone = rig.pose.bones[bone_name]
+        bone.rotation_mode = "XYZ"
+        bone.rotation_euler = xyz
+        bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone_name)
+
+    def neutral_pose(frame: int) -> None:
+        for pose_bone in rig.pose.bones:
+            insert_rotation(pose_bone.name, frame, (0.0, 0.0, 0.0))
+
+    for action_name in PIPELINE.ACTIONS:
+        action = bpy.data.actions.new(action_name)
+        rig.animation_data.action = action
+        neutral_pose(1)
+        if action_name in ("locomotion", "sprint"):
+            sprinting = action_name == "sprint"
+            # A slow bear uses a lateral-sequence four-beat walk. The sprint
+            # changes to a compact rolling charge without stretching the legs
+            # into the canine silhouette that the previous generic gait caused.
+            phases = (
+                {"LF": 0.0, "RH": math.pi * 0.50, "RF": math.pi, "LH": math.pi * 1.50}
+                if not sprinting
+                else {"LH": 0.0, "RH": math.pi * 0.16, "LF": math.pi, "RF": math.pi * 1.16}
+            )
+            stride = 0.25 if not sprinting else 0.39
+            flex = 0.34 if not sprinting else 0.47
+            for frame in (1, 5, 9, 13, 17, 21, 25, 29, 33):
+                cycle = math.tau * (frame - 1) / 32.0
+                for suffix in LIMBS:
+                    phase = phases[suffix]
+                    swing = math.sin(cycle + phase)
+                    lift = max(0.0, math.sin(cycle + phase - 0.30))
+                    support = max(0.0, -math.sin(cycle + phase - 0.30))
+                    rear_drive = 1.08 if suffix.endswith("H") and sprinting else 1.0
+                    upper = stride * swing * rear_drive
+                    lower = flex_signs[suffix] * flex * (0.86 * lift + 0.07 * support) * rear_drive
+                    # Counter-rotate the wrist/ankle so the plantigrade pads
+                    # remain visually grounded through the support phase.
+                    paw = -flex_signs[suffix] * flex * (0.48 * lift + 0.030 * support) * rear_drive
+                    insert_rotation(f"Leg_{suffix}", frame, (upper, 0.0, 0.0))
+                    insert_rotation(f"Lower_{suffix}", frame, (lower, 0.0, 0.0))
+                    insert_rotation(f"Paw_{suffix}", frame, (paw, 0.0, 0.0))
+                wave = math.sin(cycle * (2.0 if sprinting else 1.0))
+                roll = math.sin(cycle)
+                insert_rotation("Spine", frame, (0.031 * wave, 0.0, 0.025 * roll))
+                insert_rotation("Chest", frame, (-0.024 * wave, 0.0, -0.020 * roll))
+                insert_rotation("Neck", frame, (0.020 * wave, 0.0, 0.0))
+                insert_rotation("Head", frame, (-0.014 * wave, 0.0, 0.0))
+                insert_rotation("Tail", frame, (0.006 * wave, 0.0, -0.018 * roll))
+                insert_rotation("TailTip", frame, (0.005 * wave, 0.0, -0.026 * roll))
+        elif action_name in ("attack", "skill"):
+            skill = action_name == "skill"
+            strength = 1.18 if skill else 1.0
+            for frame, brace, strike in ((1, 0.0, 0.0), (7, 1.0, -0.18), (12, 0.42, 1.0), (23, 0.0, 0.0)):
+                insert_rotation("Spine", frame, (-0.13 * brace * strength, 0.0, 0.10 * strike * strength))
+                insert_rotation("Chest", frame, (-0.10 * brace * strength, 0.0, -0.09 * strike * strength))
+                insert_rotation("Neck", frame, (0.13 * strike * strength, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.16 * strike * strength, 0.0, 0.0))
+                insert_rotation("Jaw", frame, (-0.20 * max(strike, 0.0) * strength, 0.0, 0.0))
+                if skill:
+                    # The skill is a heavy two-paw ground shock, while normal
+                    # attack keeps the species-readable single-paw swipe.
+                    for suffix in ("LF", "RF"):
+                        side_roll = -0.09 if suffix == "LF" else 0.09
+                        insert_rotation(f"Leg_{suffix}", frame, (-0.58 * strike * strength, 0.0, side_roll * strike))
+                        insert_rotation(f"Lower_{suffix}", frame, (flex_signs[suffix] * 0.34 * max(strike, 0.0), 0.0, 0.0))
+                        insert_rotation(f"Paw_{suffix}", frame, (-flex_signs[suffix] * 0.16 * max(strike, 0.0), 0.0, 0.0))
+                else:
+                    insert_rotation("Leg_LF", frame, (-0.68 * strike, 0.0, -0.15 * strike))
+                    insert_rotation("Lower_LF", frame, (flex_signs["LF"] * 0.39 * max(strike, 0.0), 0.0, 0.0))
+                    insert_rotation("Paw_LF", frame, (-flex_signs["LF"] * 0.16 * max(strike, 0.0), 0.0, 0.0))
+                    insert_rotation("Leg_RF", frame, (-0.14 * brace, 0.0, 0.0))
+        elif action_name == "hit":
+            for frame, recoil in ((1, 0.0), (6, 1.0), (15, 0.0)):
+                insert_rotation("Spine", frame, (-0.08 * recoil, 0.0, 0.22 * recoil))
+                insert_rotation("Chest", frame, (0.05 * recoil, 0.0, -0.10 * recoil))
+                insert_rotation("Neck", frame, (0.10 * recoil, 0.0, -0.10 * recoil))
+                insert_rotation("Head", frame, (0.07 * recoil, 0.0, -0.13 * recoil))
+        elif action_name == "eat":
+            for frame, lower, chew in ((1, 0.0, 0.0), (10, 0.70, 0.0), (18, 1.0, 1.0), (25, 1.0, -1.0), (34, 0.0, 0.0)):
+                insert_rotation("Neck", frame, (0.48 * lower, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.31 * lower + 0.035 * chew, 0.0, 0.0))
+                insert_rotation("Jaw", frame, (-0.060 * abs(chew) * lower, 0.0, 0.0))
+        elif action_name == "death":
+            for frame, fall in ((1, 0.0), (12, 0.28), (23, 0.82), (34, 1.0)):
+                insert_rotation("Spine", frame, (0.04 * fall, 0.0, 1.12 * fall))
+                insert_rotation("Chest", frame, (-0.08 * fall, 0.0, 0.20 * fall))
+                insert_rotation("Neck", frame, (0.15 * fall, 0.0, -0.12 * fall))
+                insert_rotation("Head", frame, (0.11 * fall, 0.0, -0.09 * fall))
+        elif action_name == "idle":
+            for frame, breath, listen in ((1, -1.0, 0.0), (11, 0.1, 1.0), (21, 1.0, -0.30), (31, -1.0, 0.0)):
+                insert_rotation("Chest", frame, (0.014 * breath, 0.0, 0.0))
+                insert_rotation("Neck", frame, (-0.009 * breath, 0.0, 0.0))
+                insert_rotation("Head", frame, (0.006 * breath, 0.0, 0.0))
+                insert_rotation("Ear_L", frame, (0.0, 0.055 * listen, 0.025 * listen))
+                insert_rotation("Ear_R", frame, (0.0, -0.028 * listen, -0.014 * listen))
+        action.use_fake_user = True
+    rig.animation_data.action = bpy.data.actions["idle"]
 
 
 def triangle_count(objects: list[bpy.types.Object]) -> tuple[int, int]:
@@ -419,12 +519,12 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
     eye = solid_material("bear_cinematic_eye_pbr", "#24160f", 0.13)
     nose = solid_material("bear_cinematic_nose_pbr", "#171312", 0.24)
     paw = solid_material("bear_cinematic_paw_pbr", "#2b211d", 0.68)
-    keratin = solid_material("bear_cinematic_keratin_pbr", "#8c755e", 0.54)
+    keratin = solid_material("bear_cinematic_keratin_pbr", "#46382d", 0.62)
     body = build_bear_body(hero, rig, anchors, cfg, coat, accent)
     PIPELINE.validate_continuous_flesh("bear", [body])
     details = build_bear_details(hero, rig, coat, accent, eye, nose, paw, keratin)
     attach_sockets(rig)
-    PIPELINE.create_ground_actions(rig, cfg)
+    create_bear_actions(rig)
 
     profile = "hero" if hero else "mobile"
     output = output_root / "bear" / f"bear_{profile}.glb"

@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6cwbsrbl5b0t"
-path="res://.godot/imported/bear_hero_quadruped_fur_atlas_albedo.png-665b86794d85a7dc097b48a892829b69.ctex"
+uid="uid://1l8oy1mqcwax"
+path="res://.godot/imported/v89-bear-cinematic-states.png-93914febaed40c49d618525be223cf70.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "91afc9ab0f7b4e975d02478ae0c57392"
 }
 
 [deps]
 
-source_file="res://assets/models_v2/animals/bear/bear_hero_quadruped_fur_atlas_albedo.png"
-dest_files=["res://.godot/imported/bear_hero_quadruped_fur_atlas_albedo.png-665b86794d85a7dc097b48a892829b69.ctex"]
+source_file="res://docs/images/v89-bear-cinematic-states.png"
+dest_files=["res://.godot/imported/v89-bear-cinematic-states.png-93914febaed40c49d618525be223cf70.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
