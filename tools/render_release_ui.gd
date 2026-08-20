@@ -15,7 +15,8 @@ class PreviewGame:
 	var world_seed := 11818
 	var current_level := 2
 	var world: Node
-	func get_living_actors() -> Array[EcoActor]: return []
+	var preview_living: Array[EcoActor] = []
+	func get_living_actors() -> Array[EcoActor]: return preview_living
 	func play_ui_sound() -> void: pass
 	func is_music_enabled() -> bool: return true
 	func is_sfx_enabled() -> bool: return true
@@ -67,6 +68,7 @@ func _render() -> void:
 	preview_actor.process_mode = Node.PROCESS_MODE_DISABLED
 	game.add_child(preview_actor)
 	preview_actor.setup(game, 1, "wolf", true, Vector3.ZERO, 0)
+	game.preview_living = [preview_actor]
 	preview_actor.gain_experience(79, "bear")
 	preview_actor.health = 132.0
 	preview_actor.stamina = 76.0
@@ -295,6 +297,13 @@ func _render() -> void:
 	preview_actor.experience_pack_target = experience_pack
 	preview_actor.experience_absorb_duration = ExperiencePackScript.absorption_seconds(1, true)
 	preview_actor.experience_absorb_elapsed = 2.65
+	var experience_rival: EcoActor = ActorScript.new()
+	experience_rival.process_mode = Node.PROCESS_MODE_DISABLED
+	game.add_child(experience_rival)
+	experience_rival.experience_pack_target = experience_pack
+	experience_rival.experience_absorb_duration = ExperiencePackScript.absorption_seconds(1, true)
+	experience_rival.experience_absorb_elapsed = 3.65
+	game.preview_living.append(experience_rival)
 	ui.update_hud(preview_actor, 3, 20, "古木林地 · 白昼 · 晴朗", "经验信号 · 跃迁经验包 · 北 18m · 剩4个 / 41s", "终局决战 · 全员位置公开", "经验争夺 · 高价值吸收时间更长")
 	ui.update_leaderboard([
 		{"rank": 1, "name": "棕熊", "level": 5, "size": 6.7, "kills": 5, "is_player": false, "tracking": "西南 61m · 精确位置已公开"},
@@ -303,8 +312,10 @@ func _render() -> void:
 	])
 	for _frame in range(5):
 		await process_frame
-	var experience_final_result := root.get_texture().get_image().save_png("res://docs/images/v87-experience-final-tracking.png")
+	var experience_contest_result := root.get_texture().get_image().save_png("res://docs/images/v88-experience-contest-intelligence.png")
 	preview_actor.cancel_experience_absorption()
+	game.preview_living.erase(experience_rival)
+	experience_rival.free()
 	experience_pack.free()
 	preview_actor.species_id = "rabbit"
 	preview_actor.base_data = Catalog.get_data("rabbit")
@@ -323,7 +334,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_final_result == OK and adaptation_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_contest_result == OK and adaptation_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

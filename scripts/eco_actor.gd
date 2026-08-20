@@ -2169,6 +2169,43 @@ func experience_absorb_status_text() -> String:
 	return "吸收%s · %s · %.1fs" % [experience_pack_target.display_name(), reward_text, maxf(experience_absorb_duration - experience_absorb_elapsed, 0.0)]
 
 
+func experience_absorb_hud_text() -> String:
+	if not is_absorbing_experience():
+		return ""
+	var reward := experience_pack_target.reward_preview(experience_remaining_to_level())
+	var pack_text := "跃迁包" if experience_pack_target.is_level_pack() else ("丰厚包" if experience_pack_target.tier == ExperiencePackScript.TIER_RICH else "经验包")
+	var reward_text := "升1级" if experience_pack_target.is_level_pack() else "+%d" % reward
+	return "%s · %s · %.1fs" % [pack_text, reward_text, maxf(experience_absorb_duration - experience_absorb_elapsed, 0.0)]
+
+
+static func experience_contest_state(contender_count: int, own_progress: float, leader_progress: float) -> String:
+	if contender_count <= 0:
+		return "solo"
+	if leader_progress > own_progress + 0.08:
+		return "trailing"
+	if own_progress > leader_progress + 0.08:
+		return "leading"
+	return "tied"
+
+
+func experience_contest_snapshot() -> Dictionary:
+	if not is_absorbing_experience() or game == null or not game.has_method("get_living_actors"):
+		return {"state": "solo", "label": "单独吸收", "contenders": 0, "leader_progress": 0.0}
+	var contender_count := 0
+	var leader_progress := 0.0
+	for other in game.get_living_actors():
+		if other == self or not is_instance_valid(other) or other.dead:
+			continue
+		if other.experience_pack_target != experience_pack_target:
+			continue
+		contender_count += 1
+		leader_progress = maxf(leader_progress, other.experience_absorb_ratio())
+	var state := experience_contest_state(contender_count, experience_absorb_ratio(), leader_progress)
+	var state_text: String = str({"leading": "领先", "trailing": "落后", "tied": "胶着"}.get(state, ""))
+	var label := "单独吸收" if contender_count <= 0 else "%d敌·%s" % [contender_count, state_text]
+	return {"state": state, "label": label, "contenders": contender_count, "leader_progress": leader_progress}
+
+
 func begin_experience_absorption(pack: ExperiencePack) -> bool:
 	if dead or level >= MAX_LEVEL or eat_timer > 0.0 or not is_instance_valid(pack) or not pack.active:
 		return false
@@ -3077,6 +3114,8 @@ func _think() -> void:
 	var close_encounter_distance := INF
 	var pack_support := 0
 	var target_pressure_counts: Dictionary = {}
+	var experience_pressure_counts: Dictionary = {}
+	var experience_lead_progress: Dictionary = {}
 	var herd_escape_sum := Vector3.ZERO
 	var herd_escape_count := 0
 	var own_encounter_strength := _encounter_strength(self)
@@ -3100,6 +3139,10 @@ func _think() -> void:
 		if observer_distance <= AI_GROUP_ALERT_RANGE and other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
 			var pressure_key: int = other.ai_target.actor_id
 			target_pressure_counts[pressure_key] = int(target_pressure_counts.get(pressure_key, 0)) + 1
+		if is_instance_valid(other.experience_pack_target) and other.experience_pack_target.active and (other.ai_state == "experience" or other.is_absorbing_experience()):
+			var pack_key := other.experience_pack_target.get_instance_id()
+			experience_pressure_counts[pack_key] = int(experience_pressure_counts.get(pack_key, 0)) + 1
+			experience_lead_progress[pack_key] = maxf(float(experience_lead_progress.get(pack_key, 0.0)), other.experience_absorb_ratio())
 		if other.species_id == species_id:
 			var group_distance := observer_distance
 			if Catalog.has_trait(species_id, "pack_hunter") and group_distance <= AI_PACK_SHARE_RADIUS:
@@ -3293,7 +3336,7 @@ func _think() -> void:
 	# can contest them, but a wounded actor with a nearby stronger threat will not
 	# stand still for a long channel merely because the reward is rare.
 	if level < MAX_LEVEL:
-		var experience_pack := _best_experience_pack(threat_distance)
+		var experience_pack := _best_experience_pack(threat_distance, experience_pressure_counts, experience_lead_progress)
 		if is_instance_valid(experience_pack):
 			ai_state = "experience"
 			ai_target = null
@@ -3774,24 +3817,34 @@ func _best_wild_food(search_range: float) -> Node3D:
 	return safer_food if is_instance_valid(safer_food) else null
 
 
-static func experience_pack_utility(reward: int, duration: float, distance: float, actor_level: int, health_ratio: float, threat_distance: float, grants_level: bool) -> float:
+static func experience_pack_utility(reward: int, duration: float, distance: float, actor_level: int, health_ratio: float, threat_distance: float, grants_level: bool, contender_count: int = 0, leader_progress: float = 0.0, hunger_ratio: float = 0.0, event_remaining: float = INF, travel_speed: float = 5.0) -> float:
 	var value_rate := float(maxi(reward, 1)) / maxf(duration, 0.2)
 	var under_level_bonus := float(MAX_LEVEL - clampi(actor_level, 1, MAX_LEVEL)) * 0.82
 	var danger_penalty := 0.0
 	if threat_distance < 14.0:
 		danger_penalty = (14.0 - threat_distance) * (1.15 + (1.0 - clampf(health_ratio, 0.0, 1.0)) * 1.8)
 	var channel_penalty := maxf(duration - 1.0, 0.0) * (2.1 if threat_distance < 20.0 else 0.72)
-	return value_rate * 1.85 + under_level_bonus + (7.0 if grants_level else 0.0) - distance * 0.20 - danger_penalty - channel_penalty
+	var contest_penalty := float(maxi(contender_count, 0)) * 3.4 + clampf(leader_progress, 0.0, 1.0) * 11.0
+	var survival_penalty := maxf(clampf(hunger_ratio, 0.0, 1.0) - 0.52, 0.0) * 34.0
+	var arrival_seconds := maxf(distance, 0.0) / maxf(travel_speed, 1.0) + duration
+	var expiry_penalty := 0.0
+	if event_remaining < INF and arrival_seconds + 0.8 >= event_remaining:
+		expiry_penalty = 100.0 + maxf(arrival_seconds - event_remaining, 0.0) * 4.0
+	return value_rate * 1.85 + under_level_bonus + (7.0 if grants_level else 0.0) - distance * 0.20 - danger_penalty - channel_penalty - contest_penalty - survival_penalty - expiry_penalty
 
 
-func _best_experience_pack(threat_distance: float) -> ExperiencePack:
+func _best_experience_pack(threat_distance: float, pressure_counts: Dictionary = {}, lead_progress: Dictionary = {}) -> ExperiencePack:
 	if game.world == null or not (game.world is EcoWorld) or level >= MAX_LEVEL:
 		return null
 	if health / maxf(max_health, 1.0) < 0.34 and threat_distance < 16.0:
 		return null
+	if hunger >= 92.0:
+		return null
 	var eco_world := game.world as EcoWorld
 	var search_range := eco_world.experience_drop_attraction_radius()
 	var origin := global_position if is_inside_tree() else position
+	var event_remaining := float(eco_world.active_experience_drop.get("remaining", 0.0))
+	var travel_speed := float(data["speed"]) * 1.18
 	var best_pack: ExperiencePack
 	var best_score := -INF
 	for pack in eco_world.experience_packs:
@@ -3802,7 +3855,11 @@ func _best_experience_pack(threat_distance: float) -> ExperiencePack:
 			continue
 		var reward := pack.reward_preview(experience_remaining_to_level())
 		var duration := pack.absorb_duration(experience_remaining_to_level())
-		var score := experience_pack_utility(reward, duration, distance, level, health / maxf(max_health, 1.0), threat_distance, pack.is_level_pack())
+		var pack_key := pack.get_instance_id()
+		var score := experience_pack_utility(
+			reward, duration, distance, level, health / maxf(max_health, 1.0), threat_distance, pack.is_level_pack(),
+			int(pressure_counts.get(pack_key, 0)), float(lead_progress.get(pack_key, 0.0)), hunger / 100.0, event_remaining, travel_speed
+		)
 		if score > best_score:
 			best_score = score
 			best_pack = pack

@@ -106,6 +106,7 @@ var breath_visual_state: String = ""
 var absorb_panel: PanelContainer
 var absorb_label: Label
 var absorb_bar: ProgressBar
+var absorb_visual_state: String = ""
 var hint_label: Label
 var hint_tween: Tween
 var intro_panel: PanelContainer
@@ -1275,11 +1276,35 @@ func _update_experience_absorb_indicator(player_actor: EcoActor) -> void:
 		return
 	var should_show := player_actor.is_absorbing_experience()
 	absorb_panel.visible = should_show
+	# The ordinary center hint occupies the same narrow mobile-safe band. Hide it
+	# only while the channel is visible; completion/interruption feedback returns
+	# on the first frame after the absorb panel closes.
+	if hint_label != null:
+		hint_label.visible = not should_show
 	if not should_show:
+		absorb_visual_state = ""
 		return
 	absorb_bar.max_value = maxf(player_actor.experience_absorb_duration, 0.01)
 	absorb_bar.value = clampf(player_actor.experience_absorb_elapsed, 0.0, absorb_bar.max_value)
-	absorb_label.text = "%s · 移动或受击会中断" % player_actor.experience_absorb_status_text()
+	var contest := player_actor.experience_contest_snapshot()
+	var visual_state := str(contest.get("state", "solo"))
+	if visual_state != absorb_visual_state:
+		absorb_visual_state = visual_state
+		var fill_color := Color("#66d8ba") if visual_state == "solo" else Color("#b77bff")
+		var label_color := Color("#c9f8e8") if visual_state == "solo" else Color("#ecd8ff")
+		var border_color := Color(0.38, 0.90, 0.74, 0.88) if visual_state == "solo" else Color(0.76, 0.52, 1.0, 0.88)
+		if visual_state == "leading":
+			fill_color = Color("#f0cc63")
+			label_color = Color("#fff0af")
+			border_color = Color(0.96, 0.76, 0.26, 0.92)
+		elif visual_state == "trailing":
+			fill_color = Color("#ee7164")
+			label_color = Color("#ffd2ca")
+			border_color = Color(0.96, 0.36, 0.30, 0.92)
+		absorb_bar.add_theme_stylebox_override("fill", _bar_style(fill_color))
+		absorb_label.add_theme_color_override("font_color", label_color)
+		absorb_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_ABSORB_BACKGROUND, 16, border_color, 2))
+	absorb_label.text = "%s · %s" % [player_actor.experience_absorb_hud_text(), str(contest.get("label", "单独吸收"))]
 
 
 func _update_player_combat_summary(player_actor: EcoActor) -> void:

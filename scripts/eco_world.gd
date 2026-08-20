@@ -35,6 +35,8 @@ const ECOLOGY_EVENT_REPEAT_BASE := 72.0
 const EXPERIENCE_DROP_FIRST_BASE := 46.0
 const EXPERIENCE_DROP_REPEAT_BASE := 94.0
 const EXPERIENCE_DROP_DURATION := 58.0
+const EXPERIENCE_PACK_CLEAR_RADIUS := 1.05
+const EXPERIENCE_PACK_MIN_SPACING := 3.0
 const ECOLOGY_TRACE_MIN_AGE := 0.75
 const ECOLOGY_TRACE_MAX_ENTRIES := 180
 const DANGER_MEMORY_MAX_ENTRIES := 24
@@ -1527,18 +1529,32 @@ func _experience_drop_center(region_id: String, existing_centers: Array[Vector3]
 
 
 func _experience_pack_position(origin: Vector3, region_id: String) -> Vector3:
-	var candidate := _nearest_clear_point_in_region(origin, region_id, 0.48)
-	if candidate.x != INF and water_depth_at(candidate) <= 0.20:
+	var candidate := _nearest_clear_point_in_region(origin, region_id, EXPERIENCE_PACK_CLEAR_RADIUS)
+	if _experience_pack_landing_is_valid(candidate, region_id):
 		candidate.y = 0.45
 		return candidate
-	for attempt in range(18):
+	for attempt in range(26):
 		var angle := event_rng.randf_range(0.0, TAU)
-		var retry := origin + Vector3(cos(angle), 0.0, sin(angle)) * event_rng.randf_range(1.2, 6.0)
-		retry = _nearest_clear_point_in_region(retry, region_id, 0.48)
-		if retry.x != INF and water_depth_at(retry) <= 0.20:
+		var retry := origin + Vector3(cos(angle), 0.0, sin(angle)) * event_rng.randf_range(1.8, 7.4)
+		retry = _nearest_clear_point_in_region(retry, region_id, EXPERIENCE_PACK_CLEAR_RADIUS)
+		if _experience_pack_landing_is_valid(retry, region_id):
 			retry.y = 0.45
 			return retry
 	return Vector3(INF, 0.0, INF)
+
+
+func _experience_pack_landing_is_valid(candidate: Vector3, region_id: String) -> bool:
+	if candidate.x == INF or region_id_at(candidate) != region_id or water_depth_at(candidate) > 0.20:
+		return false
+	if not is_landing_clear(candidate, EXPERIENCE_PACK_CLEAR_RADIUS):
+		return false
+	for existing_pack in experience_packs:
+		if not is_instance_valid(existing_pack) or not existing_pack.active:
+			continue
+		var spacing := Vector2(candidate.x - existing_pack.global_position.x, candidate.z - existing_pack.global_position.z).length()
+		if spacing < EXPERIENCE_PACK_MIN_SPACING:
+			return false
+	return true
 
 
 func _end_experience_drop(reason: String) -> void:
