@@ -10,6 +10,7 @@ const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
+const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 const EXPOSED_STAMINA_RATIO := 0.20
 const EXHAUSTION_ENTER_RATIO := 0.10
 const EXHAUSTION_EXIT_RATIO := 0.25
@@ -195,6 +196,11 @@ var cover_visual_state: String = "open"
 var ai_state: String = "wander"
 var ai_target: EcoActor
 var resource_target: Node3D
+var experience_pack_target: ExperiencePack
+var experience_absorb_elapsed: float = 0.0
+var experience_absorb_duration: float = 0.0
+var experience_packs_absorbed: int = 0
+var experience_from_packs: int = 0
 var hotspot_stalk_position := Vector3(INF, 0.0, INF)
 var hotspot_event_sequence: int = -1
 var ecology_trace_emit_timer: float = 0.0
@@ -220,6 +226,7 @@ var distance_travelled: float = 0.0
 var damage_dealt: float = 0.0
 var damage_taken: float = 0.0
 var sprint_seconds: float = 0.0
+var final_tracking_marker: Node3D
 var visual_root: Node3D
 var body_root: Node3D
 var selection_ring: MeshInstance3D
@@ -2113,6 +2120,23 @@ func _physics_process(delta: float) -> void:
 	_update_needs(delta)
 	if dead:
 		return
+	if has_experience_absorption_target():
+		if is_player and game.get_move_input().length() > 0.15:
+			cancel_experience_absorption("移动中断了吸收")
+		elif is_player:
+			# Do not let a button pressed during a channel execute unexpectedly after
+			# the pack has finished. Movement or damage remains the deliberate cancel.
+			game.consume_skill_request()
+			game.consume_interact_request()
+		_update_experience_absorption(delta)
+		if is_absorbing_experience():
+			desired_direction = Vector3.ZERO
+			wants_sprint = false
+			attack_intent = false
+			_apply_movement(delta)
+			_update_environment_state(delta)
+			_update_cover_state(delta)
+			return
 	if is_player:
 		_update_player_intent()
 	else:
@@ -2121,6 +2145,80 @@ func _physics_process(delta: float) -> void:
 	_update_environment_state(delta)
 	_update_cover_state(delta)
 	_try_attack()
+
+
+func is_absorbing_experience() -> bool:
+	return is_instance_valid(experience_pack_target) and experience_pack_target.active and experience_absorb_duration > 0.0
+
+
+func has_experience_absorption_target() -> bool:
+	return experience_absorb_duration > 0.0
+
+
+func experience_absorb_ratio() -> float:
+	if not is_absorbing_experience():
+		return 0.0
+	return clampf(experience_absorb_elapsed / maxf(experience_absorb_duration, 0.01), 0.0, 1.0)
+
+
+func experience_absorb_status_text() -> String:
+	if not is_absorbing_experience():
+		return ""
+	var reward := experience_pack_target.reward_preview(experience_remaining_to_level())
+	var reward_text := "升 1 级" if experience_pack_target.is_level_pack() else "+%d经验" % reward
+	return "吸收%s · %s · %.1fs" % [experience_pack_target.display_name(), reward_text, maxf(experience_absorb_duration - experience_absorb_elapsed, 0.0)]
+
+
+func begin_experience_absorption(pack: ExperiencePack) -> bool:
+	if dead or level >= MAX_LEVEL or eat_timer > 0.0 or not is_instance_valid(pack) or not pack.active:
+		return false
+	if global_position.distance_to(pack.global_position) > 2.65:
+		return false
+	if is_absorbing_experience() and experience_pack_target == pack:
+		return true
+	cancel_experience_absorption()
+	experience_pack_target = pack
+	experience_absorb_elapsed = 0.0
+	experience_absorb_duration = pack.absorb_duration(experience_remaining_to_level())
+	desired_direction = Vector3.ZERO
+	wants_sprint = false
+	attack_intent = false
+	return true
+
+
+func cancel_experience_absorption(reason: String = "") -> void:
+	var was_absorbing := has_experience_absorption_target()
+	experience_pack_target = null
+	experience_absorb_elapsed = 0.0
+	experience_absorb_duration = 0.0
+	if was_absorbing and is_player and reason != "" and game.has_method("show_hint"):
+		game.show_hint(reason)
+
+
+func _update_experience_absorption(delta: float) -> void:
+	if not is_absorbing_experience():
+		cancel_experience_absorption("经验包已被其他动物抢走")
+		return
+	if level >= MAX_LEVEL or global_position.distance_to(experience_pack_target.global_position) > 2.90:
+		cancel_experience_absorption("离开经验包，吸收已中断")
+		return
+	experience_absorb_elapsed += delta
+	if experience_absorb_elapsed < experience_absorb_duration:
+		return
+	var pack := experience_pack_target
+	var was_level_pack := pack.is_level_pack()
+	var reward := pack.reward_preview(experience_remaining_to_level())
+	if not pack.claim():
+		cancel_experience_absorption("经验包已被其他动物抢走")
+		return
+	experience_pack_target = null
+	experience_absorb_elapsed = 0.0
+	experience_absorb_duration = 0.0
+	experience_packs_absorbed += 1
+	experience_from_packs += reward
+	gain_experience(reward, pack.display_name(), "经验包")
+	if game.has_method("on_experience_pack_absorbed"):
+		game.on_experience_pack_absorbed(self, pack, reward, was_level_pack)
 
 
 func _process(delta: float) -> void:
@@ -2625,6 +2723,40 @@ func reveal_health_bar(duration: float = 4.2) -> void:
 		health_bar_root.visible = not dead
 
 
+func set_final_tracking_revealed(enabled: bool) -> void:
+	if not enabled:
+		if is_instance_valid(final_tracking_marker):
+			final_tracking_marker.queue_free()
+		final_tracking_marker = null
+		return
+	if is_instance_valid(final_tracking_marker) or dead:
+		return
+	final_tracking_marker = Node3D.new()
+	final_tracking_marker.name = "FinalTrackingMarker"
+	final_tracking_marker.position = Vector3(0.0, maxf(3.2, effective_size * 0.58 + 2.35), 0.0)
+	add_child(final_tracking_marker)
+	var marker_color := Color("#ff785f")
+	var beacon := Factory.sphere("FinalTrackingBeacon", marker_color, Vector3(0.25, 0.25, 0.25), Vector3.ZERO, 8, 5)
+	beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var beacon_material := Factory.material(marker_color, 0.28, marker_color)
+	beacon_material.emission_enabled = true
+	beacon_material.emission = marker_color
+	beacon_material.emission_energy_multiplier = 2.2
+	beacon.material_override = beacon_material
+	final_tracking_marker.add_child(beacon)
+	var label := Label3D.new()
+	label.text = "终局暴露 · Lv.%d %s" % [level, Catalog.display_name(species_id)]
+	label.position = Vector3(0.0, 0.55, 0.0)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.font_size = 30
+	label.outline_size = 8
+	label.modulate = Color("#ffd4c7")
+	label.outline_modulate = Color(0.08, 0.015, 0.012, 0.95)
+	final_tracking_marker.add_child(label)
+	reveal_health_bar(9999.0)
+
+
 func _update_player_intent() -> void:
 	var input_vector: Vector2 = game.get_move_input()
 	desired_direction = game.input_to_world(input_vector)
@@ -2872,6 +3004,22 @@ func _update_ai(delta: float) -> void:
 					var tangent := Vector3(-outward.z, 0.0, outward.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
 					desired_direction = tangent * 0.34
 					wants_sprint = false
+		"experience":
+			if level >= MAX_LEVEL or not is_instance_valid(experience_pack_target) or not experience_pack_target.active:
+				ai_state = "wander"
+				experience_pack_target = null
+				desired_direction = Vector3.ZERO
+			else:
+				var to_pack := experience_pack_target.global_position - global_position
+				var pack_distance := Vector2(to_pack.x, to_pack.z).length()
+				desired_direction = Vector3(to_pack.x, 0.0, to_pack.z).normalized()
+				wants_sprint = pack_distance > 10.0 and stamina > max_stamina * 0.48 and not exhausted
+				if Catalog.has_trait(species_id, "flying") and pack_distance < 5.5:
+					_request_landing(3.0)
+				if global_position.distance_to(experience_pack_target.global_position) <= 2.45:
+					desired_direction = Vector3.ZERO
+					wants_sprint = false
+					begin_experience_absorption(experience_pack_target)
 		"food":
 			if is_instance_valid(resource_target) and (not resource_target is FoodPatch or resource_target.active):
 				if not _water_resource_is_safe(resource_target):
@@ -3141,6 +3289,19 @@ func _think() -> void:
 			resource_target = emergency_fruit
 			return
 
+	# Experience drops are public ecological signals. Every non-max-level animal
+	# can contest them, but a wounded actor with a nearby stronger threat will not
+	# stand still for a long channel merely because the reward is rare.
+	if level < MAX_LEVEL:
+		var experience_pack := _best_experience_pack(threat_distance)
+		if is_instance_valid(experience_pack):
+			ai_state = "experience"
+			ai_target = null
+			resource_target = null
+			experience_pack_target = experience_pack
+			state_commit_timer = 1.45
+			return
+
 	if calm_timer > 0.0 and hunger < 70.0:
 		if hunger > 42.0:
 			var calm_resource := _best_food_resource(living_actors)
@@ -3220,10 +3381,12 @@ func _think() -> void:
 
 
 func _best_collapse_competitor() -> EcoActor:
-	if game.world == null or not game.world.collapse_active:
-		return null
-	if game.world.collapse_radius > game.world.world_size * 0.34:
-		return null
+	var final_tracking: bool = game.has_method("is_final_tracking_active") and bool(game.is_final_tracking_active())
+	if not final_tracking:
+		if game.world == null or not game.world.collapse_active:
+			return null
+		if game.world.collapse_radius > game.world.world_size * 0.34:
+			return null
 	var nearest_other_species: EcoActor
 	var nearest_same_species: EcoActor
 	# Once the habitat has fully converged, every survivor must be able to find a
@@ -3245,7 +3408,7 @@ func _best_collapse_competitor() -> EcoActor:
 
 
 func _collapse_competition_active() -> bool:
-	return game.world != null and game.world.collapse_active and game.world.collapse_radius <= game.world.world_size * 0.34
+	return (game.has_method("is_final_tracking_active") and game.is_final_tracking_active()) or (game.world != null and game.world.collapse_active and game.world.collapse_radius <= game.world.world_size * 0.34)
 
 
 func _best_territory_intruder() -> EcoActor:
@@ -3288,6 +3451,8 @@ func _switch_state(new_state: String, target: EcoActor) -> void:
 		escape_habitat_position = Vector3(INF, 0.0, INF)
 	ai_state = new_state
 	ai_target = target
+	if new_state != "experience" and not is_absorbing_experience():
+		experience_pack_target = null
 	if new_state != "hotspot_stalk":
 		hotspot_event_sequence = -1
 		hotspot_stalk_position = Vector3(INF, 0.0, INF)
@@ -3607,6 +3772,41 @@ func _best_wild_food(search_range: float) -> Node3D:
 		return candidate
 	var safer_food: Node3D = game.nearest_food(origin, search_range, species_id, false, excluded_id, water_breath_ratio(), hunger)
 	return safer_food if is_instance_valid(safer_food) else null
+
+
+static func experience_pack_utility(reward: int, duration: float, distance: float, actor_level: int, health_ratio: float, threat_distance: float, grants_level: bool) -> float:
+	var value_rate := float(maxi(reward, 1)) / maxf(duration, 0.2)
+	var under_level_bonus := float(MAX_LEVEL - clampi(actor_level, 1, MAX_LEVEL)) * 0.82
+	var danger_penalty := 0.0
+	if threat_distance < 14.0:
+		danger_penalty = (14.0 - threat_distance) * (1.15 + (1.0 - clampf(health_ratio, 0.0, 1.0)) * 1.8)
+	var channel_penalty := maxf(duration - 1.0, 0.0) * (2.1 if threat_distance < 20.0 else 0.72)
+	return value_rate * 1.85 + under_level_bonus + (7.0 if grants_level else 0.0) - distance * 0.20 - danger_penalty - channel_penalty
+
+
+func _best_experience_pack(threat_distance: float) -> ExperiencePack:
+	if game.world == null or not (game.world is EcoWorld) or level >= MAX_LEVEL:
+		return null
+	if health / maxf(max_health, 1.0) < 0.34 and threat_distance < 16.0:
+		return null
+	var eco_world := game.world as EcoWorld
+	var search_range := eco_world.experience_drop_attraction_radius()
+	var origin := global_position if is_inside_tree() else position
+	var best_pack: ExperiencePack
+	var best_score := -INF
+	for pack in eco_world.experience_packs:
+		if not is_instance_valid(pack) or not pack.active:
+			continue
+		var distance := Vector2(origin.x - pack.global_position.x, origin.z - pack.global_position.z).length()
+		if distance > search_range:
+			continue
+		var reward := pack.reward_preview(experience_remaining_to_level())
+		var duration := pack.absorb_duration(experience_remaining_to_level())
+		var score := experience_pack_utility(reward, duration, distance, level, health / maxf(max_health, 1.0), threat_distance, pack.is_level_pack())
+		if score > best_score:
+			best_score = score
+			best_pack = pack
+	return best_pack if best_score >= 0.0 else null
 
 
 func _best_nutrient_food(search_range: float, living_actors: Array[EcoActor]) -> FoodPatch:
@@ -4084,7 +4284,7 @@ func _update_ecology_trace(delta: float, sprinting: bool, move_direction: Vector
 
 
 func _try_attack() -> void:
-	if not attack_intent or exhausted or eat_timer > 0.0 or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
+	if not attack_intent or exhausted or eat_timer > 0.0 or is_absorbing_experience() or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
 		return
 	if is_airborne():
 		_request_landing(1.15)
@@ -4139,7 +4339,7 @@ func _try_attack() -> void:
 
 
 func use_skill(target: EcoActor = null) -> bool:
-	if dead or exhausted or eat_timer > 0.0 or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
+	if dead or exhausted or eat_timer > 0.0 or is_absorbing_experience() or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
 	# Normal attacks already honor calm_timer. Skills must follow the same rule,
 	# otherwise a fleeing animal can deal the first damage during the teaching
@@ -4712,6 +4912,8 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		return
 	if spawn_protection > 0.0:
 		return
+	if is_absorbing_experience():
+		cancel_experience_absorption("受到攻击，经验吸收被打断")
 	var threat_gap := 0
 	var opportunity_strike := false
 	var ambush_strike := false
@@ -4982,6 +5184,15 @@ func apply_knockback(direction: Vector3, strength: float) -> void:
 
 
 func try_consume_nearby() -> bool:
+	if level < MAX_LEVEL and game.world != null and game.world.has_method("nearest_experience_pack"):
+		var nearby_pack: ExperiencePack = game.world.nearest_experience_pack(global_position, 3.15)
+		if is_instance_valid(nearby_pack):
+			if Catalog.has_trait(species_id, "flying") and global_position.y > 0.92:
+				_request_landing(3.2)
+				if is_player:
+					game.show_hint("正在降落，靠近后再次点击即可吸收经验包")
+				return true
+			return begin_experience_absorption(nearby_pack)
 	var preferred_range := 4.8 if Catalog.has_trait(species_id, "flying") else 2.5
 	var preferred_resource := _best_habit_food(preferred_range)
 	var resource := preferred_resource if is_instance_valid(preferred_resource) else _best_nearby_food(preferred_range)
@@ -5131,6 +5342,12 @@ func experience_to_next_level() -> int:
 	return Catalog.experience_threshold(level, effective_size)
 
 
+func experience_remaining_to_level() -> int:
+	if level >= MAX_LEVEL:
+		return 0
+	return maxi(experience_to_next_level() - experience, 1)
+
+
 func gain_experience(amount: int, defeated_species: String = "", reason: String = "击杀") -> void:
 	if dead or level >= MAX_LEVEL or amount <= 0:
 		return
@@ -5160,6 +5377,9 @@ func _level_up() -> void:
 	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.22)
 	_update_exhaustion_state()
 	_update_growth_presentation()
+	if is_instance_valid(final_tracking_marker):
+		set_final_tracking_revealed(false)
+		set_final_tracking_revealed(true)
 	health_changed.emit(health, max_health)
 	stamina_changed.emit(stamina, max_stamina)
 	_update_health_bar()
@@ -5186,6 +5406,8 @@ func _level_up() -> void:
 func die(killer: EcoActor) -> void:
 	if dead:
 		return
+	cancel_experience_absorption()
+	set_final_tracking_revealed(false)
 	if is_instance_valid(killer):
 		last_death_cause = "combat"
 	dead = true

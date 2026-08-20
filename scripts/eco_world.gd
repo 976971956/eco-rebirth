@@ -8,9 +8,12 @@ const FOREST_TREE_V2_PATHS: Array[String] = [
 
 signal ecology_event_started(event: Dictionary)
 signal ecology_event_ended(event: Dictionary)
+signal experience_drop_started(event: Dictionary)
+signal experience_drop_ended(event: Dictionary)
 
 const Factory = preload("res://scripts/low_poly_factory.gd")
 const FoodPatchScript = preload("res://scripts/food_patch.gd")
+const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const FOREST_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/forest_floor_real_v2.jpg")
 const GRASSLAND_GROUND_TEXTURE = preload("res://assets/textures/terrain/realistic_v2/grassland_real_v2.jpg")
@@ -29,6 +32,9 @@ const LANDMARK_CLEAR_RADIUS := 5.2
 const TERRAIN_COUNTER_THRESHOLD := 0.72
 const ECOLOGY_EVENT_FIRST_BASE := 34.0
 const ECOLOGY_EVENT_REPEAT_BASE := 72.0
+const EXPERIENCE_DROP_FIRST_BASE := 46.0
+const EXPERIENCE_DROP_REPEAT_BASE := 94.0
+const EXPERIENCE_DROP_DURATION := 58.0
 const ECOLOGY_TRACE_MIN_AGE := 0.75
 const ECOLOGY_TRACE_MAX_ENTRIES := 180
 const DANGER_MEMORY_MAX_ENTRIES := 24
@@ -88,6 +94,10 @@ var obstacle_kinds: Array[String] = []
 var cover_positions: Array[Vector3] = []
 var cover_radii: Array[float] = []
 var food_patches: Array[Node] = []
+var experience_packs: Array[ExperiencePack] = []
+var active_experience_drop: Dictionary = {}
+var experience_drop_timer: float = 0.0
+var experience_drop_sequence: int = 0
 var active_ecology_event: Dictionary = {}
 var active_event_patches: Array[Node] = []
 var active_event_visual: Node3D
@@ -174,6 +184,7 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	movement_traces.clear()
 	danger_memories.clear()
 	ecology_event_timer = ecology_event_first_delay(campaign_level, event_rng.randf())
+	experience_drop_timer = experience_drop_first_delay(campaign_level, event_rng.randf())
 
 
 func _select_world_conditions() -> void:
@@ -1160,6 +1171,8 @@ func trigger_collapse() -> void:
 	collapse_active = true
 	if not active_ecology_event.is_empty():
 		_end_ecology_event("栖息地压力终止了外围资源信号")
+	if not active_experience_drop.is_empty():
+		_end_experience_drop("终局收束关闭了外围经验信号")
 	collapse_radius = world_size * 0.47
 	var center_radius := world_size * 0.18
 	for patch in food_patches:
@@ -1174,6 +1187,7 @@ func trigger_collapse() -> void:
 func _process(delta: float) -> void:
 	_process_weather(delta)
 	_process_ecology_events(delta)
+	_process_experience_drops(delta)
 	_process_ecology_traces(delta)
 	if collapse_active:
 		var min_radius := world_size * float(level_profile_data.get("collapse", COLLAPSE_MIN_RADIUS_RATIO))
@@ -1396,6 +1410,185 @@ func ecology_trace_status(observer_id: int, observer_species: String, origin: Ve
 	if not danger.is_empty():
 		return "危险记忆 · %s %s %dm" % [str(danger.get("kind", "危险残迹")), compass_direction(origin, danger.get("position", origin)), roundi(float(danger.get("distance", 0.0)))]
 	return "生态踪迹 · 暂无线索"
+
+
+static func experience_drop_first_delay(level: int, random_unit: float) -> float:
+	return EXPERIENCE_DROP_FIRST_BASE + float(clampi(level, 1, 10)) * 1.8 + clampf(random_unit, 0.0, 1.0) * 15.0
+
+
+static func experience_drop_repeat_delay(level: int, random_unit: float) -> float:
+	return EXPERIENCE_DROP_REPEAT_BASE - float(clampi(level, 1, 10) - 1) * 2.0 + clampf(random_unit, 0.0, 1.0) * 24.0
+
+
+static func experience_drop_region_count(level: int) -> int:
+	return 2 + int(floor(float(clampi(level, 1, 10) - 1) / 3.0))
+
+
+static func experience_drop_packs_per_region(level: int) -> int:
+	return 2 + int(floor(float(clampi(level, 1, 10) - 1) / 4.0))
+
+
+func _process_experience_drops(delta: float) -> void:
+	for pack_index in range(experience_packs.size() - 1, -1, -1):
+		var tracked_pack := experience_packs[pack_index]
+		if not is_instance_valid(tracked_pack) or not tracked_pack.active or tracked_pack.is_queued_for_deletion():
+			experience_packs.remove_at(pack_index)
+	if collapse_active:
+		return
+	if not active_experience_drop.is_empty():
+		var remaining := maxf(float(active_experience_drop.get("remaining", 0.0)) - delta, 0.0)
+		active_experience_drop["remaining"] = remaining
+		active_experience_drop["available"] = experience_packs.size()
+		if remaining <= 0.0 or experience_packs.is_empty():
+			_end_experience_drop("经验包已被吸收" if experience_packs.is_empty() else "经验信号已经消散")
+		return
+	experience_drop_timer = maxf(experience_drop_timer - delta, 0.0)
+	if experience_drop_timer <= 0.0:
+		start_experience_drop()
+
+
+func start_experience_drop() -> Dictionary:
+	if collapse_active or not active_experience_drop.is_empty():
+		return {}
+	experience_drop_sequence += 1
+	var region_count := experience_drop_region_count(campaign_level)
+	var packs_per_region := experience_drop_packs_per_region(campaign_level)
+	var region_pool: Array[String] = REGION_ORDER.duplicate()
+	var centers: Array[Vector3] = []
+	var region_ids: Array[String] = []
+	var region_names: Array[String] = []
+	for cluster_index in range(region_count):
+		if region_pool.is_empty():
+			region_pool = REGION_ORDER.duplicate()
+		var pool_index := event_rng.randi_range(0, region_pool.size() - 1)
+		var region_id := region_pool[pool_index]
+		region_pool.remove_at(pool_index)
+		var center := _experience_drop_center(region_id, centers)
+		if center.x == INF:
+			continue
+		centers.append(center)
+		region_ids.append(region_id)
+		region_names.append(str(REGION_NAMES.get(region_id, "未知区域")))
+		for pack_index in range(packs_per_region):
+			var angle := TAU * float(pack_index) / float(maxi(packs_per_region, 1)) + event_rng.randf_range(-0.42, 0.42)
+			var radius := event_rng.randf_range(1.4, 4.6)
+			var candidate := _experience_pack_position(center + Vector3(cos(angle), 0.0, sin(angle)) * radius, region_id)
+			if candidate.x == INF:
+				continue
+			var tier := ExperiencePackScript.tier_roll(event_rng.randf(), campaign_level)
+			var amount := ExperiencePackScript.rolled_experience(tier, campaign_level, event_rng.randf())
+			var pack := ExperiencePackScript.new()
+			pack.position = candidate
+			pack.setup(tier, amount, experience_drop_sequence, cluster_index, visual_effects_enabled, event_rng.randf_range(0.0, TAU))
+			add_child(pack)
+			experience_packs.append(pack)
+	if experience_packs.is_empty():
+		experience_drop_timer = 12.0
+		return {}
+	var level_pack_count := 0
+	for spawned_pack in experience_packs:
+		if spawned_pack.event_sequence == experience_drop_sequence and spawned_pack.is_level_pack():
+			level_pack_count += 1
+	active_experience_drop = {
+		"sequence": experience_drop_sequence,
+		"title": "进化能量雨",
+		"description": "%d处区域出现可争夺经验包；能量越强，吸收所需时间越长" % centers.size(),
+		"regions": region_ids,
+		"region_names": region_names,
+		"centers": centers,
+		"duration": EXPERIENCE_DROP_DURATION,
+		"remaining": EXPERIENCE_DROP_DURATION,
+		"available": experience_packs.size(),
+		"level_pack_count": level_pack_count,
+		"color": "#c694ff",
+	}
+	experience_drop_started.emit(active_experience_drop.duplicate(true))
+	return active_experience_drop.duplicate(true)
+
+
+func _experience_drop_center(region_id: String, existing_centers: Array[Vector3]) -> Vector3:
+	var x_sign := -1.0 if region_id in ["forest", "wetland"] else 1.0
+	var z_sign := -1.0 if region_id in ["forest", "grassland"] else 1.0
+	for attempt in range(54):
+		var radial := world_size * event_rng.randf_range(0.13, 0.35)
+		var candidate := Vector3(x_sign * radial, 0.45, z_sign * radial)
+		candidate += Vector3(event_rng.randf_range(-world_size * 0.09, world_size * 0.09), 0.0, event_rng.randf_range(-world_size * 0.09, world_size * 0.09))
+		candidate = clamp_position(candidate)
+		if region_id_at(candidate) != region_id or water_depth_at(candidate) > 0.20 or not is_landing_clear(candidate, 0.70):
+			continue
+		var separated := true
+		for other_center in existing_centers:
+			if Vector2(candidate.x - other_center.x, candidate.z - other_center.z).length() < world_size * 0.15:
+				separated = false
+				break
+		if separated:
+			return candidate
+	return Vector3(INF, 0.0, INF)
+
+
+func _experience_pack_position(origin: Vector3, region_id: String) -> Vector3:
+	var candidate := _nearest_clear_point_in_region(origin, region_id, 0.48)
+	if candidate.x != INF and water_depth_at(candidate) <= 0.20:
+		candidate.y = 0.45
+		return candidate
+	for attempt in range(18):
+		var angle := event_rng.randf_range(0.0, TAU)
+		var retry := origin + Vector3(cos(angle), 0.0, sin(angle)) * event_rng.randf_range(1.2, 6.0)
+		retry = _nearest_clear_point_in_region(retry, region_id, 0.48)
+		if retry.x != INF and water_depth_at(retry) <= 0.20:
+			retry.y = 0.45
+			return retry
+	return Vector3(INF, 0.0, INF)
+
+
+func _end_experience_drop(reason: String) -> void:
+	if active_experience_drop.is_empty():
+		return
+	var ended_event := active_experience_drop.duplicate(true)
+	ended_event["end_reason"] = reason
+	for pack in experience_packs:
+		if is_instance_valid(pack):
+			pack.retire()
+	experience_packs.clear()
+	active_experience_drop.clear()
+	experience_drop_timer = experience_drop_repeat_delay(campaign_level, event_rng.randf())
+	experience_drop_ended.emit(ended_event)
+
+
+func get_active_experience_drop() -> Dictionary:
+	return active_experience_drop.duplicate(true)
+
+
+func nearest_experience_pack(origin: Vector3, max_distance: float = INF) -> ExperiencePack:
+	var closest: ExperiencePack
+	var closest_distance := max_distance
+	for pack in experience_packs:
+		if not is_instance_valid(pack) or not pack.active:
+			continue
+		var distance := Vector2(origin.x - pack.global_position.x, origin.z - pack.global_position.z).length()
+		if distance < closest_distance:
+			closest_distance = distance
+			closest = pack
+	return closest
+
+
+func experience_drop_attraction_radius() -> float:
+	return minf(world_size * 0.48, 96.0)
+
+
+func experience_drop_status(origin: Vector3) -> String:
+	if collapse_active:
+		return "经验信号 · 终局收束期已停止"
+	if active_experience_drop.is_empty():
+		return "经验信号 · 下一次坠落 %ds" % ceili(experience_drop_timer)
+	var pack := nearest_experience_pack(origin)
+	if not is_instance_valid(pack):
+		return "经验信号 · 本轮已被争夺完毕"
+	var distance := roundi(Vector2(pack.global_position.x - origin.x, pack.global_position.z - origin.z).length())
+	return "经验信号 · %s · %s %dm · 剩%d个 / %ds" % [
+		pack.display_name(), compass_direction(origin, pack.global_position), distance,
+		experience_packs.size(), ceili(float(active_experience_drop.get("remaining", 0.0))),
+	]
 
 
 func _process_ecology_events(delta: float) -> void:

@@ -13,6 +13,7 @@ const VisualCatalog = preload("res://scripts/species_visual_catalog.gd")
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
+const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 
 var failures: Array[String] = []
 
@@ -64,9 +65,10 @@ func _run_validation() -> void:
 	_validate_ai_tactical_contract()
 	_validate_ecological_habit_contract()
 	_validate_instinct_chain_contract()
+	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.60 发布候选校验通过：30 物种三段生态本能、统一建立期、局内成长与三端发布契约正常")
+		print("[release] V1.61 发布候选校验通过：多区域经验争夺、终局三强追踪与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -298,9 +300,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.60\"") and presets.contains("application/short_version=\"1.60\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=720") and presets.contains("application/version=\"720\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.60", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.61\"") and presets.contains("application/short_version=\"1.61\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=730") and presets.contains("application/version=\"730\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.61", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -314,7 +316,7 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
-	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations,instinct_completions") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼、本能与溺水行为")
+	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations,instinct_completions,experience_packs,experience_pack_xp") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼、本能、经验争夺与溺水行为")
 	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
 	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
 	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
@@ -1249,7 +1251,7 @@ func _validate_adaptive_ui_contract() -> void:
 	var hud_backgrounds := [
 		UIScript.HUD_STATUS_BACKGROUND, UIScript.HUD_INFO_BACKGROUND,
 		UIScript.HUD_LEADERBOARD_BACKGROUND, UIScript.HUD_SKILL_BACKGROUND,
-		UIScript.HUD_TICKER_BACKGROUND, UIScript.HUD_ENEMY_BACKGROUND, UIScript.HUD_BREATH_BACKGROUND,
+		UIScript.HUD_TICKER_BACKGROUND, UIScript.HUD_ENEMY_BACKGROUND, UIScript.HUD_BREATH_BACKGROUND, UIScript.HUD_ABSORB_BACKGROUND,
 	]
 	for background_color in hud_backgrounds:
 		_expect(background_color.a >= 0.50 and background_color.a <= 0.72, "HUD 状态面板透明度超出清晰且不挡视线的范围")
@@ -1298,11 +1300,15 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(status_rect.size.y < 250.0 and info_rect.size.y < 180.0 and leaderboard_rect.size.y < 180.0, "手机 HUD 信息框仍占据过多垂直视野")
 	var skill_panel_rect := Rect2(Vector2((safe_viewport.x - UIScript.COMPACT_SKILL_SIZE.x) * 0.5, safe_viewport.y - 104.0), UIScript.COMPACT_SKILL_SIZE)
 	var breath_rect := UIScript.breath_panel_rect(safe_viewport, true, true)
+	var absorb_rect := UIScript.absorb_panel_rect(safe_viewport, true, true)
 	var intro_rect := Rect2(Vector2(safe_viewport.x * 0.5 - 360.0, 28.0), UIScript.COMPACT_INTRO_SIZE)
 	_expect(breath_rect.position.y > safe_viewport.y * 0.5, "屏息条没有位于屏幕中下区域")
 	_expect(breath_rect.end.y < skill_panel_rect.position.y and not breath_rect.intersects(skill_panel_rect), "屏息条与底部技能状态栏重叠")
+	_expect(absorb_rect.end.y < breath_rect.position.y and not absorb_rect.intersects(breath_rect), "经验吸收条与深水屏息条重叠")
+	_expect(absorb_rect.position.y > safe_viewport.y * 0.5 and absorb_rect.end.y < skill_panel_rect.position.y, "经验吸收条没有位于手机中下安全区域")
 	for touch_button_rect in touch_rects:
 		_expect(not breath_rect.intersects(touch_button_rect), "屏息条遮挡了手机战斗按钮")
+		_expect(not absorb_rect.intersects(touch_button_rect), "经验吸收条遮挡了手机战斗按钮")
 	for touch_button_rect in touch_rects:
 		_expect(not skill_panel_rect.intersects(touch_button_rect), "触控按钮仍遮挡技能状态栏")
 		_expect(not intro_rect.intersects(touch_button_rect), "物种攻略仍遮挡触控按钮")
@@ -1645,7 +1651,7 @@ func _validate_ecological_habit_contract() -> void:
 	_expect(actor_source.contains("func _best_habit_food") and actor_source.contains("func _best_habit_corpse") and actor_source.contains("habit_seek_health_ratio"), "低血 AI 不会主动寻找合适的习性资源或尸体")
 	_expect(actor_source.contains("func habit_resource_guidance_text") and actor_source.contains("preferred_resource := _best_habit_food") and actor_source.contains("func _best_nearby_food"), "玩家缺少生态本能引导、手动进食习性优先级或真实交互距离回退")
 	_expect(actor_source.contains("func _habit_resource_inside_active_area"), "AI 或玩家可能被习性引导到收束圈外资源")
-	_expect(actor_source.contains("eat_timer > 0.0 or attack_timer") and actor_source.contains("exhausted or eat_timer > 0.0 or skill_timer") and actor_source.contains("speed *= 0.55"), "进食咀嚼期间仍可全速移动、攻击或释放技能")
+	_expect(actor_source.contains("eat_timer > 0.0") and actor_source.contains("func _try_attack") and actor_source.contains("func use_skill") and actor_source.contains("speed *= 0.55"), "进食咀嚼期间仍可全速移动、攻击或释放技能")
 	_expect(actor_source.contains("has_habit_buff(\"escape\")") and actor_source.contains("has_habit_buff(\"guard\")") and actor_source.contains("has_habit_buff(\"hunt\")"), "习性短时状态没有接入实际移动或战斗")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("Catalog.habit_description") and ui_source.contains("habit_status_text") and ui_source.contains("生态本能"), "物种简报或 HUD 没有展示生态习性和资源引导")
@@ -1673,6 +1679,50 @@ func _validate_instinct_chain_contract() -> void:
 	_expect(actor_source.contains("spawn_protection = 8.0"), "玩家与 AI 没有共享可阅读入场简报的生态建立期")
 	_expect(main_source.contains("func on_instinct_stage_completed") and main_source.contains("本能成长"), "主流程没有接收本能完成反馈或成长经验")
 	_expect(ui_source.contains("InstinctGoal") and ui_source.contains("instinct_status_text") and ui_source.contains("instinct_chain_summary"), "HUD 或入场简报没有展示当前本能目标")
+
+
+func _validate_experience_drop_and_final_tracking_contract() -> void:
+	var visual_pack := ExperiencePackScript.new()
+	root.add_child(visual_pack)
+	visual_pack.setup(ExperiencePackScript.TIER_LEVEL, 0, 1, 0, true, 0.0)
+	_expect(is_instance_valid(visual_pack.visual_root) and visual_pack.visual_root.get_child_count() >= 5, "跃迁经验包没有构建可识别的发光核心、轨道和标签")
+	visual_pack.free()
+	_expect(ExperiencePackScript.tier_roll(0.0, 1) == ExperiencePackScript.TIER_LEVEL, "跃迁经验包没有保留低概率幸运掉落")
+	_expect(ExperiencePackScript.tier_roll(0.12, 1) == ExperiencePackScript.TIER_RICH, "丰厚经验包概率区间不稳定")
+	_expect(ExperiencePackScript.tier_roll(0.99, 10) == ExperiencePackScript.TIER_COMMON, "普通经验包没有保持主要掉落占比")
+	var small_xp := ExperiencePackScript.rolled_experience(ExperiencePackScript.TIER_COMMON, 1, 0.4)
+	var rich_xp := ExperiencePackScript.rolled_experience(ExperiencePackScript.TIER_RICH, 1, 0.4)
+	_expect(rich_xp > small_xp, "丰厚经验包经验量没有高于普通包")
+	_expect(ExperiencePackScript.absorption_seconds(rich_xp) > ExperiencePackScript.absorption_seconds(small_xp), "经验量越高时吸收时间没有变长")
+	_expect(ExperiencePackScript.absorption_seconds(1, true) > ExperiencePackScript.absorption_seconds(rich_xp), "直接升1级经验包没有最长吸收风险")
+	_expect(WorldScript.experience_drop_region_count(1) == 2 and WorldScript.experience_drop_region_count(10) == 5, "经验雨没有从至少2个随机区域扩展到后期5个区域")
+	_expect(WorldScript.experience_drop_packs_per_region(1) == 2 and WorldScript.experience_drop_packs_per_region(10) == 4, "每处经验包数量没有随关卡扩展")
+	var safe_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.85, 40.0, false)
+	var danger_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.35, 3.0, false)
+	_expect(safe_utility > danger_utility, "AI 抢经验包时没有计算受击打断风险")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("func begin_experience_absorption") and actor_source.contains("受到攻击，经验吸收被打断"), "玩家与 AI 没有共享可打断经验吸收")
+	_expect(actor_source.contains("ai_state = \"experience\"") and actor_source.contains("_best_experience_pack"), "AI 没有主动发现并争夺经验包")
+	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
+	_expect(world_source.contains("start_experience_drop") and world_source.contains("experience_drop_started.emit"), "世界没有周期生成多区域经验雨")
+	var main := MainScript.new()
+	main.batch_mode = true
+	var survivor_root := Node3D.new()
+	root.add_child(survivor_root)
+	var survivors: Array[EcoActor] = []
+	for index in range(3):
+		var actor := ActorScript.new()
+		actor.species_id = ["rabbit", "wolf", "bear"][index]
+		actor.level = index + 1
+		actor.position = Vector3(float(index) * 8.0, 0.0, float(index) * 3.0)
+		survivor_root.add_child(actor)
+		survivors.append(actor)
+	main._update_final_tracking(survivors)
+	_expect(main.is_final_tracking_active(), "仅剩3只动物时没有立即开启终局追踪")
+	var tracking_text := main.final_tracking_status(survivors[0], survivors)
+	_expect(tracking_text.contains("灰狼") and tracking_text.contains("棕熊") and tracking_text.contains("m"), "终局追踪没有公开另外两只动物的物种、方向和距离")
+	survivor_root.free()
+	main.free()
 
 
 func _validate_growth_hud_contract() -> void:

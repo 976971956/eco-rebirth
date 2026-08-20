@@ -35,6 +35,8 @@ const COMPACT_LEADERBOARD_SIZE := Vector2(296.0, 166.0)
 const COMPACT_SKILL_SIZE := Vector2(320.0, 88.0)
 const COMPACT_BREATH_SIZE := Vector2(360.0, 82.0)
 const BREATH_SIZE := Vector2(420.0, 90.0)
+const COMPACT_ABSORB_SIZE := Vector2(360.0, 80.0)
+const ABSORB_SIZE := Vector2(420.0, 86.0)
 const DEEP_WATER_HUD_DEPTH := 0.58
 const COMPACT_BREATH_BOTTOM_OFFSET := 198.0
 const TOUCH_BREATH_BOTTOM_OFFSET := 222.0
@@ -47,6 +49,7 @@ const HUD_SKILL_BACKGROUND := Color(0.018, 0.09, 0.075, 0.58)
 const HUD_TICKER_BACKGROUND := Color(0.055, 0.13, 0.095, 0.64)
 const HUD_ENEMY_BACKGROUND := Color(0.13, 0.035, 0.035, 0.70)
 const HUD_BREATH_BACKGROUND := Color(0.018, 0.085, 0.11, 0.68)
+const HUD_ABSORB_BACKGROUND := Color(0.07, 0.025, 0.11, 0.70)
 
 var game: Node
 var menu_root: Control
@@ -100,6 +103,9 @@ var breath_panel: PanelContainer
 var breath_label: Label
 var breath_bar: ProgressBar
 var breath_visual_state: String = ""
+var absorb_panel: PanelContainer
+var absorb_label: Label
+var absorb_bar: ProgressBar
 var hint_label: Label
 var hint_tween: Tween
 var intro_panel: PanelContainer
@@ -211,6 +217,20 @@ static func breath_panel_anchor_offset(compact_touch: bool, touch_layout: bool) 
 
 static func breath_panel_rect(viewport_size: Vector2, compact_touch: bool, touch_layout: bool) -> Rect2:
 	return Rect2(Vector2(viewport_size.x * 0.5, viewport_size.y) + breath_panel_anchor_offset(compact_touch, touch_layout), breath_panel_size_for_layout(compact_touch))
+
+
+static func absorb_panel_size_for_layout(compact_touch: bool) -> Vector2:
+	return COMPACT_ABSORB_SIZE if compact_touch else ABSORB_SIZE
+
+
+static func absorb_panel_anchor_offset(compact_touch: bool, touch_layout: bool) -> Vector2:
+	var panel_size := absorb_panel_size_for_layout(compact_touch)
+	var breath_offset := breath_panel_anchor_offset(compact_touch, touch_layout)
+	return Vector2(-panel_size.x * 0.5, breath_offset.y - panel_size.y - 14.0)
+
+
+static func absorb_panel_rect(viewport_size: Vector2, compact_touch: bool, touch_layout: bool) -> Rect2:
+	return Rect2(Vector2(viewport_size.x * 0.5, viewport_size.y) + absorb_panel_anchor_offset(compact_touch, touch_layout), absorb_panel_size_for_layout(compact_touch))
 
 
 static func breath_indicator_state(breath_ratio: float) -> String:
@@ -584,6 +604,30 @@ func _build_hud() -> void:
 	breath_bar.custom_minimum_size.y = 20.0 if touch_layout else 17.0
 	breath_box.add_child(breath_bar)
 	breath_panel.hide()
+
+	absorb_panel = PanelContainer.new()
+	absorb_panel.name = "ExperienceAbsorption"
+	absorb_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	absorb_panel.position = absorb_panel_anchor_offset(compact_touch, touch_layout)
+	absorb_panel.size = absorb_panel_size_for_layout(compact_touch)
+	absorb_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	absorb_panel.add_theme_stylebox_override("panel", _hud_panel_style(HUD_ABSORB_BACKGROUND, 16, Color(0.76, 0.52, 1.0, 0.88), 2))
+	hud_root.add_child(absorb_panel)
+	var absorb_box := VBoxContainer.new()
+	absorb_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	absorb_box.add_theme_constant_override("separation", 6)
+	absorb_panel.add_child(absorb_box)
+	absorb_label = Label.new()
+	absorb_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	absorb_label.add_theme_font_size_override("font_size", _font_size(19, 23))
+	absorb_label.add_theme_color_override("font_color", Color("#ecd8ff"))
+	absorb_label.text = "正在吸收经验"
+	absorb_box.add_child(absorb_label)
+	absorb_bar = _make_bar(Color("#b77bff"), 1.0)
+	absorb_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	absorb_bar.custom_minimum_size.y = 20.0 if touch_layout else 17.0
+	absorb_box.add_child(absorb_bar)
+	absorb_panel.hide()
 
 	var info_panel := PanelContainer.new()
 	info_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -1187,6 +1231,7 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	skill_button_icon.set_progress(cooldown_progress, skill_ready)
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
 	_update_breath_indicator(player_actor)
+	_update_experience_absorb_indicator(player_actor)
 	_update_enemy_health_display()
 
 
@@ -1225,13 +1270,28 @@ func _update_breath_indicator(player_actor: EcoActor) -> void:
 		breath_label.text = "深水屏息 · %.2fm · %.0f / %.0f 秒" % [player_actor.current_water_depth, player_actor.breath_remaining, player_actor.max_breath]
 
 
+func _update_experience_absorb_indicator(player_actor: EcoActor) -> void:
+	if absorb_panel == null or absorb_bar == null or absorb_label == null:
+		return
+	var should_show := player_actor.is_absorbing_experience()
+	absorb_panel.visible = should_show
+	if not should_show:
+		return
+	absorb_bar.max_value = maxf(player_actor.experience_absorb_duration, 0.01)
+	absorb_bar.value = clampf(player_actor.experience_absorb_elapsed, 0.0, absorb_bar.max_value)
+	absorb_label.text = "%s · 移动或受击会中断" % player_actor.experience_absorb_status_text()
+
+
 func _update_player_combat_summary(player_actor: EcoActor) -> void:
 	var tactical_status := ""
 	var tactical_color := Color("#b9d9bd")
 	var ecology_status := player_actor.ecology_leverage_status_text()
 	var chain_status := player_actor.counterplay_chain_status_text()
 	var habit_status := player_actor.habit_status_text()
-	if player_actor.exhausted:
+	if player_actor.is_absorbing_experience():
+		tactical_status = "经验吸收中 · 原地暴露，移动或受击会中断"
+		tactical_color = Color("#d9b4ff")
+	elif player_actor.exhausted:
 		tactical_status = "力竭破绽"
 		tactical_color = Color("#f1d46b")
 	elif player_actor.eat_timer > 0.0:
@@ -1305,6 +1365,9 @@ func update_leaderboard(entries: Array[Dictionary]) -> void:
 			row_color, int(entry.get("rank", 0)), int(entry.get("level", 1)), float(entry.get("size", 1.0)),
 			player_mark, str(entry.get("name", "未知")), int(entry.get("kills", 0)),
 		])
+		var tracking := str(entry.get("tracking", ""))
+		if tracking != "":
+			leaderboard_content.append_text("[color=#ff9a82]　↳ %s[/color]\n" % tracking)
 
 
 func add_battle_report(text_value: String, category: String = "战斗", color_hex: String = "#ecc89d") -> void:

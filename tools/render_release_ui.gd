@@ -4,6 +4,7 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const ActorScript = preload("res://scripts/eco_actor.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
+const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 
 
 class PreviewGame:
@@ -288,6 +289,23 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var instinct_result := root.get_texture().get_image().save_png("res://docs/images/v29-ecological-instinct.png")
+	var experience_pack := ExperiencePackScript.new()
+	game.add_child(experience_pack)
+	experience_pack.setup(ExperiencePackScript.TIER_LEVEL, 0, 1, 0, false)
+	preview_actor.experience_pack_target = experience_pack
+	preview_actor.experience_absorb_duration = ExperiencePackScript.absorption_seconds(1, true)
+	preview_actor.experience_absorb_elapsed = 2.65
+	ui.update_hud(preview_actor, 3, 20, "古木林地 · 白昼 · 晴朗", "经验信号 · 跃迁经验包 · 北 18m · 剩4个 / 41s", "终局决战 · 全员位置公开", "经验争夺 · 高价值吸收时间更长")
+	ui.update_leaderboard([
+		{"rank": 1, "name": "棕熊", "level": 5, "size": 6.7, "kills": 5, "is_player": false, "tracking": "西南 61m · 精确位置已公开"},
+		{"rank": 2, "name": "灰狼", "level": 4, "size": 4.6, "kills": 3, "is_player": false, "tracking": "东北 38m · 精确位置已公开"},
+		{"rank": 3, "name": "雪兔", "level": 1, "size": 3.0, "kills": 0, "is_player": true},
+	])
+	for _frame in range(5):
+		await process_frame
+	var experience_final_result := root.get_texture().get_image().save_png("res://docs/images/v87-experience-final-tracking.png")
+	preview_actor.cancel_experience_absorption()
+	experience_pack.free()
 	preview_actor.species_id = "rabbit"
 	preview_actor.base_data = Catalog.get_data("rabbit")
 	preview_actor.data = preview_actor.base_data.duplicate(true)
@@ -305,7 +323,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and adaptation_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_final_result == OK and adaptation_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:
