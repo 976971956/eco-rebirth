@@ -5,6 +5,7 @@ static var _terrain_shader: Shader
 static var _biome_blend_shader: Shader
 static var _water_shader: Shader
 static var _shared_faceted_material: StandardMaterial3D
+static var _shared_grass_wind_material: ShaderMaterial
 static var _faceted_sphere_cache: Dictionary = {}
 static var _foliage_card_material_cache: Dictionary = {}
 
@@ -269,6 +270,137 @@ static func foliage_card(name_text: String, texture: Texture2D, size_value: Vect
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	node.set_meta("visual_only", true)
 	return node
+
+
+## Builds a dense, single-surface grass clump from curved blade ribbons.  Vertex
+## alpha stores bend weight for the shared wind shader, so roots stay planted
+## while tips move gently.  One 18–28 blade mesh replaces the former four
+## overlapping sphere nodes and stays within the 40–120 triangle vegetation
+## budget used by Web and mobile.
+static func grass_tuft(name_text: String, base_color: Color, tip_color: Color, radius: float, height: float, blade_count: int, shape_seed: int, broadness: float = 1.0, uprightness: float = 0.5) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = name_text
+	var safe_blade_count := clampi(blade_count, 10, 28)
+	var safe_radius := maxf(radius, 0.25)
+	var safe_height := maxf(height, 0.35)
+	var safe_broadness := clampf(broadness, 0.55, 1.45)
+	var safe_uprightness := clampf(uprightness, 0.0, 1.0)
+	var generator := RandomNumberGenerator.new()
+	generator.seed = shape_seed
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for blade_index in range(safe_blade_count):
+		# A golden-angle distribution avoids the spoke-like rings produced by
+		# evenly spaced primitive cones while keeping every deterministic tuft full.
+		var angle := float(blade_index) * 2.399963 + generator.randf_range(-0.22, 0.22)
+		var radial_ratio := sqrt((float(blade_index) + 0.45) / float(safe_blade_count))
+		var root_radius := radial_ratio * safe_radius * generator.randf_range(0.68, 0.92)
+		var root := Vector3(cos(angle) * root_radius, 0.035, sin(angle) * root_radius)
+		var center_bias := lerpf(1.06, 0.76, radial_ratio)
+		var blade_height := safe_height * center_bias * generator.randf_range(0.88, 1.12)
+		var lean_angle := angle + generator.randf_range(-0.48, 0.48)
+		var lean_amount := blade_height * lerpf(0.34, 0.10, safe_uprightness) * generator.randf_range(0.72, 1.12)
+		var lean := Vector3(cos(lean_angle), 0.0, sin(lean_angle)) * lean_amount
+		var width := safe_radius * generator.randf_range(0.062, 0.098) * safe_broadness
+		if blade_index % 5 == 0:
+			blade_height *= 0.76
+			lean *= 1.18
+			width *= 1.16
+		var facing_angle := angle + PI * 0.5 + generator.randf_range(-0.68, 0.68)
+		var twist := generator.randf_range(-0.48, 0.48)
+		var centers: Array[Vector3] = [
+			root,
+			root + lean * 0.32 + Vector3.UP * blade_height * 0.55,
+			root + lean + Vector3.UP * blade_height,
+		]
+		var widths: Array[float] = [width, width * 0.70, width * 0.035]
+		var bend_weights: Array[float] = [0.0, 0.44, 1.0]
+		var seed_head: bool = blade_index % 7 == absi(shape_seed) % 7
+		var lower_color := base_color.darkened(generator.randf_range(0.10, 0.19))
+		var middle_color := base_color.lerp(tip_color, 0.38).lightened(generator.randf_range(-0.025, 0.025))
+		var peak_color := tip_color.lightened(0.035 if seed_head else generator.randf_range(-0.025, 0.025))
+		var colors: Array[Color] = [lower_color, middle_color, peak_color]
+		for segment_index in range(2):
+			var side_angle_a := facing_angle + twist * float(segment_index) / 2.0
+			var side_angle_b := facing_angle + twist * float(segment_index + 1) / 2.0
+			var side_a := Vector3(cos(side_angle_a), 0.0, sin(side_angle_a))
+			var side_b := Vector3(cos(side_angle_b), 0.0, sin(side_angle_b))
+			var left_a := centers[segment_index] - side_a * widths[segment_index]
+			var right_a := centers[segment_index] + side_a * widths[segment_index]
+			var left_b := centers[segment_index + 1] - side_b * widths[segment_index + 1]
+			var right_b := centers[segment_index + 1] + side_b * widths[segment_index + 1]
+			var color_a := _grass_vertex_color(colors[segment_index], bend_weights[segment_index])
+			var color_b := _grass_vertex_color(colors[segment_index + 1], bend_weights[segment_index + 1])
+			_add_grass_triangle(surface, left_a, right_a, left_b, color_a, color_a, color_b)
+			_add_grass_triangle(surface, right_a, right_b, left_b, color_a, color_b, color_b)
+	var mesh := surface.commit()
+	node.mesh = mesh
+	node.material_override = _grass_wind_material()
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.extra_cull_margin = 0.22
+	node.set_meta("visual_only", true)
+	node.set_meta("natural_grass_tuft", true)
+	node.set_meta("blade_count", safe_blade_count)
+	node.set_meta("triangle_count", safe_blade_count * 4)
+	return node
+
+
+static func _grass_wind_material() -> ShaderMaterial:
+	if _shared_grass_wind_material != null:
+		return _shared_grass_wind_material
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+
+varying vec4 plant_color;
+
+void vertex() {
+	plant_color = COLOR;
+	float bend = clamp(COLOR.a, 0.0, 1.0);
+	vec3 world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float broad_wind = sin(TIME * 1.05 + world_position.x * 0.105 + world_position.z * 0.073);
+	float fine_wind = sin(TIME * 1.73 + world_position.z * 0.16 - world_position.x * 0.041);
+	float gust = broad_wind * 0.72 + fine_wind * 0.28;
+	VERTEX.x += gust * 0.050 * bend * bend;
+	VERTEX.z += gust * 0.028 * bend * bend;
+}
+
+void fragment() {
+	if (!FRONT_FACING) {
+		NORMAL = -NORMAL;
+	}
+	ALBEDO = plant_color.rgb;
+	ROUGHNESS = 0.94;
+	SPECULAR = 0.12;
+	RIM = 0.018;
+	RIM_TINT = 0.22;
+}
+"""
+	_shared_grass_wind_material = ShaderMaterial.new()
+	_shared_grass_wind_material.shader = shader
+	return _shared_grass_wind_material
+
+
+static func _grass_vertex_color(color_value: Color, bend_weight: float) -> Color:
+	var result := color_value
+	result.a = clampf(bend_weight, 0.0, 1.0)
+	return result
+
+
+static func _add_grass_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color_a: Color, color_b: Color, color_c: Color) -> void:
+	var normal := (b - a).cross(c - a).normalized()
+	if normal.length_squared() < 0.001:
+		return
+	surface.set_color(color_a)
+	surface.set_normal(normal)
+	surface.add_vertex(a)
+	surface.set_color(color_b)
+	surface.set_normal(normal)
+	surface.add_vertex(b)
+	surface.set_color(color_c)
+	surface.set_normal(normal)
+	surface.add_vertex(c)
 
 
 static func sphere(name_text: String, color: Color, scale_value: Vector3, position_value: Vector3 = Vector3.ZERO, radial: int = 8, rings: int = 5) -> MeshInstance3D:

@@ -68,7 +68,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.66 发布候选校验通过：开局物种简报需手动关闭，暂停保护与移动端触控契约正常")
+		print("[release] V1.67 发布候选校验通过：四生态区自然草丛、轻风双面材质与移动端三角面预算正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -311,9 +311,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.66\"") and presets.contains("application/short_version=\"1.66\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=780") and presets.contains("application/version=\"780\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.66", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.67\"") and presets.contains("application/short_version=\"1.67\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=790") and presets.contains("application/version=\"790\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.67", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -393,6 +393,29 @@ func _validate_visual_kit_contract() -> void:
 	var foliage_texture := load(tree_texture_paths[0]) as Texture2D
 	var foliage_card := Factory.foliage_card("FoliageContract", foliage_texture, Vector2(4.0, 6.0))
 	_expect(foliage_card.mesh is QuadMesh and foliage_card.get_meta("visual_only", false) == true, "V4 写实树木没有使用无碰撞共享植被卡")
+	var grass_tuft := Factory.grass_tuft("GrassContract", Color("#34543a"), Color("#718250"), 1.30, 1.28, 28, 20260823, 1.0, 0.45)
+	_expect(grass_tuft.mesh is ArrayMesh and grass_tuft.get_meta("natural_grass_tuft", false) == true, "自然草丛没有生成单体程序网格")
+	_expect(int(grass_tuft.get_meta("triangle_count", 0)) == 112 and int(grass_tuft.get_meta("blade_count", 0)) == 28, "高画质自然草丛超出 120 三角面预算或叶片数量异常")
+	if grass_tuft.mesh is ArrayMesh:
+		var grass_arrays := (grass_tuft.mesh as ArrayMesh).surface_get_arrays(0)
+		var grass_vertices: PackedVector3Array = grass_arrays[Mesh.ARRAY_VERTEX]
+		var grass_colors: PackedColorArray = grass_arrays[Mesh.ARRAY_COLOR]
+		var grass_normals: PackedVector3Array = grass_arrays[Mesh.ARRAY_NORMAL]
+		var grass_max_height := 0.0
+		var grass_max_radius := 0.0
+		var grass_min_bend := 1.0
+		var grass_max_bend := 0.0
+		for grass_vertex in grass_vertices:
+			grass_max_height = maxf(grass_max_height, grass_vertex.y)
+			grass_max_radius = maxf(grass_max_radius, Vector2(grass_vertex.x, grass_vertex.z).length())
+		for grass_color in grass_colors:
+			grass_min_bend = minf(grass_min_bend, grass_color.a)
+			grass_max_bend = maxf(grass_max_bend, grass_color.a)
+		_expect(grass_vertices.size() == 336 and grass_colors.size() == grass_vertices.size() and grass_normals.size() == grass_vertices.size(), "自然草丛网格缺少预期的叶片顶点、颜色或法线")
+		_expect(grass_max_height > 1.0 and grass_max_radius > 0.85, "自然草丛没有形成足够的立体掩护轮廓")
+		_expect(grass_min_bend <= 0.001 and grass_max_bend >= 0.999, "自然草丛没有用顶点权重固定根部并驱动叶尖")
+	var grass_material := grass_tuft.material_override as ShaderMaterial
+	_expect(grass_material != null and grass_material.shader != null and grass_material.shader.code.contains("TIME") and grass_material.shader.code.contains("FRONT_FACING"), "自然草丛缺少三端兼容的轻风或双面光照")
 	var faceted := Factory.sphere("VisualContract", Color("#a86f43"), Vector3.ONE, Vector3.ZERO, 8, 5)
 	_expect(faceted.mesh is ArrayMesh, "V3 物种基础体没有使用程序曲面网格")
 	if faceted.mesh is ArrayMesh:
@@ -414,7 +437,10 @@ func _validate_visual_kit_contract() -> void:
 				normals_by_vertex[vertex] = normals[vertex_index]
 		_expect(shared_vertex_count > 0 and minimum_shared_normal_dot > 0.98, "V3 物种相邻曲面仍使用割裂的逐面法线")
 	var factory_source := FileAccess.get_file_as_string("res://scripts/low_poly_factory.gd")
-	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material") and factory_source.contains("foliage_card"), "V4 有机曲面、连续生态地表或写实植被卡实现缺失")
+	_expect(factory_source.contains("_organic_vertex_color") and factory_source.contains("biome_blend_material") and factory_source.contains("foliage_card") and factory_source.contains("grass_tuft"), "V4 有机曲面、连续生态地表或自然草丛实现缺失")
+	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
+	_expect(WorldScript.TACTICAL_COVER_PROFILES.size() == 4 and world_source.contains("NaturalGrassTuft"), "四生态区自然草丛档案或运行时接入不完整")
+	_expect(not world_source.contains("Factory.sphere(\"Bush\""), "地图仍在使用横向球体串作为战术草丛")
 	var loft := Factory.loft("LoftWindingContract", Color("#7f6248"), [Vector3(0.0, 0.7, 0.9), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 1.25, -1.0)], [Vector2(0.42, 0.36), Vector2(0.66, 0.58), Vector2(0.28, 0.25)], 8)
 	if loft.mesh is ArrayMesh:
 		var loft_arrays := (loft.mesh as ArrayMesh).surface_get_arrays(0)
@@ -433,6 +459,7 @@ func _validate_visual_kit_contract() -> void:
 	_expect(actor_source.contains("game.get(\"batch_mode\") == true"), "缺少 batch_mode 字段的预览/工具场景仍会对 null 调用 bool 构造")
 	faceted.free()
 	loft.free()
+	grass_tuft.free()
 	foliage_card.free()
 
 

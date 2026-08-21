@@ -61,6 +61,12 @@ const REGION_LANDMARK_PROFILES := {
 	"wetland": {"title": "浅水湿地", "tint": "#8fd5cf", "accent": "#69d8dd", "motif": "reed_fan"},
 	"highland": {"title": "岩丘高地", "tint": "#d4c493", "accent": "#e6d29a", "motif": "stone_peak"},
 }
+const TACTICAL_COVER_PROFILES := {
+	"forest": {"base": "#304f35", "tip": "#617848", "radius": 1.30, "height": 1.24, "broadness": 1.28, "uprightness": 0.28},
+	"grassland": {"base": "#51612f", "tip": "#898348", "radius": 1.38, "height": 1.34, "broadness": 0.92, "uprightness": 0.40},
+	"wetland": {"base": "#31564c", "tip": "#637d58", "radius": 1.22, "height": 1.58, "broadness": 0.70, "uprightness": 0.84},
+	"highland": {"base": "#625e38", "tip": "#917b4e", "radius": 1.28, "height": 1.08, "broadness": 0.84, "uprightness": 0.50},
+}
 
 const LEVEL_WORLD_PROFILES := [
 	{"id": "newborn_grove", "title": "新生林地", "rule": "落果丰足 · 安全浅滩 · 晴朗白昼", "focus": ["forest"], "tree": 1.14, "rock": 0.72, "cover": 1.14, "props": 1.04, "food": 1.18, "water": 0.72, "water_depth": 0.68, "side_trails": 2, "event": 1.00, "collapse": 0.24, "phases": ["day"], "weather": ["clear"], "accent": "#9fd99a", "signature": 3},
@@ -140,6 +146,10 @@ static func level_identity(level: int) -> String:
 
 static func level_rule_summary(level: int) -> String:
 	return str(level_profile(level).get("rule", "随机生态 · 生存竞争"))
+
+
+static func tactical_cover_profile(region_id: String) -> Dictionary:
+	return Dictionary(TACTICAL_COVER_PROFILES.get(region_id, TACTICAL_COVER_PROFILES["forest"])).duplicate(true)
 
 
 func current_level_profile() -> Dictionary:
@@ -876,25 +886,35 @@ func _build_bushes() -> void:
 	var bush_count := int(round(26 * density_scale * float(level_profile_data.get("cover", 1.0))))
 	for i in range(bush_count):
 		var pos := _random_decor_position(3.0)
+		var region_id := region_id_at(pos)
+		var profile := tactical_cover_profile(region_id)
 		var bush := Node3D.new()
 		bush.name = "TacticalCover_%02d" % i
 		bush.position = pos
 		decoration_root.add_child(bush)
 		bush.rotation.y = rng.randf_range(0.0, TAU)
-		var tint: Color
-		match region_id_at(pos):
-			"forest": tint = Color.from_hsv(rng.randf_range(0.29, 0.37), rng.randf_range(0.48, 0.64), rng.randf_range(0.31, 0.46))
-			"grassland": tint = Color.from_hsv(rng.randf_range(0.19, 0.29), rng.randf_range(0.50, 0.67), rng.randf_range(0.44, 0.60))
-			"wetland": tint = Color.from_hsv(rng.randf_range(0.36, 0.44), rng.randf_range(0.38, 0.58), rng.randf_range(0.34, 0.50))
-			_: tint = Color.from_hsv(rng.randf_range(0.13, 0.24), rng.randf_range(0.36, 0.55), rng.randf_range(0.39, 0.55))
 		var bush_scale := rng.randf_range(0.78, 1.18)
-		for j in range(4):
-			var piece := Factory.sphere("Bush", tint.lightened(j * 0.022), Vector3(1.05, 0.72, 0.92) * bush_scale, Vector3((j - 1.5) * 0.48 * bush_scale, 0.48 + (j % 2) * 0.18, rng.randf_range(-0.28, 0.28)), 8, 5)
-			bush.add_child(piece)
-		if rng.randf() < 0.28:
-			var flower_color: Color = [Color("#e7d58c"), Color("#d7a6a0"), Color("#b9cce5")][rng.randi_range(0, 2)]
-			for flower_index in range(3):
-				bush.add_child(Factory.sphere("Wildflower", flower_color, Vector3(0.13, 0.10, 0.13), Vector3((flower_index - 1) * 0.55, 1.02 + flower_index * 0.06, rng.randf_range(-0.20, 0.20)), 7, 4))
+		bush.scale = Vector3(bush_scale, bush_scale * rng.randf_range(0.92, 1.08), bush_scale)
+		bush.set_meta("cover_region", region_id)
+		bush.set_meta("visual_only", true)
+		var color_shift := rng.randf_range(-0.045, 0.055)
+		var base_color := Color(str(profile["base"]))
+		var tip_color := Color(str(profile["tip"]))
+		base_color = base_color.lightened(color_shift) if color_shift >= 0.0 else base_color.darkened(-color_shift)
+		tip_color = tip_color.lightened(color_shift * 0.65) if color_shift >= 0.0 else tip_color.darkened(-color_shift * 0.65)
+		var blade_count: int = {"low": 18, "medium": 24, "high": 28}.get(quality_preset, 24)
+		var grass := Factory.grass_tuft(
+			"NaturalGrassTuft",
+			base_color,
+			tip_color,
+			float(profile["radius"]),
+			float(profile["height"]),
+			blade_count,
+			rng.randi(),
+			float(profile["broadness"]),
+			float(profile["uprightness"])
+		)
+		bush.add_child(grass)
 		cover_positions.append(pos)
 		cover_radii.append(1.72 * bush_scale)
 
