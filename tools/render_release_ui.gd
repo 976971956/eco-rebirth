@@ -76,7 +76,7 @@ func _render() -> void:
 	ui.show_hud(preview_actor, game.world_seed, 1, 2, false)
 	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态踪迹 · 暂无线索")
 	ui.touch_root.show()
-	ui.intro_panel.hide()
+	ui.hide_species_intro()
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
 	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
@@ -256,7 +256,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var level_identity_result := root.get_texture().get_image().save_png("res://docs/images/v41-ten-level-identity.png")
-	ui.intro_panel.hide()
+	ui.hide_species_intro()
 	preview_actor.species_id = "otter"
 	preview_actor.data = Catalog.get_data("otter")
 	preview_actor.max_health = float(preview_actor.data["health"])
@@ -272,7 +272,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var water_guide_result := root.get_texture().get_image().save_png("res://docs/images/v71-water-species-guide.png")
-	ui.intro_panel.hide()
+	ui.hide_species_intro()
 	ui.show_hint("氧气不足：立即游向浅滩；抓住活鱼可恢复生命并降低饥饿")
 	for _frame in range(5):
 		await process_frame

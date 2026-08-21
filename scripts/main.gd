@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.65"
+const RELEASE_VERSION := "1.66"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -142,6 +142,7 @@ func _ready() -> void:
 	ui.tutorial_skipped.connect(_skip_tutorial)
 	ui.battle_report_opened.connect(_on_battle_report_opened)
 	ui.battle_report_closed.connect(_on_battle_report_closed)
+	ui.species_intro_closed.connect(_on_species_intro_closed)
 	ui.orientation_blocked_changed.connect(_on_orientation_blocked_changed)
 	ui.adaptation_selected.connect(_on_adaptation_selected)
 	audio.set_context("menu")
@@ -406,7 +407,13 @@ func _start_new_world(free_mode: bool = false) -> void:
 		world.prewarm_experience_pack_visuals(player.global_position)
 		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode)
 		ui.update_leaderboard(_build_level_leaderboard())
-		ui.show_species_intro(player.species_id, world.current_level_profile())
+		var requires_intro_confirmation := not benchmark_mode and "--autoplay" not in OS.get_cmdline_user_args()
+		if requires_intro_confirmation:
+			state = "intro"
+			get_tree().paused = true
+			ui.show_species_intro(player.species_id, world.current_level_profile())
+		else:
+			ui.hide_species_intro()
 		ui.add_event(("自由模式 · %s · %s" % [WorldScript.level_identity(current_level), Catalog.display_name(player.species_id)]) if run_uses_free_mode else ("%s · 新的生态已经苏醒" % WorldScript.level_identity(current_level)), "#a8e3ac")
 		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
 		ui.add_event("生态本能：%s" % player.instinct_status_text().replace("\n", " · "), "#f0d681")
@@ -424,6 +431,15 @@ func _start_new_world(free_mode: bool = false) -> void:
 			audio.play_sfx("world")
 		_on_orientation_blocked_changed(ui.is_orientation_blocked())
 		_begin_tutorial_if_needed()
+
+
+func _on_species_intro_closed() -> void:
+	if state != "intro":
+		return
+	state = "playing"
+	get_tree().paused = orientation_blocked
+	if audio != null:
+		audio.set_context("game")
 
 
 func _select_player_roster_index(roster: Array[String]) -> int:

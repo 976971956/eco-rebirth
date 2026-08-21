@@ -68,7 +68,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.65 发布候选校验通过：60秒全图经验雨、10–100包规模、3D经验核心与地图增长契约正常")
+		print("[release] V1.66 发布候选校验通过：开局物种简报需手动关闭，暂停保护与移动端触控契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -311,9 +311,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.65\"") and presets.contains("application/short_version=\"1.65\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=770") and presets.contains("application/version=\"770\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.65", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.66\"") and presets.contains("application/short_version=\"1.66\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=780") and presets.contains("application/version=\"780\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.66", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1341,6 +1341,26 @@ func _validate_adaptive_ui_contract() -> void:
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")
 	_expect(ui_source.contains("PRESET_CENTER_BOTTOM") and ui_source.contains("DeepWaterBreath") and ui_source.contains("_update_breath_indicator"), "深水屏息进度条没有放在中下 HUD 或接入逐帧更新")
 	_expect(ui_source.contains("ActionIcon") and ui_source.contains("skill_button_name_label") and ui_source.contains("skill_button_state_label"), "右侧战斗按钮仍以纯文字显示主动技能")
+	_expect(UIScript.INTRO_CLOSE_TOUCH_SIZE.x >= 96.0 and UIScript.INTRO_CLOSE_TOUCH_SIZE.y >= 52.0, "手机开局简报关闭按钮触摸区过小")
+	_expect(ui_source.contains("SpeciesIntroClose") and ui_source.contains("hide_species_intro(true)"), "物种攻略简报没有明确的手动关闭按钮")
+	_expect(not ui_source.contains("intro_tween.tween_interval"), "物种攻略简报仍会按计时器自动关闭")
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("state = \"intro\"") and main_source.contains("get_tree().paused = true") and main_source.contains("func _on_species_intro_closed"), "主流程没有在开局简报期间暂停世界")
+	_expect(main_source.contains("not benchmark_mode") and main_source.contains("\"--autoplay\" not in OS.get_cmdline_user_args()"), "自动烟测或性能基准会被手动关闭简报挂起")
+	var intro_ui := UIScript.new()
+	root.add_child(intro_ui)
+	intro_ui.setup(null)
+	intro_ui.menu_root.hide()
+	intro_ui.hud_root.show()
+	intro_ui.touch_root.show()
+	var intro_close_state := [false]
+	intro_ui.species_intro_closed.connect(func(): intro_close_state[0] = true)
+	intro_ui.show_species_intro("rabbit", WorldScript.level_profile(1))
+	_expect(intro_ui.intro_panel.visible and intro_ui.intro_tween == null, "物种攻略简报没有持续显示等待玩家确认")
+	_expect(not intro_ui.touch_root.visible, "开局简报期间仍可触发摇杆或战斗键")
+	intro_ui.intro_close_button.pressed.emit()
+	_expect(not intro_ui.intro_panel.visible and bool(intro_close_state[0]), "点击关闭按钮没有关闭简报或通知主流程")
+	intro_ui.free()
 
 
 func _validate_multitouch_joystick_contract() -> void:

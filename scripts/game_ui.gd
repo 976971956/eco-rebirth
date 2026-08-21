@@ -13,6 +13,7 @@ signal pause_requested
 signal tutorial_skipped
 signal battle_report_opened
 signal battle_report_closed
+signal species_intro_closed
 signal orientation_blocked_changed(blocked: bool)
 signal adaptation_selected(route_id: String)
 
@@ -37,6 +38,8 @@ const COMPACT_BREATH_SIZE := Vector2(360.0, 82.0)
 const BREATH_SIZE := Vector2(420.0, 90.0)
 const COMPACT_ABSORB_SIZE := Vector2(360.0, 80.0)
 const ABSORB_SIZE := Vector2(420.0, 86.0)
+const INTRO_CLOSE_TOUCH_SIZE := Vector2(128.0, 52.0)
+const INTRO_CLOSE_DESKTOP_SIZE := Vector2(112.0, 46.0)
 const DEEP_WATER_HUD_DEPTH := 0.58
 const COMPACT_BREATH_BOTTOM_OFFSET := 198.0
 const TOUCH_BREATH_BOTTOM_OFFSET := 222.0
@@ -113,6 +116,7 @@ var intro_panel: PanelContainer
 var intro_title: Label
 var intro_body: Label
 var intro_controls: Label
+var intro_close_button: Button
 var battle_ticker_button: Button
 var battle_reports: Array[Dictionary] = []
 var battle_ticker_index: int = -1
@@ -819,21 +823,37 @@ func _build_intro() -> void:
 	intro_panel.set_anchors_preset(Control.PRESET_CENTER_TOP if touch_layout else Control.PRESET_CENTER)
 	intro_panel.position = Vector2(-360, 28) if compact_touch else (Vector2(-400, 40) if touch_layout else Vector2(-390, -220))
 	intro_panel.size = COMPACT_INTRO_SIZE if compact_touch else (Vector2(640, 410) if touch_layout else Vector2(780, 440))
-	intro_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.94), 24, Color(0.61, 0.92, 0.61, 0.62), 2))
+	intro_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.02, 0.10, 0.085, 0.985), 24, Color(0.61, 0.92, 0.61, 0.62), 2))
 	hud_root.add_child(intro_panel)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 12)
+	box.add_theme_constant_override("separation", 6)
 	intro_panel.add_child(box)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	box.add_child(header)
+	var header_spacer := Control.new()
+	header_spacer.custom_minimum_size.x = INTRO_CLOSE_TOUCH_SIZE.x if touch_layout else INTRO_CLOSE_DESKTOP_SIZE.x
+	header.add_child(header_spacer)
 	var eyebrow := Label.new()
 	eyebrow.text = "本次轮回"
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	eyebrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	eyebrow.add_theme_font_size_override("font_size", 15)
 	eyebrow.add_theme_color_override("font_color", Color("#8fd898"))
-	box.add_child(eyebrow)
+	header.add_child(eyebrow)
+	intro_close_button = Button.new()
+	intro_close_button.name = "SpeciesIntroClose"
+	intro_close_button.text = "关闭并开始"
+	intro_close_button.focus_mode = Control.FOCUS_NONE
+	_style_button(intro_close_button, false)
+	intro_close_button.custom_minimum_size = INTRO_CLOSE_TOUCH_SIZE if touch_layout else INTRO_CLOSE_DESKTOP_SIZE
+	intro_close_button.add_theme_font_size_override("font_size", _font_size(17, 20))
+	intro_close_button.pressed.connect(func(): hide_species_intro(true))
+	header.add_child(intro_close_button)
 	intro_title = Label.new()
 	intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	intro_title.add_theme_font_size_override("font_size", _font_size(38, 40))
+	intro_title.add_theme_font_size_override("font_size", _font_size(38, 38))
 	intro_title.add_theme_color_override("font_color", Color("#f4f0cd"))
 	box.add_child(intro_title)
 	intro_body = Label.new()
@@ -841,14 +861,14 @@ func _build_intro() -> void:
 	intro_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intro_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	intro_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	intro_body.add_theme_font_size_override("font_size", _font_size(18, 20))
+	intro_body.add_theme_font_size_override("font_size", _font_size(18, 19))
 	intro_body.add_theme_color_override("font_color", Color("#dfecd9"))
 	box.add_child(intro_body)
 	intro_controls = Label.new()
 	intro_controls.text = "WASD / 摇杆移动　Shift 冲刺　按住攻击　空格释放技能　E 进食"
 	intro_controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intro_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	intro_controls.add_theme_font_size_override("font_size", _font_size(17, 19))
+	intro_controls.add_theme_font_size_override("font_size", _font_size(17, 18))
 	intro_controls.add_theme_color_override("font_color", Color(0.75, 0.86, 0.75, 0.82))
 	box.add_child(intro_controls)
 
@@ -1173,10 +1193,27 @@ func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> v
 	intro_panel.modulate = Color.WHITE
 	intro_panel.move_to_front()
 	intro_panel.show()
-	intro_tween = create_tween()
-	intro_tween.tween_interval(8.0)
-	intro_tween.tween_property(intro_panel, "modulate", Color(1, 1, 1, 0), 0.6)
-	intro_tween.tween_callback(intro_panel.hide)
+	if touch_root != null:
+		touch_root.hide()
+	attack_held = false
+	sprint_held = false
+	skill_requested = false
+	interact_requested = false
+
+
+func hide_species_intro(notify_closed: bool = false) -> void:
+	_cancel_intro_tween()
+	if intro_panel != null:
+		intro_panel.modulate = Color.WHITE
+		intro_panel.hide()
+	if touch_root != null and hud_root != null and hud_root.visible:
+		touch_root.visible = _uses_touch_layout()
+	attack_held = false
+	sprint_held = false
+	skill_requested = false
+	interact_requested = false
+	if notify_closed:
+		species_intro_closed.emit()
 
 
 func _cancel_intro_tween() -> void:
