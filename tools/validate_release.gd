@@ -68,7 +68,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.63 发布候选校验通过：棕熊写实体态、专属步态、移动端预算与三端发布契约正常")
+		print("[release] V1.64 发布候选校验通过：棕熊厚重成年体态、专属步态、移动端预算与三端发布契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -300,9 +300,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.63\"") and presets.contains("application/short_version=\"1.63\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=750") and presets.contains("application/version=\"750\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.63", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.64\"") and presets.contains("application/short_version=\"1.64\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=760") and presets.contains("application/version=\"760\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.64", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -666,7 +666,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(total_mobile_vertices <= 140000, "三十种外部动物 Mobile 模型总顶点超出 140000 性能基线")
 	print("[visual] external=%d fourth_batch=%d mobile_vertices=%d budget=140000" % [VisualCatalog.EXTERNAL_SPECIES.size(), VisualCatalog.FOURTH_BATCH_SPECIES.size(), total_mobile_vertices])
 	var bear_builder_source := FileAccess.get_file_as_string("res://tools/blender/build_cinematic_bear.py")
-	_expect(bear_builder_source.contains("adult_brown_bear_shouldered_plantigrade_v2"), "棕熊构建器没有锁定成年高肩掌行体态 V2")
+	_expect(bear_builder_source.contains("adult_brown_bear_heavy_barrel_plantigrade_v3"), "棕熊构建器没有锁定成年厚胸深腹掌行体态 V3")
+	_expect(bear_builder_source.contains("adult_brown_bear_heavy_barrel_deep_belly_plantigrade_paws"), "棕熊构建器没有锁定厚胸深腹与承重前肢解剖契约")
 	_expect(bear_builder_source.contains("def create_bear_actions") and bear_builder_source.contains("bear_specific_four_beat_walk_and_rolling_charge"), "棕熊仍在复用通用重型动物步态")
 	_expect(bear_builder_source.contains("Brown-bear tails are mostly hidden") and not bear_builder_source.contains("BearTailBaseSilhouette"), "棕熊短尾退化为独立球体轮廓")
 	_expect(bear_builder_source.contains("BearRoundEarSilhouette") and bear_builder_source.contains("grounded plantigrade shape"), "棕熊圆耳或连续掌行足契约丢失")

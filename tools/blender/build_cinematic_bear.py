@@ -42,7 +42,7 @@ def bear_config() -> dict:
     # Adult brown bears are compact, broad and plantigrade.  The shared heavy
     # preset is deliberately overridden so this rig cannot drift back toward
     # the long-necked, column-legged silhouette used by the first prototype.
-    cfg.update(width=0.90, height=0.86, length=1.54, leg=0.72, paw=0.30, head=0.53, muzzle=0.34, neck=0.32, tail=0.15, ear=0.12)
+    cfg.update(width=0.98, height=0.94, length=1.54, leg=0.72, paw=0.30, head=0.53, muzzle=0.34, neck=0.36, tail=0.15, ear=0.12)
     cfg["v3"].update(
         gait="lumber",
         sprint_gait="charge",
@@ -51,8 +51,8 @@ def bear_config() -> dict:
         stance=0.78,
         upper_thickness=1.30,
         lower_thickness=1.04,
-        chest_mass=1.24,
-        rump_mass=1.10,
+        chest_mass=1.38,
+        rump_mass=1.24,
         body_bob=0.040,
         head_bob=0.026,
         attack="swipe",
@@ -135,11 +135,11 @@ def build_bear_rig() -> tuple[bpy.types.Object, dict[str, tuple[float, float, fl
     if len(rig.data.bones) != 22:
         raise RuntimeError(f"bear runtime rig is not the 22-bone contract: {len(rig.data.bones)}")
     rig["eco_species"] = "bear"
-    rig["rig_version"] = 7
+    rig["rig_version"] = 8
     rig["skin_mode"] = "project_authored_weighted_cinematic"
     rig["source_reference_sha256"] = SOURCE_SHA256
     rig["source_archive_sha256"] = ARCHIVE_SHA256
-    rig["anatomy_profile"] = "adult_brown_bear_shouldered_plantigrade_v2"
+    rig["anatomy_profile"] = "adult_brown_bear_heavy_barrel_plantigrade_v3"
     rig["locomotion_profile"] = "bear_specific_four_beat_walk_and_rolling_charge"
     rig["surface_profile"] = "tinted_fur_pbr_wet_nose_keratin_claws"
     rig["limb_segments"] = 3
@@ -260,10 +260,10 @@ def skin_continuous_bear(body: bpy.types.Object, rig: bpy.types.Object) -> None:
         "Leg_LH", "Lower_LH", "Paw_LH", "Leg_RH", "Lower_RH", "Paw_RH",
     ]
     radius = {
-        "Spine": 0.90, "Chest": 0.92, "Neck": 0.62, "Head": 0.56,
-        "Leg_LF": 0.40, "Leg_RF": 0.40, "Leg_LH": 0.40, "Leg_RH": 0.40,
-        "Lower_LF": 0.29, "Lower_RF": 0.29, "Lower_LH": 0.29, "Lower_RH": 0.29,
-        "Paw_LF": 0.36, "Paw_RF": 0.36, "Paw_LH": 0.36, "Paw_RH": 0.36,
+        "Spine": 0.98, "Chest": 1.02, "Neck": 0.69, "Head": 0.60,
+        "Leg_LF": 0.45, "Leg_RF": 0.45, "Leg_LH": 0.45, "Leg_RH": 0.45,
+        "Lower_LF": 0.32, "Lower_RF": 0.32, "Lower_LH": 0.32, "Lower_RH": 0.32,
+        "Paw_LF": 0.38, "Paw_RF": 0.38, "Paw_LH": 0.38, "Paw_RH": 0.38,
     }
     weights = {name: [0.0] * len(body.data.vertices) for name in deform_names}
     for vertex in body.data.vertices:
@@ -293,11 +293,11 @@ def skin_continuous_bear(body: bpy.types.Object, rig: bpy.types.Object) -> None:
 
 def build_bear_body(hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict, coat: bpy.types.Material, accent: bpy.types.Material) -> bpy.types.Object:
     elements = [
-        ((0.0, 1.18, 0.56), (0.81, 0.67, 0.62), 2.34),
-        ((0.0, 1.18, 0.08), (0.89, 0.75, 0.72), 2.38),
-        ((0.0, 1.31, -0.42), (0.98, 0.84, 0.66), 2.38),
-        ((0.0, 1.59, -0.43), (0.76, 0.48, 0.48), 2.26),
-        ((0.0, 1.38, -0.70), (0.75, 0.67, 0.50), 2.46),
+        ((0.0, 1.16, 0.56), (0.91, 0.78, 0.68), 2.34),
+        ((0.0, 1.14, 0.08), (1.00, 0.90, 0.80), 2.38),
+        ((0.0, 1.28, -0.40), (1.08, 0.96, 0.73), 2.38),
+        ((0.0, 1.58, -0.42), (0.84, 0.57, 0.54), 2.26),
+        ((0.0, 1.37, -0.68), (0.82, 0.73, 0.54), 2.46),
         ((0.0, 1.36, -0.96), (0.65, 0.59, 0.49), 2.42),
         ((0.0, 1.31, -1.20), (0.59, 0.51, 0.44), 2.40),
         ((0.0, 1.21, -1.43), (0.40, 0.31, 0.31), 2.46),
@@ -313,18 +313,18 @@ def build_bear_body(hero: bool, rig: bpy.types.Object, anchors: dict, cfg: dict,
         lower_mid = Vector(joint).lerp(Vector(ankle), 0.52)
         paw_center = Vector((toe[0], 0.155, toe[2] - (0.025 if front else 0.01)))
         elements.extend([
-            (tuple(Vector(hip).lerp(Vector(joint), 0.18)), (0.40 if front else 0.38, 0.40, 0.35), 2.56),
-            (tuple(upper_mid), (0.345 if front else 0.335, 0.37, 0.30), 2.60),
-            (tuple(joint), (0.30, 0.29, 0.27), 2.64),
-            (tuple(lower_mid), (0.255, 0.33, 0.24), 2.64),
-            (tuple(ankle), (0.27, 0.23, 0.26), 2.66),
+            (tuple(Vector(hip).lerp(Vector(joint), 0.18)), (0.46 if front else 0.43, 0.45, 0.40 if front else 0.39), 2.56),
+            (tuple(upper_mid), (0.38 if front else 0.36, 0.40, 0.33), 2.60),
+            (tuple(joint), (0.325, 0.31, 0.29), 2.64),
+            (tuple(lower_mid), (0.275, 0.34, 0.255), 2.64),
+            (tuple(ankle), (0.29, 0.25, 0.28), 2.66),
             (tuple(paw_center), (0.275, 0.18, 0.29 if front else 0.28), 2.68),
         ])
     # OrganicBodyV2 is the established cross-species runtime validator token;
     # keep it stable while the mesh's own versioned metadata advances to V3.
     body = PIPELINE.metaball_mesh("BearOrganicBodyV2_SourceConnected", elements, coat, hero)
     body.data.name = "BrownBearOrganicBodyV3SourceMesh"
-    body["eco_anatomy_contract"] = "adult_brown_bear_compact_head_deep_barrel_plantigrade_paws"
+    body["eco_anatomy_contract"] = "adult_brown_bear_heavy_barrel_deep_belly_plantigrade_paws"
     body["eco_surface_pattern"] = "authored_brown_fur_pbr"
     accent_index = PIPELINE.append_material(body, accent)
     for polygon in body.data.polygons:
