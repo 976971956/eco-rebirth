@@ -68,7 +68,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.64 发布候选校验通过：棕熊厚重成年体态、专属步态、移动端预算与三端发布契约正常")
+		print("[release] V1.65 发布候选校验通过：60秒全图经验雨、10–100包规模、3D经验核心与地图增长契约正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -243,7 +243,18 @@ func _validate_free_mode_contract() -> void:
 	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.0), "自由模式仍继承战役威胁伤害")
 	main.run_uses_free_mode = false
 	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.36), "战役威胁伤害倍率失效")
-	_expect(float(MainScript.LEVEL_CONFIG[0]["world_size"]) == 140.0 and float(MainScript.LEVEL_CONFIG[9]["world_size"]) == 470.0, "十关地图没有恢复到 GDD 的有效生态尺度")
+	_expect(float(MainScript.LEVEL_CONFIG[0]["world_size"]) == 140.0 and float(MainScript.LEVEL_CONFIG[9]["world_size"]) == 470.0, "十关地图没有保持 140→470 米的有效生态尺度")
+	var previous_world_size := 0.0
+	for level_index in range(MainScript.LEVEL_CONFIG.size()):
+		var level_config: Dictionary = MainScript.LEVEL_CONFIG[level_index]
+		var expected_individuals := (level_index + 1) * 10
+		var individuals := int(level_config["individuals"])
+		var level_world_size := float(level_config["world_size"])
+		var area_per_individual := level_world_size * level_world_size / float(maxi(individuals, 1))
+		_expect(individuals == expected_individuals, "第%d关初始动物数没有按10只递增" % (level_index + 1))
+		_expect(level_world_size > previous_world_size, "第%d关地图没有随动物数量继续扩大" % (level_index + 1))
+		_expect(area_per_individual >= 1750.0 and area_per_individual <= 2250.0, "第%d关人口/地图密度偏离有效生态范围：%.1f㎡/只" % [level_index + 1, area_per_individual])
+		previous_world_size = level_world_size
 	_expect(float(MainScript.LEVEL_CONFIG[0]["forced_collapse"]) >= 300.0 and float(MainScript.LEVEL_CONFIG[9]["forced_collapse"]) >= 1200.0, "关卡强制收束早于 GDD 的目标局长")
 	main.free()
 
@@ -300,9 +311,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.64\"") and presets.contains("application/short_version=\"1.64\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=760") and presets.contains("application/version=\"760\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.64", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.65\"") and presets.contains("application/short_version=\"1.65\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=770") and presets.contains("application/version=\"770\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.65", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -517,6 +528,10 @@ func _validate_world_navigation_contract() -> void:
 				if fish_depth >= 0.48:
 					deep_fish += 1
 		_expect(fish_schools >= 2 and shallow_fish >= 1 and deep_fish >= 1, "第%d关没有同时生成浅水与深水鱼群" % int(level_case["level"]))
+		var world_drop_event := world.start_experience_drop()
+		var expected_pack_count := int(level_case["level"]) * 10
+		_expect(int(world_drop_event.get("available", 0)) == expected_pack_count, "第%d关真实障碍地图只生成%d/%d个经验包" % [int(level_case["level"]), int(world_drop_event.get("available", 0)), expected_pack_count])
+		_expect(Array(world_drop_event.get("regions", [])).size() == 4, "第%d关真实地图经验雨没有覆盖四生态区" % int(level_case["level"]))
 		world.free()
 
 
@@ -1692,7 +1707,10 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 	var visual_pack := ExperiencePackScript.new()
 	root.add_child(visual_pack)
 	visual_pack.setup(ExperiencePackScript.TIER_LEVEL, 0, 1, 0, true, 0.0)
-	_expect(is_instance_valid(visual_pack.visual_root) and visual_pack.visual_root.get_child_count() >= 5, "跃迁经验包没有构建可识别的发光核心、轨道和标签")
+	_expect(is_instance_valid(visual_pack.visual_root) and visual_pack.visual_root.get_child_count() >= 6, "跃迁经验包没有构建可识别的发光晶体、轨道和标签")
+	_expect(visual_pack.find_child("ExperienceCrystalShell", true, false) != null and visual_pack.find_child("ExperienceCrystalUpper", true, false) != null and visual_pack.find_child("ExperienceCrystalLower", true, false) != null, "经验包缺少原创双锥能量晶体")
+	_expect(visual_pack.find_child("ExperienceOrbitRig", true, false) != null and visual_pack.find_child("ExperienceOrbitShard_3", true, false) != null, "跃迁经验包缺少分层轨道与四枚能量碎片")
+	_expect(visual_pack.find_child("ExperienceSignalGlyph", true, false) != null and visual_pack.find_child("ExperienceSignalPedestal", true, false) != null, "经验包缺少地面信号环或承载基座")
 	visual_pack.free()
 	_expect(ExperiencePackScript.tier_roll(0.0, 1) == ExperiencePackScript.TIER_LEVEL, "跃迁经验包没有保留低概率幸运掉落")
 	_expect(ExperiencePackScript.tier_roll(0.12, 1) == ExperiencePackScript.TIER_RICH, "丰厚经验包概率区间不稳定")
@@ -1702,8 +1720,35 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 	_expect(rich_xp > small_xp, "丰厚经验包经验量没有高于普通包")
 	_expect(ExperiencePackScript.absorption_seconds(rich_xp) > ExperiencePackScript.absorption_seconds(small_xp), "经验量越高时吸收时间没有变长")
 	_expect(ExperiencePackScript.absorption_seconds(1, true) > ExperiencePackScript.absorption_seconds(rich_xp), "直接升1级经验包没有最长吸收风险")
-	_expect(WorldScript.experience_drop_region_count(1) == 2 and WorldScript.experience_drop_region_count(10) == 5, "经验雨没有从至少2个随机区域扩展到后期5个区域")
-	_expect(WorldScript.experience_drop_packs_per_region(1) == 2 and WorldScript.experience_drop_packs_per_region(10) == 4, "每处经验包数量没有随关卡扩展")
+	_expect(WorldScript.experience_drop_first_delay(1, 0.0) == 60.0 and WorldScript.experience_drop_repeat_delay(10, 1.0) == 60.0, "经验雨没有保持严格60秒全图周期")
+	_expect(WorldScript.EXPERIENCE_DROP_DURATION < WorldScript.EXPERIENCE_DROP_INTERVAL, "经验包持续时间会与下一轮无限叠加")
+	_expect(WorldScript.experience_drop_region_count(1) == 4 and WorldScript.experience_drop_region_count(10) == 4, "经验雨没有覆盖完整四生态区")
+	_expect(WorldScript.experience_drop_target_count(1) == 10 and WorldScript.experience_drop_target_count(10) == 100, "经验包数量没有与关卡初始动物数保持1:1")
+	_expect(WorldScript.experience_drop_packs_per_region(1) == 3 and WorldScript.experience_drop_packs_per_region(10) == 25, "经验包四区容量没有随关卡正确扩展")
+	_expect(WorldScript.experience_drop_grid_dimension(1) == 4 and WorldScript.experience_drop_grid_dimension(10) == 10, "经验包全图分层网格没有随数量扩大")
+	for drop_case in [{"level": 1, "size": 140.0, "target": 10}, {"level": 10, "size": 470.0, "target": 100}]:
+		var drop_world := WorldScript.new()
+		root.add_child(drop_world)
+		drop_world.world_size = float(drop_case["size"])
+		drop_world.campaign_level = int(drop_case["level"])
+		drop_world.level_profile_data = WorldScript.level_profile(int(drop_case["level"]))
+		drop_world.visual_effects_enabled = false
+		drop_world.event_rng.seed = 165000 + int(drop_case["level"])
+		var drop_event := drop_world.start_experience_drop()
+		_expect(int(drop_event.get("available", 0)) == int(drop_case["target"]), "第%d关没有一次生成%d个经验包" % [int(drop_case["level"]), int(drop_case["target"])])
+		_expect(int(drop_event.get("target_count", 0)) == int(drop_case["target"]) and is_equal_approx(float(drop_event.get("interval", 0.0)), 60.0), "第%d关经验雨事件元数据不完整" % int(drop_case["level"]))
+		var occupied_quadrants := {}
+		var minimum_pack_spacing := INF
+		for pack_index in range(drop_world.experience_packs.size()):
+			var pack: ExperiencePack = drop_world.experience_packs[pack_index]
+			occupied_quadrants[Vector2i(-1 if pack.position.x < 0.0 else 1, -1 if pack.position.z < 0.0 else 1)] = true
+			_expect(drop_world.water_depth_at(pack.position) <= 0.20 and drop_world.is_landing_clear(pack.position, WorldScript.EXPERIENCE_PACK_CLEAR_RADIUS), "第%d关经验包落入深水或障碍" % int(drop_case["level"]))
+			for other_index in range(pack_index):
+				var other: ExperiencePack = drop_world.experience_packs[other_index]
+				minimum_pack_spacing = minf(minimum_pack_spacing, Vector2(pack.position.x - other.position.x, pack.position.z - other.position.z).length())
+		_expect(occupied_quadrants.size() == 4, "第%d关经验包没有覆盖全地图四象限" % int(drop_case["level"]))
+		_expect(minimum_pack_spacing + 0.01 >= WorldScript.EXPERIENCE_PACK_MIN_SPACING, "第%d关经验包随机落点发生重叠" % int(drop_case["level"]))
+		drop_world.free()
 	var safe_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.85, 40.0, false)
 	var danger_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.35, 3.0, false)
 	_expect(safe_utility > danger_utility, "AI 抢经验包时没有计算受击打断风险")
@@ -1717,7 +1762,7 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 	_expect(actor_source.contains("func begin_experience_absorption") and actor_source.contains("受到攻击，经验吸收被打断"), "玩家与 AI 没有共享可打断经验吸收")
 	_expect(actor_source.contains("ai_state = \"experience\"") and actor_source.contains("experience_pressure_counts") and actor_source.contains("_best_experience_pack"), "AI 没有主动发现、分流并争夺经验包")
 	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
-	_expect(world_source.contains("start_experience_drop") and world_source.contains("_experience_pack_landing_is_valid") and world_source.contains("experience_drop_started.emit"), "世界没有周期生成可通行的多区域经验雨")
+	_expect(world_source.contains("start_experience_drop") and world_source.contains("_experience_pack_position_for_cell") and world_source.contains("_experience_pack_landing_is_valid") and world_source.contains("experience_drop_started.emit"), "世界没有周期生成可通行的全图经验雨")
 	var main := MainScript.new()
 	main.batch_mode = true
 	var survivor_root := Node3D.new()

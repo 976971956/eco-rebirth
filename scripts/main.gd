@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.64"
+const RELEASE_VERSION := "1.65"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -403,6 +403,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		camera_rig = CameraScript.new()
 		game_root.add_child(camera_rig)
 		camera_rig.setup(player)
+		world.prewarm_experience_pack_visuals(player.global_position)
 		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode)
 		ui.update_leaderboard(_build_level_leaderboard())
 		ui.show_species_intro(player.species_id, world.current_level_profile())
@@ -784,9 +785,9 @@ func _on_experience_drop_started(event: Dictionary) -> void:
 	var count := int(event.get("available", 0))
 	var level_pack_count := int(event.get("level_pack_count", 0))
 	var luck_text := "；本轮藏有%d个升1级跃迁包" % level_pack_count if level_pack_count > 0 else "；升1级跃迁包本轮未必出现"
-	ui.show_hint("进化能量雨：%s等%d处区域落下%d个经验包%s" % [region_text, region_names.size(), count, luck_text])
-	ui.add_event("经验争夺 · %d处区域 / %d个经验包" % [region_names.size(), count], "#c694ff")
-	ui.add_battle_report("进化能量雨落向%s；高价值经验包吸收更久，受击会中断" % region_text, "进化", "#c694ff")
+	ui.show_hint("进化能量雨：全图%d处生态区落下%d个经验包，每60秒刷新%s" % [region_names.size(), count, luck_text])
+	ui.add_event("全图经验雨 · %d个经验包 / 60秒周期" % count, "#c694ff")
+	ui.add_battle_report("进化能量雨覆盖%s；高价值经验包吸收更久，受击会中断" % region_text, "进化", "#c694ff")
 	if audio != null:
 		audio.play_sfx("world", -0.5)
 
@@ -965,11 +966,25 @@ func _start_benchmark() -> void:
 	benchmark_max_draw_calls = 0
 	benchmark_max_primitives = 0
 	benchmark_max_static_memory = 0
+	benchmark_started_usec = 0
 	_start_new_world(true)
 	# Performance sampling must measure a fixed duration rather than end early
 	# when the unattended benchmark player is killed by normal ecology AI.
 	if is_instance_valid(player):
 		player.spawn_protection = benchmark_duration + 2.0
+	_begin_benchmark_sampling.call_deferred()
+
+
+func _begin_benchmark_sampling() -> void:
+	# Exclude world construction and the intentional shader warm-up from the
+	# steady-state measurement. Performance monitors refresh more slowly than a
+	# rendered frame, so wait past their first refresh before taking samples.
+	await get_tree().create_timer(1.25).timeout
+	if benchmark_finished or not benchmark_mode or state != "playing":
+		return
+	level_elapsed = 0.0
+	if is_instance_valid(world):
+		world.experience_drop_timer = WorldScript.EXPERIENCE_DROP_INTERVAL
 	benchmark_started_usec = Time.get_ticks_usec()
 	print("[benchmark] 第%d关 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, benchmark_quality, benchmark_species, benchmark_duration])
 
