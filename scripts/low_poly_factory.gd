@@ -6,8 +6,10 @@ static var _biome_blend_shader: Shader
 static var _water_shader: Shader
 static var _shared_faceted_material: StandardMaterial3D
 static var _shared_grass_wind_material: ShaderMaterial
+static var _shared_organic_leaf_material: ShaderMaterial
 static var _faceted_sphere_cache: Dictionary = {}
 static var _foliage_card_material_cache: Dictionary = {}
+static var _organic_leaf_mesh_cache: Dictionary = {}
 
 const FACETED_SPHERE_CACHE_LIMIT := 384
 
@@ -343,6 +345,92 @@ static func grass_tuft(name_text: String, base_color: Color, tip_color: Color, r
 	node.set_meta("blade_count", safe_blade_count)
 	node.set_meta("triangle_count", safe_blade_count * 4)
 	return node
+
+
+## Builds a small pointed ribbon leaf from one shared double-sided material.
+## Food props use this for real silhouettes (berry leaves, fruit leaves, root
+## shoots and fish fins) instead of flattened spheres or cones.  Three curved
+## segments keep the asset readable from the top-down camera at only six faces.
+static func organic_leaf(name_text: String, color: Color, length: float, width: float, position_value: Vector3 = Vector3.ZERO, bend: float = 0.08, compact_cache_key: String = "") -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = name_text
+	var safe_length := maxf(length, 0.08)
+	var safe_width := maxf(width, 0.025)
+	if not compact_cache_key.is_empty() and _organic_leaf_mesh_cache.has(compact_cache_key):
+		node.mesh = _organic_leaf_mesh_cache[compact_cache_key] as Mesh
+		node.material_override = _organic_leaf_material()
+		node.position = position_value
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		node.set_meta("visual_only", true)
+		node.set_meta("organic_leaf", true)
+		node.set_meta("triangle_count", 6)
+		node.set_meta("shared_food_mesh", true)
+		return node
+	var centers: Array[Vector3] = [
+		Vector3.ZERO,
+		Vector3(0.0, bend * 0.52, safe_length * 0.34),
+		Vector3(0.0, bend, safe_length * 0.72),
+		Vector3(0.0, bend * 0.64, safe_length),
+	]
+	# Keep the tip almost sharp but not mathematically collapsed, so both final
+	# triangles retain valid normals in GLES/Web mesh importers.
+	var half_widths: Array[float] = [safe_width * 0.10, safe_width, safe_width * 0.66, safe_width * 0.012]
+	var colors: Array[Color] = [
+		color.darkened(0.16),
+		color.darkened(0.04),
+		color.lightened(0.055),
+		color.lightened(0.09),
+	]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for segment_index in range(3):
+		var left_a := centers[segment_index] - Vector3.RIGHT * half_widths[segment_index]
+		var right_a := centers[segment_index] + Vector3.RIGHT * half_widths[segment_index]
+		var left_b := centers[segment_index + 1] - Vector3.RIGHT * half_widths[segment_index + 1]
+		var right_b := centers[segment_index + 1] + Vector3.RIGHT * half_widths[segment_index + 1]
+		_add_grass_triangle(surface, left_a, right_a, left_b, colors[segment_index], colors[segment_index], colors[segment_index + 1])
+		_add_grass_triangle(surface, right_a, right_b, left_b, colors[segment_index], colors[segment_index + 1], colors[segment_index + 1])
+	node.mesh = surface.commit()
+	if not compact_cache_key.is_empty():
+		_organic_leaf_mesh_cache[compact_cache_key] = node.mesh
+		node.set_meta("shared_food_mesh", true)
+	node.material_override = _organic_leaf_material()
+	node.position = position_value
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.set_meta("visual_only", true)
+	node.set_meta("organic_leaf", true)
+	node.set_meta("triangle_count", 6)
+	return node
+
+
+static func _organic_leaf_material() -> ShaderMaterial:
+	if _shared_organic_leaf_material != null:
+		return _shared_organic_leaf_material
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+
+varying vec4 leaf_color;
+
+void vertex() {
+	leaf_color = COLOR;
+}
+
+void fragment() {
+	if (!FRONT_FACING) {
+		NORMAL = -NORMAL;
+	}
+	ALBEDO = leaf_color.rgb;
+	ROUGHNESS = 0.93;
+	SPECULAR = 0.11;
+	RIM = 0.016;
+	RIM_TINT = 0.20;
+}
+"""
+	_shared_organic_leaf_material = ShaderMaterial.new()
+	_shared_organic_leaf_material.shader = shader
+	return _shared_organic_leaf_material
 
 
 static func _grass_wind_material() -> ShaderMaterial:

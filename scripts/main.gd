@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.67"
+const RELEASE_VERSION := "1.68"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [

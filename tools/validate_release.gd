@@ -14,6 +14,7 @@ const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
 const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
+const FoodPatchScript = preload("res://scripts/food_patch.gd")
 
 var failures: Array[String] = []
 
@@ -50,6 +51,7 @@ func _run_validation() -> void:
 	_validate_performance_baseline_contract()
 	_validate_web_audio_contract()
 	_validate_visual_kit_contract()
+	_validate_food_visual_contract()
 	_validate_level_identity_contract()
 	_validate_world_navigation_contract()
 	_validate_external_species_model_contract()
@@ -68,7 +70,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.67 发布候选校验通过：四生态区自然草丛、轻风双面材质与移动端三角面预算正常")
+		print("[release] V1.68 发布候选校验通过：六类自然野外食物、双面有机叶片与稳定视觉随机流正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -311,9 +313,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.67\"") and presets.contains("application/short_version=\"1.67\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=790") and presets.contains("application/version=\"790\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.67", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.68\"") and presets.contains("application/short_version=\"1.68\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=800") and presets.contains("application/version=\"800\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.68", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -461,6 +463,58 @@ func _validate_visual_kit_contract() -> void:
 	loft.free()
 	grass_tuft.free()
 	foliage_card.free()
+
+
+func _validate_food_visual_contract() -> void:
+	_expect(FoodPatchScript.FOOD_DATA.size() == 6 and FoodPatchScript.FOOD_VISUAL_SIGNATURES.size() == 6, "自然野外食物没有覆盖六类现有资源")
+	_expect(FoodPatchScript.FOOD_VISUAL_VERSION == 2, "野外食物视觉契约版本未升级")
+	_expect(is_equal_approx(float(FoodPatchScript.FOOD_DATA["berries"]["nutrition"]), 1.0) and is_equal_approx(float(FoodPatchScript.FOOD_DATA["fruit"]["nutrition"]), 1.18) and is_equal_approx(float(FoodPatchScript.FOOD_DATA["fish"]["nutrition"]), 1.45), "纯美术替换意外改变了野外食物营养值")
+	var leaf := Factory.organic_leaf("FoodLeafContract", Color("#527842"), 0.48, 0.14, Vector3.ZERO, 0.10)
+	_expect(leaf.mesh is ArrayMesh and leaf.get_meta("organic_leaf", false) == true and int(leaf.get_meta("triangle_count", 0)) == 6, "野外食物叶片没有生成低成本有机网格")
+	if leaf.mesh is ArrayMesh:
+		var leaf_arrays := (leaf.mesh as ArrayMesh).surface_get_arrays(0)
+		var leaf_vertices: PackedVector3Array = leaf_arrays[Mesh.ARRAY_VERTEX]
+		var leaf_colors: PackedColorArray = leaf_arrays[Mesh.ARRAY_COLOR]
+		var leaf_normals: PackedVector3Array = leaf_arrays[Mesh.ARRAY_NORMAL]
+		_expect(leaf_vertices.size() == 18 and leaf_colors.size() == 18 and leaf_normals.size() == 18, "有机叶片缺少顶点色或法线")
+	var leaf_material := leaf.material_override as ShaderMaterial
+	_expect(leaf_material != null and leaf_material.shader != null and leaf_material.shader.code.contains("FRONT_FACING"), "食物叶片在 Web/手机俯视下可能出现黑色背面")
+	leaf.free()
+
+	var required_parts := {
+		"grass": ["TenderGrassRosette"],
+		"berries": ["BrambleStem_00", "BrambleLeaf_00", "WildBerry_00"],
+		"mushroom": ["TaperedStem", "PaleGills", "DomedCap"],
+		"fruit": ["OrganicFruitBody", "FruitStem", "FruitLeaf"],
+		"roots": ["DisturbedSoil", "TaperedTuber", "RootShoot_00"],
+		"fish": ["StreamlinedFishBody", "TailFin_00", "DorsalFin", "PectoralFin", "FishEye"],
+	}
+	for food_kind_variant in FoodPatchScript.FOOD_DATA.keys():
+		var food_kind := str(food_kind_variant)
+		var compact_rng := RandomNumberGenerator.new()
+		compact_rng.seed = 68100 + food_kind.hash()
+		var full_rng := RandomNumberGenerator.new()
+		full_rng.seed = compact_rng.seed
+		var compact_patch := FoodPatchScript.new()
+		var full_patch := FoodPatchScript.new()
+		compact_patch.setup(food_kind, compact_rng, "common", 7, true)
+		full_patch.setup(food_kind, full_rng, "common", 7, false)
+		_expect(int(compact_patch.get_meta("food_visual_version", 0)) == 2 and not str(compact_patch.get_meta("food_visual_signature", "")).is_empty(), "%s 没有进入新野外食物视觉路径" % food_kind)
+		for part_name_variant in Array(required_parts[food_kind]):
+			var part_name := str(part_name_variant)
+			_expect(compact_patch.find_child(part_name, true, false) != null, "%s 紧凑模型缺少辨识部件 %s" % [food_kind, part_name])
+		var compact_mesh_count := compact_patch.find_children("*", "MeshInstance3D", true, false).size()
+		var full_mesh_count := full_patch.find_children("*", "MeshInstance3D", true, false).size()
+		_expect(compact_mesh_count >= 1 and compact_mesh_count <= 16, "%s 紧凑模型节点预算异常：%d" % [food_kind, compact_mesh_count])
+		_expect(full_mesh_count >= compact_mesh_count and full_mesh_count <= 48, "%s 完整模型节点预算异常：%d" % [food_kind, full_mesh_count])
+		_expect(compact_rng.randi() == full_rng.randi(), "%s 视觉精度改变了世界随机序列" % food_kind)
+		if food_kind == "fish":
+			_expect(compact_patch.find_children("LiveFish_*", "Node3D", true, false).size() == 2 and compact_patch.is_processing(), "活鱼群紧凑模型数量或游动动画未保留")
+		compact_patch.free()
+		full_patch.free()
+	var food_source := FileAccess.get_file_as_string("res://scripts/food_patch.gd")
+	_expect(food_source.contains("func _build_berry_bramble") and food_source.contains("func _build_mushroom_cluster") and food_source.contains("func _build_fallen_fruit") and food_source.contains("func _build_root_crown") and food_source.contains("func _build_fish_school"), "六类食物没有独立的程序化视觉组件")
+	_expect(not food_source.contains("Factory.cone(\"GrassBlade\"") and not food_source.contains("Factory.sphere(\"FallenFruit\"") and not food_source.contains("Factory.sphere(\"FishBody\""), "野外食物仍在使用旧的球体/圆锥玩具外观")
 
 
 func _validate_level_identity_contract() -> void:
