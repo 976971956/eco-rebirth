@@ -206,7 +206,7 @@ const SPECIES_ADAPTATION_NAMES := {
 	"bear": ["杂食储备", "震地余势", "有限领地"],
 	"boar": ["泥地冲线", "破围突阵", "拱土寻路"],
 	"raccoon": ["林间小径", "夺食翻滚", "巧手藏果"],
-	"porcupine": ["窄路固守", "怒刺节奏", "啮根固刺"],
+	"porcupine": ["窄路固守", "舒展反击", "啮根固刺"],
 	"crocodile": ["浅流伏岸", "翻滚咬合", "水岸分食"],
 	"capybara": ["水路同栖", "安抚撤离", "共享水草"],
 	"otter": ["水线穿梭", "旋水回身", "鱼群感知"],
@@ -288,7 +288,7 @@ const SKILL_PLANS := {
 	"bear": {"role": "受击反场", "empowerment": "负伤震怒", "condition": "injured", "condition_label": "生命低于55%或怒意已激活", "bonus_text": "震荡伤害提高，恢复少量生命并获得短暂减伤", "counter": "不要在棕熊负伤后多人贴身；用毒、远程和轮流消耗拖过守势", "damage_bonus": 0.10, "health_restore": 0.03, "guard_duration": 2.60, "guard_ratio": 0.82},
 	"boar": {"role": "突围冲阵", "empowerment": "硬皮突围", "condition": "injured", "condition_label": "生命低于55%", "bonus_text": "冲锋更远、伤害提高，并在冲阵期间获得短暂减伤", "counter": "侧移避开直线，利用岩石截断冲锋；不要站在它与出口之间", "damage_bonus": 0.10, "dash_bonus": 0.15, "guard_duration": 2.00, "guard_ratio": 0.80},
 	"raccoon": {"role": "资源窃取", "empowerment": "饥时巧取", "condition": "hungry", "condition_label": "饥饿达到35或正在争夺食物", "bonus_text": "额外恢复生命与耐力，撤离隐匿更久且冷却缩短", "counter": "看守高价值资源并保留控制；它翻滚后不要盲追进第三方领地", "health_restore": 0.04, "stamina_restore": 0.16, "hidden_bonus": 0.50, "cooldown_refund": 0.10},
-	"porcupine": {"role": "反伤守点", "empowerment": "围攻竖刺", "condition": "outnumbered", "condition_label": "6米内至少有两个异种敌人", "bonus_text": "怒刺伤害提高，并获得持续减伤以惩罚围攻", "counter": "分散站位、等背刺放下；不要让多只近战同时触发反伤", "damage_bonus": 0.12, "guard_duration": 3.00, "guard_ratio": 0.72, "exposure_reduction": 0.18},
+	"porcupine": {"role": "绝对反击", "empowerment": "围攻刺球", "condition": "outnumbered", "condition_label": "6米内至少有两个异种敌人", "bonus_text": "刺球防御延长0.6秒；期间免疫战斗伤害并反射攻击原伤害的50%", "counter": "停止攻击、夺走周围资源；豪猪舒展后的1秒破绽才是集火窗口", "skill_duration_bonus": 0.60},
 	"crocodile": {"role": "水域锁杀", "empowerment": "深水绞杀", "condition": "water", "condition_label": "身体进入有效水域", "bonus_text": "翻滚伤害提高，额外削减耐力并延长猎物破绽", "counter": "沿浅岸横移，别在深水进食；诱使鳄鱼离水后再消耗", "damage_bonus": 0.15, "target_stamina_damage": 0.15, "target_exposure": 2.00},
 	"capybara": {"role": "群体维稳", "empowerment": "水岸安抚", "condition": "water", "condition_label": "位于湿地水域", "bonus_text": "额外恢复生命和耐力，并获得短暂水岸守势", "counter": "饥饿或直接伤害会打断安抚；把水豚逼离水岸再持续施压", "health_restore": 0.06, "stamina_restore": 0.12, "guard_duration": 2.50, "guard_ratio": 0.88, "cooldown_refund": 0.12},
 	"otter": {"role": "水路追击", "empowerment": "水流连击", "condition": "water", "condition_label": "位于湿地水域", "bonus_text": "突袭伤害提高，恢复耐力、短暂匿踪并缩短冷却", "counter": "守住上岸点，在陆地迫使水獭连续换向并耗尽爆发", "damage_bonus": 0.10, "stamina_restore": 0.14, "hidden_bonus": 0.50, "cooldown_refund": 0.12},
@@ -312,6 +312,42 @@ const SKILL_PLANS := {
 	"lion": {"role": "狮群号令", "empowerment": "王群合击", "condition": "ally_near", "condition_label": "11米内存在狮子同类", "bonus_text": "号令伤害提高，获得短暂减伤并让目标暴露更长破绽", "counter": "把狮群引入障碍区分割；号令落空后集中反击领头狮", "damage_bonus": 0.10, "guard_duration": 2.50, "guard_ratio": 0.85, "target_exposure": 1.50, "cooldown_refund": 0.10},
 }
 
+# A signature is the behavior that makes the button feel different even before
+# ecological empowerment.  Every entry also states its commitment cost so a
+# strong skill remains readable and answerable on touch screens.
+const SKILL_SIGNATURES := {
+	"rabbit": {"mechanic": "清除追踪，朝操控方向折跃并短暂隐匿", "commitment": "没有直接伤害；落点被封锁后仍会再次陷入追击"},
+	"fox": {"mechanic": "给猎物留下血味，诱导附近捕食者转火目标", "commitment": "必须命中目标，贴近施放会留下可反击后摇"},
+	"deer": {"mechanic": "蹬开近敌并惊散较小异种，不会伤害同类鹿群", "commitment": "必须进入近身范围，落空时无法阻止追兵"},
+	"wolf": {"mechanic": "扑杀目标并号召附近灰狼共同锁定猎物", "commitment": "孤狼只能完成基础扑杀，合围价值明显降低"},
+	"snake": {"mechanic": "毒牙同时造成持续毒、减速和血味追踪", "commitment": "射程极短；未从隐匿出手时容易被立即反击"},
+	"bear": {"mechanic": "震击周身异种并击退小型动物，怒意会强化伤害", "commitment": "范围外没有收益，震地后必须承受近身后摇"},
+	"boar": {"mechanic": "沿直线突阵、造成伤害并强力击退目标", "commitment": "转向能力有限；障碍和侧移都能让冲锋落空"},
+	"raccoon": {"mechanic": "瞬间偷吃附近资源，再翻滚隐匿撤离", "commitment": "周围没有食物或敌人时无法发动"},
+	"porcupine": {"mechanic": "蜷成刺球进入战斗无敌，反射攻击者本次原伤害的50%", "commitment": "持续期间不能移动、攻击、进食或吸收经验；结束后暴露1秒"},
+	"crocodile": {"mechanic": "近身死亡翻滚，重创并长时间拖慢猎物", "commitment": "必须贴身命中；离开水岸后很难继续黏住目标"},
+	"capybara": {"mechanic": "安抚周围非饥饿动物，并为同类恢复耐力", "commitment": "不造成伤害；饥饿捕食者不会被安抚"},
+	"otter": {"mechanic": "水中突袭距离更长，命中后恢复耐力并短暂隐匿", "commitment": "陆地版本明显较弱，连续追击会快速耗尽耐力"},
+	"lynx": {"mechanic": "从隐匿状态远距飞扑，并压低猎物移动能力", "commitment": "扑空后会在目标身边暴露，无法持续正面换血"},
+	"goat": {"mechanic": "跃进角击并将追兵顶离高地或狭窄路线", "commitment": "依赖直线和落点；平地正面对撞收益较低"},
+	"wolverine": {"mechanic": "对实时体型更大的目标提高撕咬倍率并恢复耐力", "commitment": "需要近身缠斗，对小型目标没有逆体型加成"},
+	"bison": {"mechanic": "重型冲锋击飞主目标，并惊散周围小型异种", "commitment": "启动方向清晰；侧翼和障碍可以拆掉阵头"},
+	"zebra": {"mechanic": "向远离威胁的方向冲刺，并带动同类同步撤离", "commitment": "没有直接伤害，脱锁结束后仍需重新规划路线"},
+	"elephant": {"mechanic": "范围践踏异种，同时推倒附近轻型树木开路", "commitment": "抬足范围明显；分散站位可避开大部分伤害"},
+	"tiger": {"mechanic": "长距离扑杀单体，并惊散猎物附近的小型异种", "commitment": "扑空或落入兽群会暴露在集火范围内"},
+	"monkey": {"mechanic": "投掷真实飞行物标记目标，并尝试进入附近树冠", "commitment": "弹道可以横移躲避；离开树木后逃生能力下降"},
+	"owl": {"mechanic": "俯冲后重新升空隐匿，夜晚伤害明显提高", "commitment": "白天爆发较低；低空命中后会短暂暴露"},
+	"moose": {"mechanic": "用巨角横扫周围异种并向外击退", "commitment": "必须让敌人进入角区；后侧远程目标不会受影响"},
+	"turtle": {"mechanic": "缩壳期间停止行动并大幅降低承伤与击退", "commitment": "不是无敌且没有反伤；敌人可以直接抢走资源"},
+	"cheetah": {"mechanic": "高速穿刺单体，晴朗草原上距离和伤害更高", "commitment": "爆发后必定进入疲劳减速，落空代价极高"},
+	"rhino": {"mechanic": "长距离破阵角冲，造成高伤害与巨额击退", "commitment": "冲锋方向无法快速修正，贴侧与障碍均可反制"},
+	"gorilla": {"mechanic": "震地驱赶异种，并把脚下区域建立为新领地", "commitment": "离开领地后强化消失，远程骚扰不会被震地命中"},
+	"eagle": {"mechanic": "距离越远俯冲倍率越高，并从空中击退猎物", "commitment": "落点轨迹清晰；夜间伤害下降且需要重新爬升"},
+	"hippo": {"mechanic": "裂颚震退近敌并恐吓周围较小异种", "commitment": "攻击半径有限；陆地远程消耗不会触发水岸优势"},
+	"hyena": {"mechanic": "咬伤并标记目标，号召附近鬣狗集中围猎", "commitment": "同伴被击散后只是普通突咬，难以单独锁死强敌"},
+	"lion": {"mechanic": "重扑标记猎物、召集狮群并惊散附近小型异种", "commitment": "号令落空会让领头狮暴露，分割狮群即可削弱技能"},
+}
+
 const VICTORY_GUIDES := {
 	"rabbit": "前期沿森林与草原的草丛寻找嫩草，用草窟反刍回血、补耐力和轻捷迁徙，不和捕食者换血。中期把狼、狐引向熊或蛇制造混战；终局保留月影折跃和半条以上耐力，用伏击、主场反制与连续变向拖垮最后的追猎者。",
 	"fox": "围绕尸体和残血目标行动，不做第一只开战的动物。先用血味佯攻把猎物暴露给其他捕食者，再补刀获取经验；终局依靠速度和更高等级逐个收割。",
@@ -321,7 +357,7 @@ const VICTORY_GUIDES := {
 	"bear": "占据尸体和植物都丰富的区域，以反击而非追击为主。重击用于打断围攻并守住资源；终局靠高生命和怒意换血，但要防止毒与群猎持续破甲。",
 	"boar": "在开阔路线积累冲锋空间，撞散小型围攻并抢先吃掉资源。不要把突阵浪费在巨兽正面；终局用低血量抗击退优势守住中央食物。",
 	"raccoon": "避开正面战斗，持续偷取植物和尸体，把资源转化为等级。技能后立刻撤离并更换热点；终局依靠速度成长诱导最后两名强敌互斗。",
-	"porcupine": "选择狭窄通路或尸体旁防守，让近战敌人主动承受反刺。怒刺绽放留给多人贴身时使用；终局不要追人，守住收束区资源迫使对手靠近。",
+	"porcupine": "选择狭窄通路或尸体旁防守，让近战敌人主动承受反刺。刺球蜷守留给强敌已经出手或多人贴身时使用；敌人停手后不要空耗，舒展前规划撤离路线，终局守住收束区资源迫使对手靠近。",
 	"crocodile": "长期围绕湿地、鱼群和过河点伏击，离水后不做远追。死亡翻滚优先锁住正在进食或耐力不足的目标；终局提前进入中央水岸，逼敌在你的优势地形接战。",
 	"capybara": "利用湿地续航和安抚穿过混战，优先吃植物稳定升级。安抚不是进攻技能，用它打断追猎并带同类转移；终局保存耐力，以反复脱战等待强敌互相消耗。",
 	"otter": "把湿地当作高速公路，快速争夺鱼群和残血目标。旋水突袭在水中收益最高，命中后立刻回到水带；终局不要在陆地和重装动物持续换血。",
@@ -847,18 +883,18 @@ const DATA: Dictionary = {
 		"attack_cost": 7.0,
 		"armor": 18.0,
 		"passive": "针背",
-		"passive_hint": "近身攻击者会受到反刺伤害，技能期间反伤更强",
-		"skill": "怒刺绽放",
-		"skill_hint": "竖起背刺震开近敌，并在短时间内强化反伤",
-		"skill_feedback": "背刺完全竖起，贸然近身的敌人会付出代价",
+		"passive_hint": "普通近身攻击者受到22%反刺；刺球防御时反射本次原伤害的50%",
+		"skill": "刺球蜷守",
+		"skill_hint": "蜷成刺球进入战斗无敌并反射50%原伤害，期间无法行动",
+		"skill_feedback": "已蜷成刺球：战斗无敌并反伤50%，舒展后会暴露1秒",
 		"skill_color": "#e8d18f",
-		"skill_cooldown": 9.0,
-		"skill_cost": 20.0,
+		"skill_cooldown": 12.0,
+		"skill_cost": 24.0,
 		"aggression": 0.08,
 		"courage": 0.48,
 		"hunger_rate": 0.13,
 		"preferred_prey": [],
-		"tip": "靠近狭窄通路和强者战团防守，等捕食者被反刺后再撤离。"
+		"tip": "在强敌已经出手或多人夹击时蜷守，不要过早交技能；敌人停手抢资源时要准备在舒展后立刻撤离。"
 	},
 	"goat": {
 		"name": "岩岭山羊",
@@ -1551,15 +1587,25 @@ static func habit_description(species_id: String) -> String:
 
 
 static func skill_plan(species_id: String) -> Dictionary:
-	return SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"]).duplicate(true)
+	var profile: Dictionary = SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"]).duplicate(true)
+	var signature: Dictionary = SKILL_SIGNATURES.get(species_id, SKILL_SIGNATURES["rabbit"])
+	profile["mechanic"] = str(signature.get("mechanic", "改变当前战斗节奏"))
+	profile["commitment"] = str(signature.get("commitment", "释放后会留下可反击窗口"))
+	return profile
 
 
 static func skill_plan_description(species_id: String) -> String:
 	var profile: Dictionary = SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"])
-	return "技能定位：%s · 生态强化「%s」\n强化条件：%s；%s\n敌方反制：%s" % [
+	var signature: Dictionary = SKILL_SIGNATURES.get(species_id, SKILL_SIGNATURES["rabbit"])
+	return "技能定位：%s · 生态强化「%s」\n招牌机制：%s\n使用代价：%s\n强化条件：%s；%s\n敌方反制：%s" % [
 		str(profile.get("role", "战术技能")), str(profile.get("empowerment", "生态强化")),
+		str(signature.get("mechanic", "改变当前战斗节奏")), str(signature.get("commitment", "释放后会留下可反击窗口")),
 		str(profile.get("condition_label", "把握生态时机")), str(profile.get("bonus_text", "技能效果提高")), str(profile.get("counter", "观察技能后摇再反击")),
 	]
+
+
+static func skill_signature(species_id: String) -> Dictionary:
+	return SKILL_SIGNATURES.get(species_id, SKILL_SIGNATURES["rabbit"]).duplicate(true)
 
 
 static func skill_empowerment_name(species_id: String) -> String:

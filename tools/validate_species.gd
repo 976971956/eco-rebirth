@@ -559,6 +559,8 @@ func _run_validation() -> void:
 	var valid_skill_conditions := ["threatened", "target_injured", "straight_run", "ally_near", "concealed", "injured", "hungry", "outnumbered", "water", "home_region", "target_larger", "canopy", "night", "low_health", "target_exposed", "far_target"]
 	if Catalog.SKILL_PLANS.size() != Catalog.ORDER.size():
 		failures.append("30种物种没有一一对应的生态强化技能方案")
+	if Catalog.SKILL_SIGNATURES.size() != Catalog.ORDER.size():
+		failures.append("30种物种没有一一对应的招牌机制与使用代价")
 	for index in range(Catalog.ORDER.size()):
 		var species_id: String = Catalog.ORDER[index]
 		if not Catalog.DATA.has(species_id):
@@ -572,7 +574,7 @@ func _run_validation() -> void:
 			failures.append("%s 缺少生态强化技能方案" % species_id)
 		else:
 			var skill_plan := Catalog.skill_plan(species_id)
-			for plan_key in ["role", "empowerment", "condition", "condition_label", "bonus_text", "counter"]:
+			for plan_key in ["role", "empowerment", "condition", "condition_label", "bonus_text", "counter", "mechanic", "commitment"]:
 				if str(skill_plan.get(plan_key, "")).length() < 2:
 					failures.append("%s 技能方案字段 %s 不完整" % [species_id, plan_key])
 			if str(skill_plan.get("condition", "")) not in valid_skill_conditions:
@@ -581,6 +583,8 @@ func _run_validation() -> void:
 				failures.append("%s 生态强化伤害或恢复超出统一预算" % species_id)
 			if float(skill_plan.get("cooldown_refund", 0.0)) > 0.18 or float(skill_plan.get("target_stamina_damage", 0.0)) > 0.16 or float(skill_plan.get("target_exposure", 0.0)) > 2.20:
 				failures.append("%s 生态强化控制或冷却收益超出统一预算" % species_id)
+			if float(skill_plan.get("skill_duration_bonus", 0.0)) > ActorScript.PORCUPINE_BALL_EMPOWERED_BONUS:
+				failures.append("%s 生态强化持续时间收益超出统一预算" % species_id)
 		var actor: EcoActor = ActorScript.new()
 		actor.process_mode = Node.PROCESS_MODE_DISABLED
 		container.add_child(actor)
@@ -837,6 +841,61 @@ func _run_validation() -> void:
 				failures.append("monkey 的果实投掷没有生成真实投射物")
 		if new_species[index] == "otter" and float(attacker.data.get("wetland_speed", 1.0)) <= 1.0:
 			failures.append("otter 没有配置湿地区域速度优势")
+		if new_species[index] == "porcupine":
+			if not is_equal_approx(ActorScript.porcupine_reflected_damage(1.0), 0.5):
+				failures.append("porcupine 对低伤害攻击没有严格按原伤害50%反射")
+			if not attacker.is_skill_attack_immune() or attacker.quill_guard_timer < ActorScript.PORCUPINE_BALL_DURATION - 0.01:
+				failures.append("porcupine 刺球蜷守没有进入完整战斗无敌状态")
+			if target.health < target_health_before:
+				failures.append("porcupine 刺球蜷守仍会在启动时无反制地造成范围伤害")
+			var porcupine_health_before := attacker.health
+			var reflected_target_health_before := target.health
+			attacker.take_damage(40.0, target)
+			if not is_equal_approx(attacker.health, porcupine_health_before):
+				failures.append("porcupine 刺球防御期间仍会受到战斗伤害")
+			if not is_equal_approx(reflected_target_health_before - target.health, 20.0) or not is_equal_approx(attacker.quill_reflected_damage, 20.0):
+				failures.append("porcupine 没有把攻击者本次原伤害的50%准确反射回去")
+			var player_hunter: EcoActor = ActorScript.new()
+			player_hunter.process_mode = Node.PROCESS_MODE_DISABLED
+			container.add_child(player_hunter)
+			player_hunter.setup(game_stub, 3900 + index, "wolf", true, Vector3(0.0, 0.0, -1.0), 0)
+			player_hunter.spawn_protection = 0.0
+			player_hunter.calm_timer = 0.0
+			player_hunter.attack_intent = true
+			game_stub.player = player_hunter
+			game_stub.actors = [attacker, player_hunter]
+			var player_health_before_ball_hit := player_hunter.health
+			player_hunter._try_attack()
+			if player_hunter.health >= player_health_before_ball_hit:
+				failures.append("玩家主动攻击porcupine刺球时输入被拦截，没有承受反伤")
+			player_hunter.free()
+			game_stub.player = null
+			var mirrored_porcupine: EcoActor = ActorScript.new()
+			mirrored_porcupine.process_mode = Node.PROCESS_MODE_DISABLED
+			container.add_child(mirrored_porcupine)
+			mirrored_porcupine.setup(game_stub, 4000 + index, "porcupine", false, Vector3(1.0, 0.0, 0.0), 0)
+			mirrored_porcupine.spawn_protection = 0.0
+			game_stub.actors = [attacker, target, mirrored_porcupine]
+			if not mirrored_porcupine.use_skill(attacker):
+				failures.append("第二只porcupine无法进入防递归刺球测试")
+			else:
+				var first_ball_health := attacker.health
+				var second_ball_health := mirrored_porcupine.health
+				mirrored_porcupine.take_damage(40.0, attacker)
+				if not is_equal_approx(attacker.health, first_ball_health) or not is_equal_approx(mirrored_porcupine.health, second_ball_health):
+					failures.append("两只porcupine同时蜷缩时发生了递归反伤")
+			mirrored_porcupine.free()
+			game_stub.actors = [attacker, target]
+			attacker.apply_knockback(Vector3.RIGHT, 12.0)
+			if Vector2(attacker.velocity.x, attacker.velocity.z).length() > 0.01:
+				failures.append("porcupine 刺球防御期间仍会被击退")
+			attacker._update_timers(attacker.quill_guard_timer + 0.01)
+			if attacker.is_skill_attack_immune() or attacker.quill_guard_completions != 1 or attacker.exposed_timer < ActorScript.PORCUPINE_EXIT_EXPOSURE - 0.01:
+				failures.append("porcupine 刺球完成后没有解除无敌或产生1秒反击破绽")
+			var vulnerable_health_before := attacker.health
+			attacker.take_damage(10.0, target)
+			if attacker.health >= vulnerable_health_before:
+				failures.append("porcupine 刺球结束后仍无法被正常攻击")
 		if new_species[index] == "turtle" and attacker.shell_guard_timer <= 0.0:
 			failures.append("turtle 的缩壳技能没有进入防御姿态")
 		elif new_species[index] == "turtle":
@@ -1151,7 +1210,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, three-stage instinct chains, distinct water profiles/breath/drowning/fishing, ecological habits and starvation deaths, full XP/level chain, hunger-aware hunting, route-failure memory, territorial restraint, pack/herd shared intelligence, contested food safety, counterplay mastery, ecological leverage, terrain/cover routing, growth/victory guides, progressive pools 1-10, %d new skills, flight/weather/canopy rules" % [Catalog.ORDER.size(), new_species.size()])
+		print("SPECIES_VALIDATION_OK: %d species, 30 signature skills and commitments, porcupine invulnerable ball/50%% reflection/exit exposure, three-stage instinct chains, water/breath/drowning/fishing, ecological habits, XP/growth, ecology AI, progressive pools 1-10, flight/weather/canopy rules" % Catalog.ORDER.size())
 		quit(0)
 	else:
 		for failure in failures:

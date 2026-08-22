@@ -102,6 +102,29 @@ func _render() -> void:
 	var leaderboard_result := gameplay_image.save_png("res://docs/images/v15-leaderboard-ticker.png")
 	var mobile_safe_result := gameplay_image.save_png("res://docs/images/v26-adaptive-mobile-ui.png")
 	var skill_empowerment_result := gameplay_image.save_png("res://docs/images/v94-skill-empowerment-hud.png")
+	preview_actor.species_id = "porcupine"
+	preview_actor.base_data = Catalog.get_data("porcupine")
+	preview_actor.data = preview_actor.base_data.duplicate(true)
+	preview_actor.level = 2
+	preview_actor.experience = 18
+	preview_actor._recalculate_growth_stats()
+	preview_actor.health = preview_actor.max_health
+	preview_actor.stamina = preview_actor.max_stamina - 24.0
+	preview_actor.quill_guard_timer = 2.6
+	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 两名捕食者正在等待", "刺球防御 · 攻击者将受到50%原伤害")
+	ui.show_hint("刺球蜷守：战斗无敌并反伤50%；不能行动，结束后暴露1秒")
+	for _frame in range(5):
+		await process_frame
+	var porcupine_ball_hud_result := root.get_texture().get_image().save_png("res://docs/images/v96-porcupine-ball-hud.png")
+	preview_actor.quill_guard_timer = 0.0
+	preview_actor.species_id = "wolf"
+	preview_actor.base_data = Catalog.get_data("wolf")
+	preview_actor.data = preview_actor.base_data.duplicate(true)
+	preview_actor.level = 2
+	preview_actor.experience = 34
+	preview_actor._recalculate_growth_stats()
+	preview_actor.health = preview_actor.max_health * 0.88
+	preview_actor.stamina = preview_actor.max_stamina * 0.64
 	preview_actor.habit_buff_name = "群猎分食"
 	preview_actor.habit_buff_kind = "hunt"
 	preview_actor.habit_buff_timer = 4.2
@@ -335,7 +358,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and skill_empowerment_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_contest_result == OK and adaptation_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and skill_empowerment_result == OK and porcupine_ball_hud_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_contest_result == OK and adaptation_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

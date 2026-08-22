@@ -59,6 +59,8 @@ func _render_states() -> bool:
 	var states := ["idle", "locomotion", "attack", "skill"]
 	var times := [0.18, 0.38, 0.24, 0.36]
 	var labels := ["待机呼吸", "物种步态", "普通攻击", "主动技能"]
+	if species_id == "porcupine":
+		labels[3] = "刺球防御·无敌反伤"
 	var positions := [-4.45, -1.48, 1.48, 4.45]
 	for index in range(states.size()):
 		_add_actor(scene, game, 100 + index, Vector3(positions[index], 0.0, 0.0), states[index], times[index])
@@ -109,6 +111,12 @@ func _add_actor(
 	actor.external_animation_player.play(action)
 	actor.external_animation_player.seek(seek_time, true)
 	actor.external_animation_player.advance(0.0)
+	if species_id == "porcupine" and action == "skill":
+		actor.quill_guard_timer = ActorScript.PORCUPINE_BALL_DURATION
+		actor._set_porcupine_ball_visual(true)
+		if not is_instance_valid(actor.porcupine_ball_visual) or not actor.porcupine_ball_visual.visible or actor.body_root.visible:
+			preview_failed = true
+			push_error("针背豪猪没有切换到完整刺球外形")
 
 
 func _build_scene() -> Node3D:

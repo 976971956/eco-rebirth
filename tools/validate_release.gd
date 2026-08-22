@@ -71,7 +71,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.69 发布候选校验通过：30种生态强化技能、AI时机、HUD说明与敌方反制正常")
+		print("[release] V1.70 发布候选校验通过：30种招牌技能、使用代价、豪猪刺球反伤与AI反制正常")
 		quit(0)
 	else:
 		for failure in failures:
@@ -314,9 +314,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.69\"") and presets.contains("application/short_version=\"1.69\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=810") and presets.contains("application/version=\"810\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.69", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.70\"") and presets.contains("application/short_version=\"1.70\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=820") and presets.contains("application/version=\"820\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.70", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -468,15 +468,18 @@ func _validate_visual_kit_contract() -> void:
 
 func _validate_skill_plan_contract() -> void:
 	_expect(Catalog.SKILL_PLANS.size() == Catalog.ORDER.size(), "生态强化技能没有覆盖全部30种动物")
+	_expect(Catalog.SKILL_SIGNATURES.size() == Catalog.ORDER.size(), "招牌机制与使用代价没有覆盖全部30种动物")
 	for species_id in Catalog.ORDER:
 		var plan := Catalog.skill_plan(species_id)
 		_expect(str(plan.get("role", "")).length() >= 2 and str(plan.get("empowerment", "")).length() >= 2, "%s 缺少技能定位或强化名称" % Catalog.display_name(species_id))
 		_expect(str(plan.get("condition_label", "")).length() >= 4 and str(plan.get("bonus_text", "")).length() >= 8 and str(plan.get("counter", "")).length() >= 8, "%s 缺少可读的强化条件、收益或敌方反制" % Catalog.display_name(species_id))
-		_expect(Catalog.skill_plan_description(species_id).contains("强化条件") and Catalog.skill_plan_description(species_id).contains("敌方反制"), "%s 技能方案没有进入统一展示文本" % Catalog.display_name(species_id))
+		_expect(str(plan.get("mechanic", "")).length() >= 8 and str(plan.get("commitment", "")).length() >= 8, "%s 缺少可读的招牌机制或使用代价" % Catalog.display_name(species_id))
+		_expect(Catalog.skill_plan_description(species_id).contains("招牌机制") and Catalog.skill_plan_description(species_id).contains("使用代价") and Catalog.skill_plan_description(species_id).contains("强化条件") and Catalog.skill_plan_description(species_id).contains("敌方反制"), "%s 技能方案没有进入统一展示文本" % Catalog.display_name(species_id))
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("func is_skill_empowerment_ready") and actor_source.contains("func _apply_skill_empowerment"), "EcoActor 没有共享生态强化判定与结算")
 	_expect(actor_source.contains("_ai_should_use_skill(ai_target)"), "AI 没有按强化窗口和战况选择技能时机")
 	_expect(actor_source.contains("skill_guard_timer > 0.0"), "防御类技能强化没有进入共享承伤流程")
+	_expect(actor_source.contains("func is_skill_attack_immune") and actor_source.contains("PORCUPINE_REFLECT_RATIO := 0.50") and actor_source.contains("target.is_skill_attack_immune()"), "豪猪刺球无敌、50%反伤或AI等待反制没有进入共享战斗流程")
 
 
 func _validate_food_visual_contract() -> void:

@@ -55,6 +55,10 @@ const AI_RECOVERY_HOTSPOT_HEALTH_RATIO := 0.46
 const AI_BLOCKED_ROUTE_MEMORY := 5.5
 const AI_STUCK_CHAIN_WINDOW := 6.0
 const AI_STUCK_REPLAN_COUNT := 3
+const PORCUPINE_BALL_DURATION := 3.20
+const PORCUPINE_BALL_EMPOWERED_BONUS := 0.60
+const PORCUPINE_REFLECT_RATIO := 0.50
+const PORCUPINE_EXIT_EXPOSURE := 1.00
 const INSTINCT_HABIT_TARGET := 1
 const INSTINCT_FOOD_FALLBACK_TARGET := 2
 const INSTINCT_HABITAT_DISTANCE_TARGET := 24.0
@@ -114,6 +118,8 @@ var last_attacker: EcoActor
 var rage_timer: float = 0.0
 var rage_cooldown_timer: float = 0.0
 var quill_guard_timer: float = 0.0
+var quill_reflected_damage: float = 0.0
+var quill_guard_completions: int = 0
 var shell_guard_timer: float = 0.0
 var forage_speed_timer: float = 0.0
 var habit_buff_timer: float = 0.0
@@ -233,6 +239,7 @@ var sprint_seconds: float = 0.0
 var final_tracking_marker: Node3D
 var visual_root: Node3D
 var body_root: Node3D
+var porcupine_ball_visual: Node3D
 var selection_ring: MeshInstance3D
 var waterline_ring: MeshInstance3D
 var visual_immersion_offset: float = 0.0
@@ -1498,6 +1505,49 @@ func _build_porcupine() -> void:
 	_add_legs(color.darkened(0.20), 0.34, 0.58, 0.49, 0.65, Color("#2b2521"))
 
 
+func _ensure_porcupine_ball_visual() -> void:
+	if species_id != "porcupine" or is_instance_valid(porcupine_ball_visual) or not is_instance_valid(visual_root):
+		return
+	if is_instance_valid(game) and game.get("batch_mode") == true:
+		return
+	porcupine_ball_visual = Node3D.new()
+	porcupine_ball_visual.name = "PorcupineBallVisual"
+	porcupine_ball_visual.visible = false
+	visual_root.add_child(porcupine_ball_visual)
+	var body_color := Catalog.get_color(species_id).darkened(0.08)
+	var quill_light := Color.from_string(str(data.get("accent", "#dfcfaa")), Color("#dfcfaa"))
+	var quill_dark := Color("#302923")
+	var center := Vector3(0.0, 0.92, 0.0)
+	porcupine_ball_visual.add_child(Factory.sphere("QuillBallCore", body_color, Vector3(0.82, 0.76, 0.82), center, 10, 6))
+	for ring_index in range(3):
+		var latitude := lerpf(-0.48, 0.48, float(ring_index) / 2.0)
+		var horizontal := cos(latitude)
+		for quill_index in range(10):
+			var angle := TAU * float(quill_index) / 10.0 + float(ring_index % 2) * PI / 10.0
+			var direction := Vector3(cos(angle) * horizontal, sin(latitude), sin(angle) * horizontal).normalized()
+			var quill_color := quill_light if (quill_index + ring_index) % 2 == 0 else quill_dark
+			var quill := Factory.cone("BallQuill_%d_%02d" % [ring_index, quill_index], quill_color, 0.075, 0.64, center + direction * 0.82, 6)
+			quill.quaternion = Quaternion(Vector3.UP, direction)
+			porcupine_ball_visual.add_child(quill)
+	for pole_index in range(2):
+		var pole_direction := Vector3.UP if pole_index == 0 else Vector3.DOWN
+		var pole := Factory.cone("BallQuillPole_%d" % pole_index, quill_light, 0.085, 0.70, center + pole_direction * 0.80, 6)
+		pole.quaternion = Quaternion(Vector3.UP, pole_direction)
+		porcupine_ball_visual.add_child(pole)
+
+
+func _set_porcupine_ball_visual(active: bool) -> void:
+	if species_id != "porcupine" or not is_instance_valid(body_root):
+		return
+	if active:
+		_ensure_porcupine_ball_visual()
+	body_root.visible = not active
+	if is_instance_valid(porcupine_ball_visual):
+		porcupine_ball_visual.visible = active
+		porcupine_ball_visual.position.y = -visual_immersion_offset
+		porcupine_ball_visual.scale = Vector3.ONE * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+
+
 func _build_capybara() -> void:
 	var color := Catalog.get_color(species_id)
 	var accent := Color.from_string(str(data["accent"]), Color("#d6b58a"))
@@ -2211,7 +2261,7 @@ func experience_contest_snapshot() -> Dictionary:
 
 
 func begin_experience_absorption(pack: ExperiencePack) -> bool:
-	if dead or level >= MAX_LEVEL or eat_timer > 0.0 or not is_instance_valid(pack) or not pack.active:
+	if dead or level >= MAX_LEVEL or eat_timer > 0.0 or quill_guard_timer > 0.0 or shell_guard_timer > 0.0 or not is_instance_valid(pack) or not pack.active:
 		return false
 	if global_position.distance_to(pack.global_position) > 2.65:
 		return false
@@ -2274,6 +2324,7 @@ func _process(delta: float) -> void:
 
 
 func _update_timers(delta: float) -> void:
+	var quill_guard_was_active := quill_guard_timer > 0.0
 	attack_timer = maxf(attack_timer - delta, 0.0)
 	external_attack_animation_timer = maxf(external_attack_animation_timer - delta, 0.0)
 	external_hit_animation_timer = maxf(external_hit_animation_timer - delta, 0.0)
@@ -2303,6 +2354,10 @@ func _update_timers(delta: float) -> void:
 	flight_dive_timer = maxf(flight_dive_timer - delta, 0.0)
 	burst_exhaustion_timer = maxf(burst_exhaustion_timer - delta, 0.0)
 	exposed_timer = maxf(exposed_timer - delta, 0.0)
+	if quill_guard_was_active and quill_guard_timer <= 0.0:
+		quill_guard_completions += 1
+		exposed_timer = maxf(exposed_timer, PORCUPINE_EXIT_EXPOSURE)
+		_set_porcupine_ball_visual(false)
 	opportunity_strike_timer = maxf(opportunity_strike_timer - delta, 0.0)
 	cover_reveal_timer = maxf(cover_reveal_timer - delta, 0.0)
 	cover_ambush_timer = maxf(cover_ambush_timer - delta, 0.0)
@@ -2998,6 +3053,17 @@ func _update_ai(delta: float) -> void:
 				var distance := global_position.distance_to(ai_target.global_position)
 				var planar_distance := Vector2(global_position.x - ai_target.global_position.x, global_position.z - ai_target.global_position.z).length()
 				var target_threat_gap := threat_gap_to(ai_target)
+				# Predators recognize a curled porcupine after it enters the stance.
+				# They hold just outside melee range instead of donating reflected
+				# damage, but keep the target so they can punish the exit exposure.
+				if ai_target.is_skill_attack_immune():
+					var away_from_guard := Vector3(global_position.x - ai_target.global_position.x, 0.0, global_position.z - ai_target.global_position.z).normalized()
+					var guard_tangent := Vector3(-away_from_guard.z, 0.0, away_from_guard.x) * (-1.0 if actor_id % 2 == 0 else 1.0)
+					var desired_spacing := float(data["attack_range"]) + ai_target.effective_size * 0.18 + 1.1
+					desired_direction = (away_from_guard * (0.72 if distance < desired_spacing else -0.16) + guard_tangent * 0.48).normalized()
+					wants_sprint = false
+					attack_intent = false
+					return
 				# A final duel must still preserve the game's core weak-versus-strong
 				# answer. The shrinking boundary guarantees contact, while the weaker
 				# animal orbits until the stronger target spends enough stamina to
@@ -4201,9 +4267,13 @@ func _apply_movement(delta: float) -> void:
 			flat_direction = smoothed_move_direction
 		else:
 			smoothed_move_direction = smoothed_move_direction.lerp(Vector3.ZERO, 1.0 - exp(-delta * 10.0))
-	if shell_guard_timer > 0.0:
+	if shell_guard_timer > 0.0 or quill_guard_timer > 0.0:
 		flat_direction = Vector3.ZERO
 		wants_sprint = false
+		attack_intent = false
+		dash_timer = 0.0
+		velocity.x = 0.0
+		velocity.z = 0.0
 	var water_depth := current_water_depth
 	var in_wetland: bool = water_depth > 0.01
 	var swimming_water := not uses_height_domain and water_depth > effective_wade_depth()
@@ -4348,7 +4418,7 @@ func _update_ecology_trace(delta: float, sprinting: bool, move_direction: Vector
 
 
 func _try_attack() -> void:
-	if not attack_intent or exhausted or eat_timer > 0.0 or is_absorbing_experience() or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
+	if not attack_intent or exhausted or eat_timer > 0.0 or is_absorbing_experience() or quill_guard_timer > 0.0 or attack_timer > 0.0 or stamina < float(data["attack_cost"]):
 		return
 	if is_airborne():
 		_request_landing(1.15)
@@ -4361,6 +4431,12 @@ func _try_attack() -> void:
 		return
 	var target := ai_target if not is_player else _nearest_living_actor(float(data["attack_range"]) + 0.9)
 	if not is_instance_valid(target) or target.dead:
+		return
+	# AI understands the warning silhouette and waits. Players may still choose
+	# to strike the ball, which is how the advertised reflection is learned and
+	# remains an explicit tactical mistake rather than an invisible input lock.
+	if target.is_skill_attack_immune() and not is_player:
+		attack_intent = false
 		return
 	var reach := float(data["attack_range"]) + (effective_size + target.effective_size) * 0.08
 	if global_position.distance_to(target.global_position) > reach:
@@ -4464,7 +4540,19 @@ func is_skill_empowerment_ready(target: EcoActor = null) -> bool:
 	return false
 
 
+func is_skill_attack_immune() -> bool:
+	return species_id == "porcupine" and quill_guard_timer > 0.0
+
+
+static func porcupine_reflected_damage(raw_damage: float) -> float:
+	return maxf(raw_damage, 0.0) * PORCUPINE_REFLECT_RATIO
+
+
 func skill_tactical_status_text() -> String:
+	if species_id == "porcupine" and quill_guard_timer > 0.0:
+		return "刺球防御 · 战斗无敌/反伤50%% · %.1fs" % quill_guard_timer
+	if species_id == "turtle" and shell_guard_timer > 0.0:
+		return "缩壳坚守 · 大幅减伤/无法行动 · %.1fs" % shell_guard_timer
 	if is_skill_empowerment_ready():
 		return "生态强化就绪 · %s" % Catalog.skill_empowerment_name(species_id)
 	return "强化条件 · %s" % Catalog.skill_empowerment_condition_text(species_id)
@@ -4493,6 +4581,8 @@ func _skill_nearby_opponent_count(radius: float) -> int:
 func _ai_should_use_skill(target: EcoActor, defensive: bool = false) -> bool:
 	if not is_instance_valid(target) or target.dead:
 		return false
+	if target.is_skill_attack_immune():
+		return false
 	if defensive or is_skill_empowerment_ready(target) or target.is_opportunity_exposed():
 		return true
 	if target.health / maxf(target.max_health, 1.0) <= 0.48 or health / maxf(max_health, 1.0) <= 0.34:
@@ -4504,7 +4594,7 @@ func _ai_should_use_skill(target: EcoActor, defensive: bool = false) -> bool:
 
 
 func use_skill(target: EcoActor = null) -> bool:
-	if dead or exhausted or eat_timer > 0.0 or is_absorbing_experience() or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
+	if dead or exhausted or eat_timer > 0.0 or is_absorbing_experience() or quill_guard_timer > 0.0 or shell_guard_timer > 0.0 or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
 	# Normal attacks already honor calm_timer. Skills must follow the same rule,
 	# otherwise a fleeing animal can deal the first damage during the teaching
@@ -4546,7 +4636,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				used = true
 		"deer":
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var deer_distance := global_position.distance_to(other.global_position)
 				if deer_distance < 3.1:
@@ -4582,7 +4672,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				used = true
 		"bear":
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var bear_distance := global_position.distance_to(other.global_position)
 				if bear_distance < 3.8:
@@ -4639,20 +4729,22 @@ func use_skill(target: EcoActor = null) -> bool:
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 3.7)
 				SkillVFX.radial_burst(effect_parent, global_position, effect_color, 2.0, 9, 0.13, 0.36)
 		"porcupine":
-			quill_guard_timer = 4.5
+			quill_guard_timer = PORCUPINE_BALL_DURATION
+			if skill_empowered_cast_active:
+				quill_guard_timer += clampf(float(skill_plan.get("skill_duration_bonus", PORCUPINE_BALL_EMPOWERED_BONUS)), 0.0, PORCUPINE_BALL_EMPOWERED_BONUS)
+			external_skill_animation_timer = quill_guard_timer
+			desired_direction = Vector3.ZERO
+			wants_sprint = false
+			attack_intent = false
+			dash_timer = 0.0
+			velocity.x = 0.0
+			velocity.z = 0.0
+			_set_porcupine_ball_visual(true)
 			used = true
-			for other in game.get_living_actors():
-				if other == self or other.dead:
-					continue
-				var quill_distance := global_position.distance_to(other.global_position)
-				if quill_distance < 3.4:
-					other.take_damage(_skill_damage(0.62), self)
-					other.apply_knockback((other.global_position - global_position).normalized(), 6.4)
-					affected_count += 1
-			SkillVFX.ring(effect_parent, global_position, effect_color, 0.55, 3.5, 0.42)
-			SkillVFX.radial_burst(effect_parent, global_position, effect_color.lightened(0.15), 3.2, 16, 0.16, 0.50, 0.24)
+			SkillVFX.ring(effect_parent, global_position, effect_color, 0.55, 2.8, 0.42)
+			SkillVFX.radial_burst(effect_parent, global_position, effect_color.lightened(0.15), 2.5, 18, 0.16, 0.50, 0.24)
 			if effect_parent != null:
-				SkillVFX.status_aura(self, effect_color, 4.5, 0.78)
+				SkillVFX.status_aura(self, effect_color, quill_guard_timer, 0.78)
 		"lynx":
 			if is_instance_valid(target) and global_position.distance_to(target.global_position) < 6.0:
 				dash_direction = (target.global_position - global_position).normalized()
@@ -4721,7 +4813,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				target.take_damage(_skill_damage(1.42), self)
 				target.apply_knockback(dash_direction, 10.5)
 				for other in game.get_living_actors():
-					if other != self and other != target and not other.dead and other.effective_size < effective_size and global_position.distance_to(other.global_position) < 6.5:
+					if other != self and other != target and not other.dead and other.species_id != species_id and other.effective_size < effective_size and global_position.distance_to(other.global_position) < 6.5:
 						other.apply_panic(self, 2.0)
 						affected_count += 1
 				SkillVFX.ground_spokes(effect_parent, global_position, effect_color.darkened(0.15), 4.8, 10)
@@ -4729,7 +4821,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				used = true
 		"elephant":
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var elephant_distance := global_position.distance_to(other.global_position)
 				if elephant_distance < 5.8:
@@ -4792,7 +4884,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				dash_timer = 0.42
 				target.take_damage(_skill_damage(1.68), self)
 				for other in game.get_living_actors():
-					if other != self and other != target and not other.dead and other.effective_size < effective_size and target.global_position.distance_to(other.global_position) < 5.4:
+					if other != self and other != target and not other.dead and other.species_id != species_id and other.effective_size < effective_size and target.global_position.distance_to(other.global_position) < 5.4:
 						other.apply_panic(self, 2.2)
 						affected_count += 1
 				SkillVFX.dash_trail(effect_parent, global_position, dash_direction, effect_color, 5.0)
@@ -4828,7 +4920,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					used = true
 		"moose":
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var moose_distance := global_position.distance_to(other.global_position)
 				if moose_distance < 3.9:
@@ -4877,7 +4969,7 @@ func use_skill(target: EcoActor = null) -> bool:
 			territory_radius = maxf(territory_radius, 15.4)
 			used = true
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var gorilla_distance := global_position.distance_to(other.global_position)
 				if gorilla_distance < 4.5:
@@ -4912,7 +5004,7 @@ func use_skill(target: EcoActor = null) -> bool:
 					used = true
 		"hippo":
 			for other in game.get_living_actors():
-				if other == self or other.dead:
+				if other == self or other.dead or other.species_id == species_id:
 					continue
 				var hippo_distance := global_position.distance_to(other.global_position)
 				if hippo_distance < 3.9:
@@ -4946,7 +5038,7 @@ func use_skill(target: EcoActor = null) -> bool:
 				target.apply_scent_mark(7.5, self, effect_color)
 				affected_count = _rally_pack(target, 21.0, "lion")
 				for other in game.get_living_actors():
-					if other == self or other == target or other.dead:
+					if other == self or other == target or other.dead or other.species_id == species_id:
 						continue
 					if target.global_position.distance_to(other.global_position) < 6.5 and other.effective_size < effective_size:
 						other.apply_panic(self, 2.7)
@@ -5125,10 +5217,25 @@ func _rally_pack(target: EcoActor, radius: float, pack_species: String = "") -> 
 	return rallied
 
 
-func take_damage(raw_damage: float, source: EcoActor) -> void:
+func take_damage(raw_damage: float, source: EcoActor, reflected_quill_damage: bool = false) -> void:
 	if dead:
 		return
 	if spawn_protection > 0.0:
+		return
+	if species_id == "porcupine" and quill_guard_timer > 0.0:
+		# The curled body takes no combat damage. Reflection uses the incoming
+		# attack before armor/size modifiers and is tagged so two curled
+		# porcupines cannot recursively bounce the same hit forever.
+		if not reflected_quill_damage and is_instance_valid(source) and source != self and not source.dead:
+			var source_health_before := source.health
+			source.take_damage(porcupine_reflected_damage(raw_damage), self, true)
+			if is_instance_valid(source):
+				quill_reflected_damage += maxf(source_health_before - source.health, 0.0)
+			if _should_show_skill_vfx():
+				var reflect_color := Color.from_string(str(data.get("skill_color", "#e8d18f")), Color("#e8d18f"))
+				SkillVFX.radial_burst(_skill_effect_parent(), global_position + Vector3.UP * 0.45, reflect_color, 1.55 + effective_size * 0.16, 10, 0.10, 0.30, 0.16)
+		if game.has_method("play_sfx_near"):
+			game.play_sfx_near("skill_porcupine", global_position, is_player)
 		return
 	if is_absorbing_experience():
 		cancel_experience_absorption("受到攻击，经验吸收被打断")
@@ -5136,7 +5243,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	var opportunity_strike := false
 	var ambush_strike := false
 	var terrain_strike := false
-	if is_instance_valid(source):
+	if is_instance_valid(source) and not reflected_quill_damage:
 		threat_gap = source.threat_gap_to(self)
 		ambush_strike = threat_gap > 0 and source.ambush_attack_armed
 		terrain_strike = threat_gap > 0 and source.terrain_attack_armed
@@ -5156,7 +5263,7 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			var source_gap := threat_gap_to(source)
 			var safe_to_counter := source_gap <= 0 or source.is_opportunity_exposed() or Catalog.has_trait(species_id, "brave_vs_large")
 			_switch_state("hunt" if health / max_health > 0.35 and float(data["courage"]) > 0.35 and safe_to_counter else "flee", source)
-	var final_damage := maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
+	var final_damage := maxf(raw_damage, 1.0) if reflected_quill_damage else maxf(raw_damage * size_scale * (1.0 - reduction), 1.0)
 	var opportunity_bonus := 0.0
 	if opportunity_strike:
 		opportunity_bonus = max_health * Catalog.opportunity_health_ratio(threat_gap)
@@ -5175,17 +5282,18 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 		if (ambush_strike or terrain_strike) and _should_show_skill_vfx():
 			var counter_color := Color("#8fe8b7") if ambush_strike else Color("#70cfe8")
 			SkillVFX.radial_burst(_skill_effect_parent(), global_position, counter_color, 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
-	if shell_guard_timer > 0.0:
-		final_damage *= 0.42 if _collapse_competition_active() else 0.20
-		final_damage = maxf(final_damage, 1.0)
-	if skill_guard_timer > 0.0:
-		final_damage *= skill_guard_ratio
-		final_damage = maxf(final_damage, 1.0)
-	if has_habit_buff("guard"):
-		final_damage *= 0.90
-	if Catalog.has_trait(species_id, "giant") and is_instance_valid(source):
-		if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
-			final_damage *= 1.32
+	if not reflected_quill_damage:
+		if shell_guard_timer > 0.0:
+			final_damage *= 0.42 if _collapse_competition_active() else 0.20
+			final_damage = maxf(final_damage, 1.0)
+		if skill_guard_timer > 0.0:
+			final_damage *= skill_guard_ratio
+			final_damage = maxf(final_damage, 1.0)
+		if has_habit_buff("guard"):
+			final_damage *= 0.90
+		if Catalog.has_trait(species_id, "giant") and is_instance_valid(source):
+			if Catalog.has_trait(source.species_id, "pack_hunter") or Catalog.has_trait(source.species_id, "brave_vs_large"):
+				final_damage *= 1.32
 	var applied_damage := minf(final_damage, maxf(health, 0.0))
 	health -= final_damage
 	damage_taken += applied_damage
@@ -5212,9 +5320,10 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 	_play_hit_pulse()
 	if health <= 0.0:
 		die(source)
-	elif species_id == "porcupine" and is_instance_valid(source) and not source.dead and source.species_id != "porcupine" and global_position.distance_to(source.global_position) < 2.8:
-		var reflection_factor := 0.48 if quill_guard_timer > 0.0 else 0.22
-		source.take_damage(maxf(final_damage * reflection_factor, 3.0), self)
+	elif species_id == "porcupine" and not reflected_quill_damage and is_instance_valid(source) and not source.dead and source.species_id != "porcupine" and global_position.distance_to(source.global_position) < 2.8:
+		# The standing passive keeps its original armor/size interaction. Only the
+		# active ball uses exact raw-damage reflection that bypasses those modifiers.
+		source.take_damage(maxf(final_damage * 0.22, 3.0), self)
 
 
 func apply_poison(dps: float, duration: float, source: EcoActor) -> void:
@@ -5396,7 +5505,7 @@ func apply_knockback(direction: Vector3, strength: float) -> void:
 	elif species_id == "boar" and health / max_health < 0.50:
 		strength *= 0.46
 	elif species_id == "porcupine" and quill_guard_timer > 0.0:
-		strength *= 0.58
+		strength = 0.0
 	elif species_id in ["rhino", "hippo"]:
 		strength *= 0.62
 	elif species_id == "elephant":
@@ -5405,6 +5514,10 @@ func apply_knockback(direction: Vector3, strength: float) -> void:
 
 
 func try_consume_nearby() -> bool:
+	if quill_guard_timer > 0.0 or shell_guard_timer > 0.0:
+		if is_player and game.has_method("show_hint"):
+			game.show_hint("防御姿态期间无法进食或吸收经验")
+		return false
 	if level < MAX_LEVEL and game.world != null and game.world.has_method("nearest_experience_pack"):
 		var nearby_pack: ExperiencePack = game.world.nearest_experience_pack(global_position, 3.15)
 		if is_instance_valid(nearby_pack):
@@ -5627,6 +5740,7 @@ func _level_up() -> void:
 func die(killer: EcoActor) -> void:
 	if dead:
 		return
+	_set_porcupine_ball_visual(false)
 	cancel_experience_absorption()
 	set_final_tracking_revealed(false)
 	if is_instance_valid(killer):
@@ -5864,6 +5978,9 @@ func _update_visual_motion(delta: float) -> void:
 		if species_id == "turtle":
 			var shell_scale := base_visual_scale * (Vector3(1.08, 0.72, 1.08) if shell_guard_timer > 0.0 else Vector3.ONE)
 			body_root.scale = body_root.scale.lerp(shell_scale, 1.0 - exp(-delta * 12.0))
+		elif species_id == "porcupine":
+			_set_porcupine_ball_visual(quill_guard_timer > 0.0)
+			body_root.scale = body_root.scale.lerp(base_visual_scale, 1.0 - exp(-delta * 10.0))
 	var water_contact := not is_airborne() and current_water_depth > 0.025
 	if water_contact and waterline_ring == null:
 		_build_waterline_ring()
@@ -5917,6 +6034,10 @@ func _play_attack_pulse() -> void:
 
 func _play_species_skill_animation() -> void:
 	if body_root == null:
+		return
+	if species_id == "porcupine":
+		# The long-lived curl is driven by quill_guard_timer in visual motion;
+		# a short scale pulse would unfold the body before invulnerability ends.
 		return
 	var tween := create_tween()
 	match species_id:
