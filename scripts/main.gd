@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.68"
+const RELEASE_VERSION := "1.69"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -1708,10 +1708,10 @@ func get_bestiary_entries() -> Array[Dictionary]:
 			"discovered": true,
 			"name": str(data["name"]),
 			"list_text": "%s　·　%s　·　战斗阶位 %d" % [str(data["name"]), diet_name, Catalog.combat_tier(species_id)],
-			"detail": "%s · %s\n%s　体型 %d　生命 %d　攻击 %.1f　速度 %.2f\n\n%s\n%s\n偏爱食物：%s\n反制组合：%s\n\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s\n\n个人记录\n%s" % [
+			"detail": "%s · %s\n%s　体型 %d　生命 %d　攻击 %.1f　速度 %.2f\n\n%s\n%s\n偏爱食物：%s\n反制组合：%s\n\n战斗被动：%s — %s\n主动技能：%s — %s\n%s\n\n获胜攻略：%s\n\n个人记录\n%s" % [
 				str(data["name"]), str(data["subtitle"]), diet_name, int(data["size"]), int(data["health"]), float(data["attack"]), float(data["speed"]),
 				Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.habit_foods_display_text(species_id), Catalog.counterplay_plan(species_id),
-				str(data["passive"]), str(data["passive_hint"]), str(data["skill"]), str(data["skill_hint"]), Catalog.victory_guide(species_id), record_text,
+				str(data["passive"]), str(data["passive_hint"]), str(data["skill"]), str(data["skill_hint"]), Catalog.skill_plan_description(species_id), Catalog.victory_guide(species_id), record_text,
 			],
 		})
 	return entries

@@ -88,6 +88,10 @@ var threat_speed_scale: float = 1.0
 var adaptation_ranks := {"habitat": 0, "combat": 0, "ecology": 0}
 var attack_timer: float = 0.0
 var skill_timer: float = 0.0
+var skill_guard_timer: float = 0.0
+var skill_guard_ratio: float = 1.0
+var skill_empowered_cast_active: bool = false
+var skill_empowered_casts: int = 0
 var external_skill_animation_timer: float = 0.0
 var eat_timer: float = 0.0
 var stamina_regen_delay: float = 0.0
@@ -2275,6 +2279,9 @@ func _update_timers(delta: float) -> void:
 	external_hit_animation_timer = maxf(external_hit_animation_timer - delta, 0.0)
 	external_skill_animation_timer = maxf(external_skill_animation_timer - delta, 0.0)
 	skill_timer = maxf(skill_timer - delta, 0.0)
+	skill_guard_timer = maxf(skill_guard_timer - delta, 0.0)
+	if skill_guard_timer <= 0.0:
+		skill_guard_ratio = 1.0
 	eat_timer = maxf(eat_timer - delta, 0.0)
 	stamina_regen_delay = maxf(stamina_regen_delay - delta, 0.0)
 	decision_timer -= delta
@@ -2926,7 +2933,7 @@ func _update_ai(delta: float) -> void:
 					wants_sprint = stamina > max_stamina * 0.16
 				var flee_skill_range := _skill_engage_range()
 				var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
-				if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and global_position.distance_to(ai_target.global_position) < flee_skill_range:
+				if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and global_position.distance_to(ai_target.global_position) < flee_skill_range and _ai_should_use_skill(ai_target, true):
 					use_skill(ai_target)
 			else:
 				ai_state = "wander"
@@ -3003,7 +3010,7 @@ func _update_ai(delta: float) -> void:
 					wants_sprint = distance < float(ai_target.data["attack_range"]) + 2.4 and stamina > max_stamina * 0.35 and not exhausted
 					attack_intent = false
 					var can_defend := Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "canopy_mover")
-					if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range():
+					if can_defend and skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range() and _ai_should_use_skill(ai_target, true):
 						use_skill(ai_target)
 					return
 				if Catalog.has_trait(species_id, "flying"):
@@ -3018,7 +3025,7 @@ func _update_ai(delta: float) -> void:
 					desired_direction = Vector3.ZERO
 				wants_sprint = distance > float(data["attack_range"]) * 0.9 and stamina > max_stamina * 0.28 and not has_cover_ambush()
 				attack_intent = distance <= float(data["attack_range"]) + 0.65
-				if skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range():
+				if skill_timer <= 0.0 and stamina >= float(data["skill_cost"]) and distance < _skill_engage_range() and _ai_should_use_skill(ai_target):
 					use_skill(ai_target)
 			else:
 				ai_state = "wander"
@@ -4395,6 +4402,107 @@ func _try_attack() -> void:
 	_play_attack_pulse()
 
 
+func skill_empowerment_target() -> EcoActor:
+	if is_instance_valid(ai_target) and not ai_target.dead:
+		return ai_target
+	if not is_instance_valid(game) or not game.has_method("get_living_actors"):
+		return null
+	var nearest: EcoActor
+	var nearest_distance := _skill_engage_range() + 0.85
+	for other in game.get_living_actors():
+		if other == self or other.dead:
+			continue
+		var distance := global_position.distance_to(other.global_position)
+		if distance < nearest_distance:
+			nearest = other
+			nearest_distance = distance
+	return nearest
+
+
+func is_skill_empowerment_ready(target: EcoActor = null) -> bool:
+	if dead:
+		return false
+	var resolved_target := target if is_instance_valid(target) and not target.dead else skill_empowerment_target()
+	var plan := Catalog.skill_plan(species_id)
+	match str(plan.get("condition", "")):
+		"threatened":
+			return has_cover_ambush() or ai_state == "flee" or (is_instance_valid(resolved_target) and (last_attacker == resolved_target or resolved_target.ai_target == self) and threat_gap_to(resolved_target) > 0)
+		"target_injured":
+			return is_instance_valid(resolved_target) and resolved_target.health / maxf(resolved_target.max_health, 1.0) <= 0.55
+		"straight_run":
+			return straight_run_timer >= 1.35
+		"ally_near":
+			var ally_radius := 11.0 if species_id == "lion" else 10.0
+			return _skill_nearby_same_species_count(ally_radius) > 0
+		"concealed":
+			return is_stealthed()
+		"injured":
+			return health / maxf(max_health, 1.0) <= 0.55 or rage_timer > 0.0
+		"hungry":
+			return hunger >= 35.0 or is_instance_valid(resource_target)
+		"outnumbered":
+			var crowd_radius := 7.0 if species_id == "elephant" else 6.0
+			return _skill_nearby_opponent_count(crowd_radius) >= 2
+		"water":
+			return current_water_depth > 0.08
+		"home_region":
+			var in_territory := species_id == "gorilla" and territory_radius > 0.0 and global_position.distance_to(territory_center) <= territory_radius
+			return environment_affinity >= TERRAIN_AFFINITY_THRESHOLD or in_territory
+		"target_larger":
+			return is_instance_valid(resolved_target) and resolved_target.effective_size > effective_size
+		"canopy":
+			return canopy_timer > 0.0 or (species_id == "monkey" and environment_region_id == "forest" and environment_affinity >= TERRAIN_AFFINITY_THRESHOLD)
+		"night":
+			return is_instance_valid(game) and is_instance_valid(game.world) and str(game.world.time_phase) == "night"
+		"low_health":
+			return health / maxf(max_health, 1.0) <= 0.40
+		"target_exposed":
+			return is_instance_valid(resolved_target) and resolved_target.is_opportunity_exposed()
+		"far_target":
+			var required_distance := 6.5 if species_id == "eagle" else 4.8
+			return is_instance_valid(resolved_target) and Vector2(global_position.x - resolved_target.global_position.x, global_position.z - resolved_target.global_position.z).length() >= required_distance
+	return false
+
+
+func skill_tactical_status_text() -> String:
+	if is_skill_empowerment_ready():
+		return "生态强化就绪 · %s" % Catalog.skill_empowerment_name(species_id)
+	return "强化条件 · %s" % Catalog.skill_empowerment_condition_text(species_id)
+
+
+func _skill_nearby_same_species_count(radius: float) -> int:
+	if not is_instance_valid(game) or not game.has_method("get_living_actors"):
+		return 0
+	var count := 0
+	for other in game.get_living_actors():
+		if other != self and not other.dead and other.species_id == species_id and global_position.distance_to(other.global_position) <= radius:
+			count += 1
+	return count
+
+
+func _skill_nearby_opponent_count(radius: float) -> int:
+	if not is_instance_valid(game) or not game.has_method("get_living_actors"):
+		return 0
+	var count := 0
+	for other in game.get_living_actors():
+		if other != self and not other.dead and other.species_id != species_id and global_position.distance_to(other.global_position) <= radius:
+			count += 1
+	return count
+
+
+func _ai_should_use_skill(target: EcoActor, defensive: bool = false) -> bool:
+	if not is_instance_valid(target) or target.dead:
+		return false
+	if defensive or is_skill_empowerment_ready(target) or target.is_opportunity_exposed():
+		return true
+	if target.health / maxf(target.max_health, 1.0) <= 0.48 or health / maxf(max_health, 1.0) <= 0.34:
+		return true
+	# Unempowered offensive skills are held until ordinary attack distance. This
+	# gives the player a readable approach window and stops AI from dumping every
+	# cooldown at maximum range without considering its species setup.
+	return global_position.distance_to(target.global_position) <= float(data["attack_range"]) + 0.55
+
+
 func use_skill(target: EcoActor = null) -> bool:
 	if dead or exhausted or eat_timer > 0.0 or is_absorbing_experience() or skill_timer > 0.0 or stamina < float(data["skill_cost"]):
 		return false
@@ -4407,6 +4515,8 @@ func use_skill(target: EcoActor = null) -> bool:
 	var affected_count := 0
 	var effect_color := Color.from_string(str(data.get("skill_color", "#9fe7bf")), Color("#9fe7bf"))
 	var effect_parent := _skill_effect_parent()
+	var skill_plan := Catalog.skill_plan(species_id)
+	skill_empowered_cast_active = is_skill_empowerment_ready(target)
 	match species_id:
 		"rabbit":
 			var direction := desired_direction if desired_direction.length() > 0.1 else -transform.basis.z
@@ -4858,6 +4968,9 @@ func use_skill(target: EcoActor = null) -> bool:
 		var growth_exposure := maxf(effective_size - float(Catalog.body_growth_profile(species_id)["start"]), 0.0) * 0.10
 		var adaptation_recovery := float(int(adaptation_ranks.get("combat", 0))) * 0.08
 		exposed_timer = maxf(exposed_timer, maxf(Catalog.skill_exposure_duration(species_id) + growth_exposure - adaptation_recovery, 0.65))
+		var empowerment_feedback := ""
+		if skill_empowered_cast_active:
+			empowerment_feedback = _apply_skill_empowerment(target, skill_plan, effect_parent, effect_color)
 		_update_exhaustion_state()
 		if game.has_method("play_sfx_near"):
 			game.play_sfx_near("skill_%s" % species_id, global_position, is_player)
@@ -4865,12 +4978,58 @@ func use_skill(target: EcoActor = null) -> bool:
 		_break_cover()
 		if is_player:
 			var feedback := str(data.get("skill_feedback", data["skill_hint"]))
+			if empowerment_feedback != "":
+				feedback = "%s · %s" % [empowerment_feedback, feedback]
 			if affected_count > 0:
 				feedback += " · 影响%d个个体" % affected_count
 			game.show_hint(feedback)
 	elif is_player:
 		game.show_hint("技能没有找到有效目标，靠近一些再试")
+	skill_empowered_cast_active = false
 	return used
+
+
+func _apply_skill_empowerment(target: EcoActor, plan: Dictionary, effect_parent: Node, effect_color: Color) -> String:
+	var health_restore := max_health * clampf(float(plan.get("health_restore", 0.0)), 0.0, 0.08)
+	var stamina_restore := max_stamina * clampf(float(plan.get("stamina_restore", 0.0)), 0.0, 0.18)
+	if health_restore > 0.0:
+		health = minf(health + health_restore, max_health)
+		health_changed.emit(health, max_health)
+		_update_health_bar()
+	if stamina_restore > 0.0:
+		stamina = minf(stamina + stamina_restore, max_stamina)
+		stamina_changed.emit(stamina, max_stamina)
+	var guard_duration := clampf(float(plan.get("guard_duration", 0.0)), 0.0, 4.0)
+	if guard_duration > 0.0:
+		skill_guard_timer = maxf(skill_guard_timer, guard_duration)
+		skill_guard_ratio = minf(skill_guard_ratio, clampf(float(plan.get("guard_ratio", 0.88)), 0.70, 0.95))
+	var hidden_bonus := clampf(float(plan.get("hidden_bonus", 0.0)), 0.0, 0.80)
+	if hidden_bonus > 0.0:
+		hidden_timer = minf(hidden_timer + hidden_bonus, 3.0)
+	var dash_bonus := clampf(float(plan.get("dash_bonus", 0.0)), 0.0, 0.20)
+	if dash_bonus > 0.0 and dash_timer > 0.0:
+		dash_timer *= 1.0 + dash_bonus
+	var cooldown_refund := clampf(float(plan.get("cooldown_refund", 0.0)), 0.0, 0.18)
+	if cooldown_refund > 0.0:
+		skill_timer *= 1.0 - cooldown_refund
+	var exposure_reduction := clampf(float(plan.get("exposure_reduction", 0.0)), 0.0, 0.40)
+	if exposure_reduction > 0.0:
+		exposed_timer = maxf(exposed_timer - exposure_reduction, 0.55)
+	if is_instance_valid(target) and not target.dead and global_position.distance_to(target.global_position) <= _skill_engage_range() + 1.0:
+		var target_stamina_damage := clampf(float(plan.get("target_stamina_damage", 0.0)), 0.0, 0.16)
+		if target_stamina_damage > 0.0:
+			target.stamina = maxf(target.stamina - target.max_stamina * target_stamina_damage, 0.0)
+			target.stamina_changed.emit(target.stamina, target.max_stamina)
+			target._update_exhaustion_state()
+		var target_exposure := clampf(float(plan.get("target_exposure", 0.0)), 0.0, 2.20)
+		if target_exposure > 0.0:
+			target.exposed_timer = maxf(target.exposed_timer, target_exposure)
+	skill_empowered_casts += 1
+	if effect_parent != null:
+		var mastery_color := effect_color.lightened(0.30).lerp(Color("#f4df88"), 0.36)
+		SkillVFX.ring(effect_parent, global_position, mastery_color, 0.58, 2.5 + effective_size * 0.28, 0.42)
+		SkillVFX.radial_burst(effect_parent, global_position + Vector3.UP * 0.25, mastery_color, 1.8 + effective_size * 0.18, 9, 0.11, 0.34, 0.18)
+	return "生态强化·%s" % str(plan.get("empowerment", "本能爆发"))
 
 
 func _skill_effect_parent() -> Node:
@@ -4907,6 +5066,8 @@ func _should_show_skill_vfx() -> bool:
 
 func _skill_damage(attack_factor: float) -> float:
 	var result := float(data["attack"]) * attack_factor
+	if skill_empowered_cast_active:
+		result *= 1.0 + clampf(float(Catalog.skill_plan(species_id).get("damage_bonus", 0.0)), 0.0, 0.20)
 	if not is_player:
 		result *= game.get_ai_damage_multiplier()
 	return result
@@ -5016,6 +5177,9 @@ func take_damage(raw_damage: float, source: EcoActor) -> void:
 			SkillVFX.radial_burst(_skill_effect_parent(), global_position, counter_color, 2.2 + float(threat_gap) * 0.18, 10, 0.14, 0.44)
 	if shell_guard_timer > 0.0:
 		final_damage *= 0.42 if _collapse_competition_active() else 0.20
+		final_damage = maxf(final_damage, 1.0)
+	if skill_guard_timer > 0.0:
+		final_damage *= skill_guard_ratio
 		final_damage = maxf(final_damage, 1.0)
 	if has_habit_buff("guard"):
 		final_damage *= 0.90

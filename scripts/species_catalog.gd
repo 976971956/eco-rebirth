@@ -275,6 +275,43 @@ const ECO_HABITS := {
 	"lion": {"name": "狮群分食", "foods": ["corpse"], "health": 0.045, "stamina": 0.140, "hunger": 3.0, "buff": "hunt", "duration": 5.0, "condition": "large_carcass", "prey_min": 3, "seek_health": 0.62, "summary": "草原上分食中大型猎物可恢复体力，并延续狮群的围猎猎性。"},
 }
 
+# Every active skill has a readable tactical contract in addition to its base
+# effect.  `condition` is evaluated from live EcoActor state, while the numeric
+# bonuses share one bounded budget so ecological setup matters without turning
+# an empowered cast into an unavoidable one-button kill.
+const SKILL_PLANS := {
+	"rabbit": {"role": "逃生换位", "empowerment": "草影折返", "condition": "threatened", "condition_label": "被强敌追击或已在草丛蓄成伏击", "bonus_text": "额外恢复12%耐力，延长隐匿并缩短后摇", "counter": "不要贴身直追；封锁侧向路线，等折跃显形后再扑击", "stamina_restore": 0.12, "hidden_bonus": 0.65, "exposure_reduction": 0.28, "cooldown_refund": 0.08},
+	"fox": {"role": "标记引战", "empowerment": "残血误导", "condition": "target_injured", "condition_label": "目标生命低于55%", "bonus_text": "佯攻伤害提高，并削减目标耐力、制造更长破绽", "counter": "残血时远离第三方捕食者；逼赤狐先交位移再转身反打", "damage_bonus": 0.12, "target_stamina_damage": 0.08, "target_exposure": 1.60},
+	"deer": {"role": "群体控场", "empowerment": "长奔惊群", "condition": "straight_run", "condition_label": "连续直线奔跑1.35秒", "bonus_text": "恢复10%耐力，蹬踏伤害提高且后摇更短", "counter": "用树石迫使林鹿转向，别在它完成长直线蓄势后贴身", "damage_bonus": 0.08, "stamina_restore": 0.10, "exposure_reduction": 0.24},
+	"wolf": {"role": "群猎集火", "empowerment": "合围咬伤", "condition": "ally_near", "condition_label": "10米内存在灰狼同类", "bonus_text": "扑杀伤害提高，削减猎物耐力并制造技能破绽", "counter": "优先切断狼群连接；逼领头狼空扑后从缺口脱离", "damage_bonus": 0.12, "target_stamina_damage": 0.10, "target_exposure": 1.80},
+	"snake": {"role": "伏击消耗", "empowerment": "冷伏注毒", "condition": "concealed", "condition_label": "处于隐匿、冷伏或草丛伏击状态", "bonus_text": "毒牙和持续毒伤提高，命中后短暂重新匿踪", "counter": "用移动和范围技能探草；中毒后先拉开，不要把血味带进兽群", "damage_bonus": 0.15, "hidden_bonus": 0.42, "target_exposure": 1.20},
+	"bear": {"role": "受击反场", "empowerment": "负伤震怒", "condition": "injured", "condition_label": "生命低于55%或怒意已激活", "bonus_text": "震荡伤害提高，恢复少量生命并获得短暂减伤", "counter": "不要在棕熊负伤后多人贴身；用毒、远程和轮流消耗拖过守势", "damage_bonus": 0.10, "health_restore": 0.03, "guard_duration": 2.60, "guard_ratio": 0.82},
+	"boar": {"role": "突围冲阵", "empowerment": "硬皮突围", "condition": "injured", "condition_label": "生命低于55%", "bonus_text": "冲锋更远、伤害提高，并在冲阵期间获得短暂减伤", "counter": "侧移避开直线，利用岩石截断冲锋；不要站在它与出口之间", "damage_bonus": 0.10, "dash_bonus": 0.15, "guard_duration": 2.00, "guard_ratio": 0.80},
+	"raccoon": {"role": "资源窃取", "empowerment": "饥时巧取", "condition": "hungry", "condition_label": "饥饿达到35或正在争夺食物", "bonus_text": "额外恢复生命与耐力，撤离隐匿更久且冷却缩短", "counter": "看守高价值资源并保留控制；它翻滚后不要盲追进第三方领地", "health_restore": 0.04, "stamina_restore": 0.16, "hidden_bonus": 0.50, "cooldown_refund": 0.10},
+	"porcupine": {"role": "反伤守点", "empowerment": "围攻竖刺", "condition": "outnumbered", "condition_label": "6米内至少有两个异种敌人", "bonus_text": "怒刺伤害提高，并获得持续减伤以惩罚围攻", "counter": "分散站位、等背刺放下；不要让多只近战同时触发反伤", "damage_bonus": 0.12, "guard_duration": 3.00, "guard_ratio": 0.72, "exposure_reduction": 0.18},
+	"crocodile": {"role": "水域锁杀", "empowerment": "深水绞杀", "condition": "water", "condition_label": "身体进入有效水域", "bonus_text": "翻滚伤害提高，额外削减耐力并延长猎物破绽", "counter": "沿浅岸横移，别在深水进食；诱使鳄鱼离水后再消耗", "damage_bonus": 0.15, "target_stamina_damage": 0.15, "target_exposure": 2.00},
+	"capybara": {"role": "群体维稳", "empowerment": "水岸安抚", "condition": "water", "condition_label": "位于湿地水域", "bonus_text": "额外恢复生命和耐力，并获得短暂水岸守势", "counter": "饥饿或直接伤害会打断安抚；把水豚逼离水岸再持续施压", "health_restore": 0.06, "stamina_restore": 0.12, "guard_duration": 2.50, "guard_ratio": 0.88, "cooldown_refund": 0.12},
+	"otter": {"role": "水路追击", "empowerment": "水流连击", "condition": "water", "condition_label": "位于湿地水域", "bonus_text": "突袭伤害提高，恢复耐力、短暂匿踪并缩短冷却", "counter": "守住上岸点，在陆地迫使水獭连续换向并耗尽爆发", "damage_bonus": 0.10, "stamina_restore": 0.14, "hidden_bonus": 0.50, "cooldown_refund": 0.12},
+	"lynx": {"role": "潜伏收割", "empowerment": "静猎封喉", "condition": "concealed", "condition_label": "处于静猎、隐匿或草丛伏击状态", "bonus_text": "飞扑伤害显著提高，并让猎物暴露反击破绽", "counter": "保持不规则移动并检查草丛；猞猁落地后立刻反击其后摇", "damage_bonus": 0.18, "target_exposure": 1.40, "cooldown_refund": 0.10},
+	"goat": {"role": "地形突围", "empowerment": "峭壁借势", "condition": "home_region", "condition_label": "处于高地或熟悉主场", "bonus_text": "跃进距离与伤害提高，恢复耐力并缩短后摇", "counter": "把山羊赶出高地窄道，在平地封住角击后的落点", "damage_bonus": 0.08, "dash_bonus": 0.18, "stamina_restore": 0.10, "exposure_reduction": 0.20},
+	"wolverine": {"role": "逆体型强攻", "empowerment": "逆体撕咬", "condition": "target_larger", "condition_label": "目标实时体型大于自己", "bonus_text": "对大体型目标进一步增伤、吸收少量生命并削减其耐力", "counter": "不要在低耐力时和狼獾贴身；用击退拉开连续撕咬距离", "damage_bonus": 0.15, "health_restore": 0.03, "target_stamina_damage": 0.12},
+	"bison": {"role": "群阵冲锋", "empowerment": "牛阵踏破", "condition": "ally_near", "condition_label": "10米内存在野牛同类", "bonus_text": "冲锋伤害提高、恢复耐力，并以短暂减伤维持阵线", "counter": "从侧翼拆散牛群；正面冲锋前让出直线，不要硬挡阵头", "damage_bonus": 0.08, "stamina_restore": 0.08, "guard_duration": 3.00, "guard_ratio": 0.82},
+	"zebra": {"role": "群体脱锁", "empowerment": "斑纹群转", "condition": "threatened", "condition_label": "正在逃离强敌或草丛伏击已就绪", "bonus_text": "额外恢复耐力、延长脱锁隐匿并缩短技能冷却", "counter": "从两侧夹击而非尾追；等待条纹扰乱结束再重新锁定", "stamina_restore": 0.14, "hidden_bonus": 0.55, "exposure_reduction": 0.22, "cooldown_refund": 0.10},
+	"elephant": {"role": "巨体清场", "empowerment": "受围践踏", "condition": "outnumbered", "condition_label": "7米内至少有两个异种敌人", "bonus_text": "践踏伤害提高，获得短暂减伤并缩短下一次冷却", "counter": "分批进出践踏范围；看到抬足后立刻散开，等巨象后摇再回场", "damage_bonus": 0.08, "guard_duration": 3.00, "guard_ratio": 0.84, "cooldown_refund": 0.12},
+	"tiger": {"role": "林地爆发", "empowerment": "林影扑杀", "condition": "concealed", "condition_label": "处于森林隐匿或草丛伏击状态", "bonus_text": "扑杀伤害显著提高，并使猎物暴露更长反击破绽", "counter": "避开密林盲区并结伴移动；猛虎扑空后是最佳围攻窗口", "damage_bonus": 0.16, "target_exposure": 1.50, "hidden_bonus": 0.34},
+	"monkey": {"role": "树冠骚扰", "empowerment": "树冠连投", "condition": "canopy", "condition_label": "已经进入树冠或位于森林主场", "bonus_text": "投掷伤害提高，削减目标耐力并缩短技能冷却", "counter": "离开树下，逼猕猴落地进食；投射物命中前持续横向移动", "damage_bonus": 0.12, "stamina_restore": 0.10, "target_stamina_damage": 0.08, "cooldown_refund": 0.14},
+	"owl": {"role": "夜间俯冲", "empowerment": "夜幕收翼", "condition": "night", "condition_label": "当前处于夜晚", "bonus_text": "俯冲伤害提高，恢复飞行耐力并在拉升时重新隐匿", "counter": "夜晚靠近大型动物或树障；雕鸮落低后用范围攻击逼退", "damage_bonus": 0.12, "stamina_restore": 0.12, "hidden_bonus": 0.70, "cooldown_refund": 0.10},
+	"moose": {"role": "近身清围", "empowerment": "受围横扫", "condition": "outnumbered", "condition_label": "6米内至少有两个异种敌人", "bonus_text": "横扫伤害提高并获得短暂减伤，降低被群猎秒杀的风险", "counter": "不要聚在巨角正面；一只诱导横扫，另一只从后侧惩罚后摇", "damage_bonus": 0.10, "guard_duration": 3.00, "guard_ratio": 0.82, "target_stamina_damage": 0.08},
+	"turtle": {"role": "承伤反打", "empowerment": "濒危固甲", "condition": "low_health", "condition_label": "生命低于40%", "bonus_text": "缩壳时恢复生命和耐力、缩短冷却，并显著压低后摇", "counter": "停止攻击并争夺周围资源；等龟壳解除后再用高伤害技能", "health_restore": 0.08, "stamina_restore": 0.10, "cooldown_refund": 0.15, "exposure_reduction": 0.34},
+	"cheetah": {"role": "破绽终结", "empowerment": "破绽猎杀", "condition": "target_exposed", "condition_label": "目标力竭或处于技能后摇", "bonus_text": "猎杀伤害提高、恢复耐力并缩短冷却，但爆发疲劳仍会保留", "counter": "始终保留耐力退出破绽；用控制逼猎豹空放并承受疲劳", "damage_bonus": 0.14, "stamina_restore": 0.10, "cooldown_refund": 0.12},
+	"rhino": {"role": "远距破阵", "empowerment": "远距贯角", "condition": "far_target", "condition_label": "目标距离至少4.8米", "bonus_text": "角冲距离与伤害提高，削减目标耐力并获得短暂冲阵减伤", "counter": "贴近侧面绕行或用障碍截断蓄力，别停在开阔直线上", "damage_bonus": 0.15, "dash_bonus": 0.18, "target_stamina_damage": 0.15, "guard_duration": 2.00, "guard_ratio": 0.82},
+	"gorilla": {"role": "主场统治", "empowerment": "主场震威", "condition": "home_region", "condition_label": "处于森林主场或自己的领地内", "bonus_text": "震地后恢复生命、获得减伤并缩短下一次技能冷却", "counter": "把大猩猩引离森林资源圈；不要在它的领地中心持续换血", "health_restore": 0.05, "guard_duration": 3.00, "guard_ratio": 0.78, "cooldown_refund": 0.10},
+	"eagle": {"role": "远距俯冲", "empowerment": "高空贯击", "condition": "far_target", "condition_label": "目标距离至少6.5米", "bonus_text": "俯冲伤害提高，命中后恢复飞行耐力并缩短冷却", "counter": "靠近障碍或同伴，观察金色俯冲线；落点出现后立刻横移", "damage_bonus": 0.12, "stamina_restore": 0.14, "cooldown_refund": 0.08},
+	"hippo": {"role": "水岸震慑", "empowerment": "水域裂颚", "condition": "water", "condition_label": "位于湿地水域", "bonus_text": "裂颚伤害提高、恢复生命，削减近敌耐力并形成水岸守势", "counter": "在陆地远程消耗；不要为抢鱼或食物进入河马近身范围", "damage_bonus": 0.10, "health_restore": 0.04, "target_stamina_damage": 0.10, "guard_duration": 3.00, "guard_ratio": 0.82},
+	"hyena": {"role": "群体围猎", "empowerment": "群笑碎骨", "condition": "ally_near", "condition_label": "10米内存在鬣狗同类", "bonus_text": "围猎伤害提高，恢复少量生命并削减猎物耐力、扩大破绽", "counter": "先击退一只打破群笑链；不要带着残血穿过鬣狗尸体热点", "damage_bonus": 0.10, "health_restore": 0.03, "target_stamina_damage": 0.10, "target_exposure": 1.50},
+	"lion": {"role": "狮群号令", "empowerment": "王群合击", "condition": "ally_near", "condition_label": "11米内存在狮子同类", "bonus_text": "号令伤害提高，获得短暂减伤并让目标暴露更长破绽", "counter": "把狮群引入障碍区分割；号令落空后集中反击领头狮", "damage_bonus": 0.10, "guard_duration": 2.50, "guard_ratio": 0.85, "target_exposure": 1.50, "cooldown_refund": 0.10},
+}
+
 const VICTORY_GUIDES := {
 	"rabbit": "前期沿森林与草原的草丛寻找嫩草，用草窟反刍回血、补耐力和轻捷迁徙，不和捕食者换血。中期把狼、狐引向熊或蛇制造混战；终局保留月影折跃和半条以上耐力，用伏击、主场反制与连续变向拖垮最后的追猎者。",
 	"fox": "围绕尸体和残血目标行动，不做第一只开战的动物。先用血味佯攻把猎物暴露给其他捕食者，再补刀获取经验；终局依靠速度和更高等级逐个收割。",
@@ -1511,6 +1548,26 @@ static func habit_profile(species_id: String) -> Dictionary:
 static func habit_description(species_id: String) -> String:
 	var profile: Dictionary = ECO_HABITS.get(species_id, ECO_HABITS["rabbit"])
 	return "生态习性：%s — %s" % [str(profile["name"]), str(profile["summary"])]
+
+
+static func skill_plan(species_id: String) -> Dictionary:
+	return SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"]).duplicate(true)
+
+
+static func skill_plan_description(species_id: String) -> String:
+	var profile: Dictionary = SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"])
+	return "技能定位：%s · 生态强化「%s」\n强化条件：%s；%s\n敌方反制：%s" % [
+		str(profile.get("role", "战术技能")), str(profile.get("empowerment", "生态强化")),
+		str(profile.get("condition_label", "把握生态时机")), str(profile.get("bonus_text", "技能效果提高")), str(profile.get("counter", "观察技能后摇再反击")),
+	]
+
+
+static func skill_empowerment_name(species_id: String) -> String:
+	return str(SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"]).get("empowerment", "生态强化"))
+
+
+static func skill_empowerment_condition_text(species_id: String) -> String:
+	return str(SKILL_PLANS.get(species_id, SKILL_PLANS["rabbit"]).get("condition_label", "把握生态时机"))
 
 
 static func habit_favored_foods(species_id: String) -> Array[String]:

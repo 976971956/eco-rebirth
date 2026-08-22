@@ -79,7 +79,7 @@ func _render() -> void:
 	ui.hide_species_intro()
 	ui.seed_label.text = "世界种子 11337"
 	ui.skill_label.text = "扑咬　就绪"
-	ui.skill_hint_label.text = "扑向猎物并造成短暂减速"
+	ui.skill_hint_label.text = "生态强化就绪 · 合围咬伤"
 	ui.update_leaderboard([
 		{"rank": 1, "name": "金雕", "level": 4, "experience": 21, "kills": 5, "is_player": false},
 		{"rank": 2, "name": "山林猛虎", "level": 3, "experience": 62, "kills": 4, "is_player": false},
@@ -101,6 +101,7 @@ func _render() -> void:
 	var gameplay_image := root.get_texture().get_image()
 	var leaderboard_result := gameplay_image.save_png("res://docs/images/v15-leaderboard-ticker.png")
 	var mobile_safe_result := gameplay_image.save_png("res://docs/images/v26-adaptive-mobile-ui.png")
+	var skill_empowerment_result := gameplay_image.save_png("res://docs/images/v94-skill-empowerment-hud.png")
 	preview_actor.habit_buff_name = "群猎分食"
 	preview_actor.habit_buff_kind = "hunt"
 	preview_actor.habit_buff_timer = 4.2
@@ -334,7 +335,7 @@ func _render() -> void:
 	for _frame in range(5):
 		await process_frame
 	var settings_result := root.get_texture().get_image().save_png("res://docs/images/v14-settings.png")
-	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_contest_result == OK and adaptation_result == OK and settings_result == OK:
+	if home_result == OK and free_mode_result == OK and leaderboard_result == OK and mobile_safe_result == OK and skill_empowerment_result == OK and habit_hud_result == OK and cover_ambush_result == OK and terrain_counter_result == OK and ecology_leverage_result == OK and counterplay_mastery_result == OK and ecology_hotspot_result == OK and food_chain_migration_result == OK and ecology_traces_result == OK and opportunity_result == OK and battle_report_result == OK and tutorial_result == OK and guide_result == OK and level_identity_result == OK and water_guide_result == OK and water_hud_result == OK and instinct_result == OK and experience_contest_result == OK and adaptation_result == OK and settings_result == OK:
 		print("RELEASE_UI_PREVIEW_OK")
 		quit(0)
 	else:

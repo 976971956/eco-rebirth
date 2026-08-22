@@ -556,6 +556,9 @@ func _run_validation() -> void:
 	guidance_world.free()
 	game_stub.actors.clear()
 
+	var valid_skill_conditions := ["threatened", "target_injured", "straight_run", "ally_near", "concealed", "injured", "hungry", "outnumbered", "water", "home_region", "target_larger", "canopy", "night", "low_health", "target_exposed", "far_target"]
+	if Catalog.SKILL_PLANS.size() != Catalog.ORDER.size():
+		failures.append("30种物种没有一一对应的生态强化技能方案")
 	for index in range(Catalog.ORDER.size()):
 		var species_id: String = Catalog.ORDER[index]
 		if not Catalog.DATA.has(species_id):
@@ -565,6 +568,19 @@ func _run_validation() -> void:
 		for required_key in ["name", "health", "stamina", "speed", "attack", "skill", "xp_reward"]:
 			if not data.has(required_key):
 				failures.append("%s 缺少字段 %s" % [species_id, required_key])
+		if not Catalog.SKILL_PLANS.has(species_id):
+			failures.append("%s 缺少生态强化技能方案" % species_id)
+		else:
+			var skill_plan := Catalog.skill_plan(species_id)
+			for plan_key in ["role", "empowerment", "condition", "condition_label", "bonus_text", "counter"]:
+				if str(skill_plan.get(plan_key, "")).length() < 2:
+					failures.append("%s 技能方案字段 %s 不完整" % [species_id, plan_key])
+			if str(skill_plan.get("condition", "")) not in valid_skill_conditions:
+				failures.append("%s 使用了未知技能强化条件" % species_id)
+			if float(skill_plan.get("damage_bonus", 0.0)) > 0.20 or float(skill_plan.get("health_restore", 0.0)) > 0.08 or float(skill_plan.get("stamina_restore", 0.0)) > 0.18:
+				failures.append("%s 生态强化伤害或恢复超出统一预算" % species_id)
+			if float(skill_plan.get("cooldown_refund", 0.0)) > 0.18 or float(skill_plan.get("target_stamina_damage", 0.0)) > 0.16 or float(skill_plan.get("target_exposure", 0.0)) > 2.20:
+				failures.append("%s 生态强化控制或冷却收益超出统一预算" % species_id)
 		var actor: EcoActor = ActorScript.new()
 		actor.process_mode = Node.PROCESS_MODE_DISABLED
 		container.add_child(actor)
@@ -840,6 +856,74 @@ func _run_validation() -> void:
 			failures.append("cheetah 极速猎杀后没有进入疲劳窗口")
 		attacker.free()
 		target.free()
+
+	var mastery_rabbit: EcoActor = ActorScript.new()
+	mastery_rabbit.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_rabbit)
+	mastery_rabbit.setup(game_stub, 1800, "rabbit", false, Vector3.ZERO, 0)
+	var mastery_elephant: EcoActor = ActorScript.new()
+	mastery_elephant.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_elephant)
+	mastery_elephant.setup(game_stub, 1801, "elephant", false, Vector3(0.0, 0.0, -2.0), 0)
+	game_stub.actors = [mastery_rabbit, mastery_elephant]
+	mastery_rabbit.calm_timer = 0.0
+	mastery_rabbit.last_attacker = mastery_elephant
+	mastery_rabbit.ai_state = "flee"
+	if not mastery_rabbit.is_skill_empowerment_ready(mastery_elephant) or not mastery_rabbit.use_skill(mastery_elephant):
+		failures.append("雪兔被强敌追击时没有进入草影折返强化")
+	elif mastery_rabbit.skill_empowered_casts != 1 or mastery_rabbit.hidden_timer < 1.90:
+		failures.append("雪兔生态强化没有延长折跃隐匿或记录强化释放")
+	mastery_rabbit.free()
+	mastery_elephant.free()
+
+	var mastery_wolf: EcoActor = ActorScript.new()
+	mastery_wolf.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_wolf)
+	mastery_wolf.setup(game_stub, 1810, "wolf", false, Vector3.ZERO, 0)
+	var mastery_wolf_ally: EcoActor = ActorScript.new()
+	mastery_wolf_ally.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_wolf_ally)
+	mastery_wolf_ally.setup(game_stub, 1811, "wolf", false, Vector3(2.0, 0.0, 0.0), 0)
+	var mastery_prey: EcoActor = ActorScript.new()
+	mastery_prey.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_prey)
+	mastery_prey.setup(game_stub, 1812, "rabbit", false, Vector3(0.0, 0.0, -4.0), 0)
+	mastery_prey.max_health = 10000.0
+	mastery_prey.health = mastery_prey.max_health
+	mastery_prey.stamina = mastery_prey.max_stamina
+	game_stub.actors = [mastery_wolf, mastery_wolf_ally, mastery_prey]
+	mastery_wolf.calm_timer = 0.0
+	if not mastery_wolf.is_skill_empowerment_ready(mastery_prey) or not mastery_wolf._ai_should_use_skill(mastery_prey):
+		failures.append("灰狼没有识别同类合围强化并据此决定释放技能")
+	var prey_stamina_before := mastery_prey.stamina
+	if not mastery_wolf.use_skill(mastery_prey):
+		failures.append("灰狼合围扑杀未能释放")
+	elif mastery_prey.exposed_timer < 1.79 or mastery_prey.stamina >= prey_stamina_before:
+		failures.append("灰狼合围咬伤没有制造破绽或削减猎物耐力")
+	mastery_wolf.free()
+	mastery_wolf_ally.free()
+	mastery_prey.free()
+
+	var mastery_crocodile: EcoActor = ActorScript.new()
+	mastery_crocodile.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_crocodile)
+	mastery_crocodile.setup(game_stub, 1820, "crocodile", false, Vector3.ZERO, 0)
+	var mastery_water_prey: EcoActor = ActorScript.new()
+	mastery_water_prey.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(mastery_water_prey)
+	mastery_water_prey.setup(game_stub, 1821, "deer", false, Vector3(0.0, 0.0, -2.2), 0)
+	mastery_water_prey.max_health = 10000.0
+	mastery_water_prey.health = mastery_water_prey.max_health
+	game_stub.actors = [mastery_crocodile, mastery_water_prey]
+	mastery_crocodile.calm_timer = 0.0
+	mastery_crocodile.current_water_depth = 0.55
+	var water_prey_stamina_before := mastery_water_prey.stamina
+	if not mastery_crocodile.is_skill_empowerment_ready(mastery_water_prey) or not mastery_crocodile.use_skill(mastery_water_prey):
+		failures.append("沼泽鳄在水域没有进入深水绞杀强化")
+	elif mastery_water_prey.stamina > water_prey_stamina_before - mastery_water_prey.max_stamina * 0.14 or mastery_water_prey.exposed_timer < 1.99:
+		failures.append("深水绞杀没有结算耐力压制和反击破绽")
+	mastery_crocodile.free()
+	mastery_water_prey.free()
 	game_stub.actors.clear()
 
 	var world_test: EcoWorld = WorldScript.new()

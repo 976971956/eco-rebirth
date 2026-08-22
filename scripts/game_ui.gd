@@ -1161,7 +1161,8 @@ func set_player(player_actor: EcoActor) -> void:
 	instinct_goal_label.text = player_actor.instinct_status_text()
 	instinct_goal_label.tooltip_text = player_actor.instinct_detail_text()
 	skill_label.text = "%s　[空格]" % data["skill"]
-	skill_hint_label.text = str(data["skill_hint"])
+	skill_hint_label.text = player_actor.skill_tactical_status_text()
+	skill_hint_label.tooltip_text = Catalog.skill_plan_description(player_actor.species_id)
 	var skill_color := Color.from_string(str(data.get("skill_color", "#5db98a")), Color("#5db98a"))
 	skill_label.add_theme_color_override("font_color", skill_color.lightened(0.18))
 	skill_bar.max_value = float(data["skill_cooldown"])
@@ -1186,9 +1187,9 @@ func show_species_intro(species_id: String, level_profile: Dictionary = {}) -> v
 	var level_rule := ("本关生态：%s\n" % str(level_profile.get("rule", ""))) if not level_profile.is_empty() else ""
 	intro_controls.text = level_rule + ("左侧动态摇杆移动　右侧冲刺 / 攻击 / 技能 / 进食" if touch_layout else "WASD / 方向键移动　Shift 冲刺　按住攻击　空格释放技能　E 进食") + "\n本局本能：%s；完成三段目标可获得经验与生存恢复\n核心反制（环境反制/生态借力）：%s" % [Catalog.instinct_chain_summary(species_id), Catalog.counterplay_plan(species_id)]
 	var level_one_stats := Catalog.growth_stats(species_id, 1)
-	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n\n获胜攻略：%s" % [
+	intro_body.text = "基础数值：生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n%s\n战斗被动：%s — %s\n主动技能：%s — %s\n%s\n\n获胜攻略：%s" % [
 		int(level_one_stats["health"]), float(level_one_stats["attack"]), float(level_one_stats["speed"]), int(level_one_stats["stamina"]), float(level_one_stats["armor"]),
-		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.water_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id)
+		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.water_description(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.skill_plan_description(species_id), Catalog.victory_guide(species_id)
 	]
 	intro_panel.modulate = Color.WHITE
 	intro_panel.move_to_front()
@@ -1257,14 +1258,18 @@ func update_hud(player_actor: EcoActor, remaining: int, total: int = 10, current
 	skill_bar.max_value = cooldown
 	skill_bar.value = cooldown - cooldown_remaining
 	var skill_ready := cooldown_remaining <= 0.0 and not player_actor.exhausted and player_actor.stamina >= float(player_actor.data["skill_cost"])
-	var skill_state := "力竭" if player_actor.exhausted else ("就绪" if skill_ready else ("耐力不足" if cooldown_remaining <= 0.0 else "%.1fs" % cooldown_remaining))
+	var empowerment_ready := player_actor.is_skill_empowerment_ready()
+	var skill_state := "力竭" if player_actor.exhausted else (("强化" if empowerment_ready else "就绪") if skill_ready else ("耐力不足" if cooldown_remaining <= 0.0 else "%.1fs" % cooldown_remaining))
 	skill_label.text = "%s　%s" % [player_actor.data["skill"], skill_state]
+	skill_hint_label.text = player_actor.skill_tactical_status_text()
+	skill_hint_label.tooltip_text = Catalog.skill_plan_description(player_actor.species_id)
 	if skill_button_icon.species_id != player_actor.species_id:
 		var skill_color := Color.from_string(str(player_actor.data.get("skill_color", "#5db98a")), Color("#5db98a"))
 		skill_button_icon.configure("skill", player_actor.species_id, skill_color)
 	skill_button_name_label.text = str(player_actor.data["skill"])
 	skill_button_state_label.text = skill_state
-	skill_button_state_label.add_theme_color_override("font_color", Color("#c7f3d7") if skill_ready else Color("#efd38c"))
+	var skill_state_color := Color("#f6df83") if skill_ready and empowerment_ready else (Color("#c7f3d7") if skill_ready else Color("#efd38c"))
+	skill_button_state_label.add_theme_color_override("font_color", skill_state_color)
 	var cooldown_progress := 1.0 if cooldown <= 0.0 else clampf((cooldown - cooldown_remaining) / cooldown, 0.0, 1.0)
 	skill_button_icon.set_progress(cooldown_progress, skill_ready)
 	skill_button.modulate = Color.WHITE if skill_ready else Color(0.72, 0.76, 0.74, 0.88)
@@ -2013,9 +2018,9 @@ func _free_level_description(level: int) -> String:
 
 func _free_species_description(species_id: String) -> String:
 	var data := Catalog.get_data(species_id)
-	return "%s · %s\n生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n反制组合：%s\n战斗被动：%s — %s\n主动：%s — %s\n\n获胜思路：%s" % [
+	return "%s · %s\n生命 %d　攻击 %.1f　速度 %.2f　耐力 %d　护甲 %.1f\n%s\n%s\n%s\n反制组合：%s\n战斗被动：%s — %s\n主动：%s — %s\n%s\n\n获胜思路：%s" % [
 		data["name"], data["subtitle"], int(data["health"]), float(data["attack"]), float(data["speed"]), int(data["stamina"]), float(data["armor"]),
-		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.counterplay_plan(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.victory_guide(species_id),
+		Catalog.growth_description(species_id), Catalog.habitat_description(species_id), Catalog.habit_description(species_id), Catalog.counterplay_plan(species_id), data["passive"], data["passive_hint"], data["skill"], data["skill_hint"], Catalog.skill_plan_description(species_id), Catalog.victory_guide(species_id),
 	]
 
 

@@ -55,6 +55,7 @@
 - Ecological habits and resource routes: `docs/13_三十种生态习性设计.md`
 - Gameplay loop audit and anti-snowball rules: `docs/14_玩法逻辑审计与优化.md`
 - Playability roadmap, in-run adaptations, instinct goals, ecology event director and AI 2.0: `docs/18_可玩性玩法方案.md`
+- All 30 active-skill roles, ecological empowerment windows, shared balance budgets, AI timing, and counterplay: `docs/19_三十种技能生态强化设计.md`
 - Running/exporting: `BUILDING.md`
 - V2 realistic art, rig, biome and VFX production: `docs/17_写实美术与动画生产方案.md`
 
