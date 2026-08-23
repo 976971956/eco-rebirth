@@ -32,6 +32,31 @@ class ExternalModelGame:
 		return quality_preset
 
 
+class FreeModeLayoutGame:
+	extends Node
+
+	func has_campaign_progress() -> bool:
+		return true
+
+	func menu_start_text() -> String:
+		return "继续轮回"
+
+	func get_selected_free_level() -> int:
+		return 1
+
+	func get_selected_free_species() -> String:
+		return "rabbit"
+
+	func set_selected_free_level(_level: int) -> void:
+		pass
+
+	func set_selected_free_species(_species_id: String) -> void:
+		pass
+
+	func play_ui_sound() -> void:
+		pass
+
+
 func _initialize() -> void:
 	_run_validation.call_deferred()
 
@@ -71,7 +96,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.71 发布候选校验通过：30种动物均使用内容不重复的独立 PBR 体表图集")
+		print("[release] V1.72 发布候选校验通过：手机网页自由模式开始按钮固定可见")
 		quit(0)
 	else:
 		for failure in failures:
@@ -314,9 +339,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.71\"") and presets.contains("application/short_version=\"1.71\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=830") and presets.contains("application/version=\"830\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.71", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.72\"") and presets.contains("application/short_version=\"1.72\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=840") and presets.contains("application/version=\"840\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.72", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1457,6 +1482,25 @@ func _validate_adaptive_ui_contract() -> void:
 	var phone_modal_size := UIScript.modal_size_for_available(Vector2(1000.0, 700.0), safe_viewport, true)
 	_expect(phone_modal_size.x <= safe_viewport.x * 0.94 and phone_modal_size.y <= safe_viewport.y * 0.92, "手机弹窗没有保留足够的周边视野")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("FreeModeScroll") and ui_source.contains("FreeModeStartButton"), "自由模式没有把手机端攻略区与开始按钮拆分")
+	var free_mode_game := FreeModeLayoutGame.new()
+	root.add_child(free_mode_game)
+	var free_mode_ui := UIScript.new()
+	root.add_child(free_mode_ui)
+	free_mode_ui.setup(free_mode_game)
+	free_mode_ui.show_free_mode()
+	var free_mode_layout := free_mode_ui.modal_safe_root.find_child("FreeModeLayout", true, false)
+	var free_mode_scroll := free_mode_ui.modal_safe_root.find_child("FreeModeScroll", true, false)
+	var free_mode_actions := free_mode_ui.modal_safe_root.find_child("FreeModeActions", true, false)
+	var free_mode_start := free_mode_ui.modal_safe_root.find_child("FreeModeStartButton", true, false)
+	_expect(free_mode_layout != null and free_mode_scroll != null and free_mode_actions != null and free_mode_start != null, "自由模式手机弹窗缺少固定操作区")
+	if free_mode_layout != null and free_mode_scroll != null and free_mode_actions != null and free_mode_start != null:
+		_expect(free_mode_scroll.get_parent() == free_mode_layout and free_mode_actions.get_parent() == free_mode_layout, "自由模式滚动区或固定操作区层级错误")
+		_expect(free_mode_actions.get_index() > free_mode_scroll.get_index(), "自由模式开始按钮没有固定在可滚动攻略区之后")
+		_expect(free_mode_scroll.size_flags_vertical == Control.SIZE_EXPAND_FILL, "自由模式攻略区无法随手机浏览器高度收缩")
+		_expect(free_mode_start.custom_minimum_size.y >= 52.0, "自由模式开始按钮触摸高度不足")
+	free_mode_ui.free()
+	free_mode_game.free()
 	_expect(ui_source.contains("hint_label.visible = not should_show"), "经验吸收条显示时没有收起重叠的中央临时提示")
 	_expect(ui_source.contains("DisplayServer.get_display_safe_area()"), "移动 HUD 没有读取系统安全显示区域")
 	_expect(ui_source.contains("orientation_blocked_changed"), "竖屏守卫没有通知主流程暂停世界")

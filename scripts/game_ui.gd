@@ -1895,9 +1895,11 @@ func show_free_mode() -> void:
 	var compact_touch := _uses_compact_touch_layout()
 
 	var panel := PanelContainer.new()
+	panel.name = "FreeModePanel"
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.99), 24, Color(0.64, 0.94, 0.62, 0.72), 2))
 	_add_modal_panel(panel, Vector2(880, 600) if compact_touch else Vector2(940, 650))
 	var box := VBoxContainer.new()
+	box.name = "FreeModeLayout"
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 9)
 	panel.add_child(box)
@@ -1915,10 +1917,26 @@ func show_free_mode() -> void:
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
 	box.add_child(subtitle)
 
+	# Keep the actions outside the scrolling body. Mobile Web loses usable height to
+	# browser chrome and safe areas, so a tall species guide must never push the
+	# primary start button below the canvas.
+	var scroll := ScrollContainer.new()
+	scroll.name = "FreeModeScroll"
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	box.add_child(scroll)
+	var scroll_body := VBoxContainer.new()
+	scroll_body.name = "FreeModeScrollableBody"
+	scroll_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll_body.add_theme_constant_override("separation", 9)
+	scroll.add_child(scroll_body)
+
 	var selectors := HBoxContainer.new()
 	selectors.alignment = BoxContainer.ALIGNMENT_CENTER
 	selectors.add_theme_constant_override("separation", 22)
-	box.add_child(selectors)
+	scroll_body.add_child(selectors)
 	var level_label := Label.new()
 	level_label.text = "挑选关卡"
 	level_label.add_theme_font_size_override("font_size", _font_size(21, 23))
@@ -1955,13 +1973,13 @@ func show_free_mode() -> void:
 	level_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	level_hint.add_theme_font_size_override("font_size", _font_size(16, 18))
 	level_hint.add_theme_color_override("font_color", Color("#a9c9aa"))
-	box.add_child(level_hint)
+	scroll_body.add_child(level_hint)
 
 	var preview_panel := PanelContainer.new()
-	preview_panel.custom_minimum_size = Vector2(0, 235 if compact_touch else 275)
+	preview_panel.custom_minimum_size = Vector2(0, 175 if compact_touch else 235)
 	preview_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	preview_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.055, 0.047, 0.88), 18, Color(0.45, 0.76, 0.49, 0.42), 1))
-	box.add_child(preview_panel)
+	scroll_body.add_child(preview_panel)
 	var preview := Label.new()
 	preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	preview.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1990,23 +2008,28 @@ func show_free_mode() -> void:
 	mode_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mode_hint.add_theme_font_size_override("font_size", _font_size(15, 17))
 	mode_hint.add_theme_color_override("font_color", Color("#d6cda8"))
-	box.add_child(mode_hint)
+	scroll_body.add_child(mode_hint)
 
 	var actions := HBoxContainer.new()
+	actions.name = "FreeModeActions"
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	actions.add_theme_constant_override("separation", 14)
 	box.add_child(actions)
 	var start_button := Button.new()
+	start_button.name = "FreeModeStartButton"
 	start_button.text = "开始自由挑战"
 	_style_button(start_button, true)
+	start_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	start_button.pressed.connect(func():
 		var species_id := str(species_select.get_item_metadata(species_select.selected))
 		free_mode_requested.emit(level_select.selected + 1, species_id)
 	)
 	actions.add_child(start_button)
 	var back_button := Button.new()
+	back_button.name = "FreeModeBackButton"
 	back_button.text = "返回首页"
 	_style_button(back_button, false)
+	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back_button.pressed.connect(func(): modal_root.hide())
 	actions.add_child(back_button)
 

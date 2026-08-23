@@ -38,6 +38,7 @@ func _initialize() -> void:
 
 
 func _render() -> void:
+	var mobile_free_mode_preview_only := "--mobile-free-mode-preview" in OS.get_cmdline_user_args()
 	var background_layer := CanvasLayer.new()
 	root.add_child(background_layer)
 	var background := TextureRect.new()
@@ -58,11 +59,22 @@ func _render() -> void:
 	ui.setup(game)
 	for _frame in range(5):
 		await process_frame
-	var home_result := root.get_texture().get_image().save_png("res://docs/images/v14-home.png")
+	var home_result := OK
+	if not mobile_free_mode_preview_only:
+		home_result = root.get_texture().get_image().save_png("res://docs/images/v14-home.png")
 	ui.show_free_mode()
 	for _frame in range(5):
 		await process_frame
-	var free_mode_result := root.get_texture().get_image().save_png("res://docs/images/v14-free-mode.png")
+	var free_mode_path := "res://docs/images/v98-mobile-web-free-mode.png" if mobile_free_mode_preview_only else "res://docs/images/v14-free-mode.png"
+	var free_mode_result := root.get_texture().get_image().save_png(free_mode_path)
+	if mobile_free_mode_preview_only:
+		if free_mode_result == OK:
+			print("MOBILE_FREE_MODE_PREVIEW_OK")
+			quit(0)
+		else:
+			push_error("手机网页自由模式预览生成失败")
+			quit(1)
+		return
 	ui.modal_root.hide()
 	var preview_actor: EcoActor = ActorScript.new()
 	preview_actor.process_mode = Node.PROCESS_MODE_DISABLED
