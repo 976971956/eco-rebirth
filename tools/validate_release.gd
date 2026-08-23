@@ -71,7 +71,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.70 发布候选校验通过：30种招牌技能、使用代价、豪猪刺球反伤与AI反制正常")
+		print("[release] V1.71 发布候选校验通过：30种动物均使用内容不重复的独立 PBR 体表图集")
 		quit(0)
 	else:
 		for failure in failures:
@@ -314,9 +314,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.70\"") and presets.contains("application/short_version=\"1.70\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=820") and presets.contains("application/version=\"820\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.70", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.71\"") and presets.contains("application/short_version=\"1.71\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=830") and presets.contains("application/version=\"830\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.71", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -634,20 +634,31 @@ func _validate_world_navigation_contract() -> void:
 
 
 func _validate_external_species_model_contract() -> void:
-	var fur_texture_paths := [
-		"res://assets/textures/animals/shared/quadruped_fur_atlas_albedo.png",
-		"res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png",
-		"res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png",
-	]
-	for texture_path in fur_texture_paths:
-		_expect(ResourceLoader.exists(texture_path), "四足物种毛发 PBR 图集缺失：%s" % texture_path)
-		var texture := load(texture_path) as Texture2D
-		_expect(texture != null and texture.get_width() == 256 and texture.get_height() == 256, "毛发 PBR 图集没有保持 256×256 移动端预算：%s" % texture_path)
-		var import_source := FileAccess.get_file_as_string(texture_path + ".import")
-		_expect(import_source.contains("compress/mode=2") and import_source.contains("mipmaps/generate=true"), "毛发 PBR 图集没有启用跨端 VRAM 压缩与 mipmap：%s" % texture_path)
-	var normal_import := FileAccess.get_file_as_string(fur_texture_paths[1] + ".import")
-	_expect(normal_import.contains("compress/normal_map=1"), "毛发法线图集没有使用法线压缩模式")
-	_expect(VisualCatalog.FUR_ATLAS_REGIONS.size() == 4 and VisualCatalog.FUR_ATLAS_REGIONS["bear"] == Vector2(0.5, 0.5), "四种四足动物的 2×2 材质图集分区异常")
+	for texture_profile in ["hero", "mobile"]:
+		var individual_albedo_paths := {}
+		var individual_albedo_hashes := {}
+		var expected_size := 512 if texture_profile == "hero" else 128
+		for species_id in VisualCatalog.EXTERNAL_SPECIES:
+			var texture_paths := VisualCatalog.surface_texture_paths(species_id, texture_profile)
+			_expect(texture_paths.size() == 3, "%s 的 %s 档没有声明独立表面 PBR 三通道" % [species_id, texture_profile])
+			for channel in ["albedo", "normal", "roughness"]:
+				var texture_path: String = texture_paths.get(channel, "")
+				_expect(texture_path != "" and ResourceLoader.exists(texture_path), "%s 的 %s 档独立 %s 图集缺失：%s" % [species_id, texture_profile, channel, texture_path])
+				var texture := load(texture_path) as Texture2D
+				_expect(texture != null and texture.get_width() == expected_size and texture.get_height() == expected_size, "%s 的 %s 档 %s 图集没有保持 %d×%d 预算" % [species_id, texture_profile, channel, expected_size, expected_size])
+				var import_source := FileAccess.get_file_as_string(texture_path + ".import")
+				_expect(import_source.contains("compress/mode=2") and import_source.contains("mipmaps/generate=true"), "%s 的 %s 档 %s 图集没有启用三端 VRAM 压缩与 mipmap" % [species_id, texture_profile, channel])
+				if channel == "normal":
+					_expect(import_source.contains("compress/normal_map=1"), "%s 的 %s 档法线图集没有使用法线压缩模式" % [species_id, texture_profile])
+			if not texture_paths.has("albedo"):
+				continue
+			var albedo_path: String = texture_paths["albedo"]
+			_expect(not individual_albedo_paths.has(albedo_path), "%s 的 %s 档仍与其它动物共用 Albedo 图集：%s" % [species_id, texture_profile, albedo_path])
+			individual_albedo_paths[albedo_path] = species_id
+			var albedo_hash := FileAccess.get_sha256(albedo_path)
+			_expect(albedo_hash != "" and not individual_albedo_hashes.has(albedo_hash), "%s 的 %s 档 Albedo 内容仍是共享贴图副本" % [species_id, texture_profile])
+			individual_albedo_hashes[albedo_hash] = species_id
+		_expect(individual_albedo_paths.size() == 30 and individual_albedo_hashes.size() == 30, "%s 档的三十种动物没有形成 30 套互不相同的独立表面图集" % texture_profile)
 	# All V2 animals are driven by armature bones; legacy Node3D pivots must not
 	# survive beside the imported skeleton or the pose would be applied twice.
 	var expected_motion_nodes := {}
@@ -702,6 +713,10 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["meshes"]) >= minimum_meshes, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
 			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
+			_expect(int(stats["individual_surface_surfaces"]) > 0, "%s 的 %s 体表没有绑定物种独立 PBR 图集" % [species_id, profile])
+			_expect((stats["individual_surface_species"] as Dictionary).size() == 1 and (stats["individual_surface_species"] as Dictionary).has(species_id), "%s 的 %s 误用了其它动物的表面图集" % [species_id, profile])
+			var expected_surface_channels := 3 if profile == "hero" else 1
+			_expect((stats["individual_surface_channel_counts"] as Dictionary).size() == 1 and (stats["individual_surface_channel_counts"] as Dictionary).has(expected_surface_channels), "%s 的 %s 体表没有按画质档绑定 %d 个运行时贴图通道" % [species_id, profile, expected_surface_channels])
 			if profile == "mobile":
 				_expect(int(stats["vertices"]) <= 16000, "%s 的 Mobile 模型超出移动端顶点预算" % species_id)
 				total_mobile_vertices += int(stats["vertices"])
@@ -1185,6 +1200,9 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"pbr_slots": {},
 		"textured_coat_surfaces": 0,
 		"atlas_coat_surfaces": 0,
+		"individual_surface_surfaces": 0,
+		"individual_surface_species": {},
+		"individual_surface_channel_counts": {},
 		"lod_meshes": 0,
 		"detail_lod_meshes": 0,
 		"named_nodes": {},
@@ -1300,6 +1318,11 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 				var material := mesh_instance.get_active_material(surface_index)
 				if material is StandardMaterial3D:
 					var standard_material := material as StandardMaterial3D
+					if standard_material.has_meta("individual_surface_species"):
+						stats["individual_surface_surfaces"] = int(stats["individual_surface_surfaces"]) + 1
+						stats["individual_surface_species"][str(standard_material.get_meta("individual_surface_species"))] = true
+						var surface_channels: Array = standard_material.get_meta("individual_surface_channels", [])
+						stats["individual_surface_channel_counts"][surface_channels.size()] = true
 					var has_visible_albedo := standard_material.albedo_texture != null or not standard_material.albedo_color.is_equal_approx(Color.WHITE)
 					if has_visible_albedo:
 						stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1

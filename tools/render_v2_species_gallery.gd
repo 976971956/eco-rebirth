@@ -47,15 +47,15 @@ func _render_gallery() -> void:
 	var all_ok := true
 	for group_index in range(GALLERY_GROUPS.size()):
 		var group_suffix := char(97 + group_index)
-		var idle_output := "res://docs/images/v54-v5-realistic-gallery-%s-idle.png" % group_suffix
-		var move_output := "res://docs/images/v54-v5-realistic-gallery-%s-move.png" % group_suffix
+		var idle_output := "res://docs/images/v97-individual-surface-gallery-%s-idle.png" % group_suffix
+		var move_output := "res://docs/images/v97-individual-surface-gallery-%s-move.png" % group_suffix
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, idle_output, "idle") and all_ok
 		all_ok = await _render_group(GALLERY_GROUPS[group_index], group_index, move_output, "locomotion") and all_ok
 	if all_ok:
-		print("V5_SPECIES_GALLERY_OK: 30 species / 20 close-up screenshots / idle + locomotion")
+		print("INDIVIDUAL_SURFACE_GALLERY_OK: 30 species / 20 close-up screenshots / idle + locomotion")
 		quit(0)
 	else:
-		push_error("无法保存 V5 三十物种近景验收图")
+		push_error("无法保存三十物种独立体表图集验收图")
 		quit(1)
 
 
@@ -81,7 +81,7 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 			actor.external_animation_player.seek(0.38 if animation_name == "locomotion" else 0.16, true)
 		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.38, 0.0), 28)
 	var pose_title := "移动动作定格" if animation_name == "locomotion" else "静止轮廓"
-	_add_label(scene, "Blender V5 · 逐物种解剖 / 贴体纹理 / 渐薄耳足 · %s · 第 %d/10 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 34)
+	_add_label(scene, "V1.71 · 30 套独立 PBR 体表 / Hero 512 色图 / 无共享换色 · %s · 第 %d/10 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 30)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL

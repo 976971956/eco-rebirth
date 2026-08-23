@@ -4,12 +4,13 @@ extends RefCounted
 const SkeletonRig = preload("res://scripts/species_skeleton_rig.gd")
 const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
-const FUR_ATLAS_SHADER = preload("res://assets/shaders/quadruped_fur_atlas.gdshader")
-const FUR_ALBEDO = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_albedo.png")
-const FUR_NORMAL = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png")
-const FUR_ROUGHNESS = preload("res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png")
+const FUR_ATLAS_SHADER_PATH := "res://assets/shaders/quadruped_fur_atlas.gdshader"
+const FUR_ALBEDO_PATH := "res://assets/textures/animals/shared/quadruped_fur_atlas_albedo.png"
+const FUR_NORMAL_PATH := "res://assets/textures/animals/shared/quadruped_fur_atlas_normal.png"
+const FUR_ROUGHNESS_PATH := "res://assets/textures/animals/shared/quadruped_fur_atlas_roughness.png"
 const MODEL_ROOT := "res://assets/models/animals"
 const MODEL_V2_ROOT := "res://assets/models_v2/animals"
+const SURFACE_TEXTURE_ROOT := "res://assets/textures/animals"
 const EXTERNAL_SPECIES := [
 	"rabbit", "fox", "deer", "wolf", "snake", "bear",
 	"boar", "raccoon", "porcupine", "crocodile", "capybara", "otter", "lynx", "goat", "wolverine",
@@ -76,6 +77,14 @@ const HERO_DETAIL_RANGE := 28.0
 const MOBILE_DETAIL_RANGE := 20.0
 const HERO_BODY_RANGE := 82.0
 const MOBILE_BODY_RANGE := 68.0
+const PRIMARY_SURFACE_TOKENS := ["coat", "fur", "bristle", "flank", "feather", "scale", "skin", "shell"]
+const SECONDARY_SURFACE_TOKENS := ["accent", "pattern", "stripe", "spot", "mane", "quill", "plate", "belly"]
+const NON_SURFACE_TOKENS := [
+	"eye", "pupil", "catchlight", "nose", "nostril", "mouth", "tongue", "gum", "tooth", "teeth",
+	"tusk", "ivory", "horn", "antler", "hoof", "claw", "talon", "keratin", "beak", "whisker",
+]
+static var _surface_texture_cache := {}
+static var _surface_material_cache := {}
 
 
 static func supports(species_id: String) -> bool:
@@ -131,8 +140,115 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 			FlightRig.upgrade(instance, species_id)
 		elif species_id == "crocodile":
 			CrocodileRig.upgrade(instance, species_id)
+		_apply_individual_surface_materials(instance, species_id, profile)
 		_apply_automatic_detail_lod(instance, profile)
 	return instance
+
+
+static func surface_texture_paths(species_id: String, profile: String = "hero") -> Dictionary:
+	if not supports(species_id):
+		return {}
+	var profile_suffix := "_mobile" if profile == "mobile" else ""
+	var root := "%s/%s/%s_surface%s" % [SURFACE_TEXTURE_ROOT, species_id, species_id, profile_suffix]
+	return {
+		"albedo": "%s_albedo.png" % root,
+		"normal": "%s_normal.png" % root,
+		"roughness": "%s_roughness.png" % root,
+	}
+
+
+static func _apply_individual_surface_materials(node: Node, species_id: String, profile: String) -> void:
+	var textures := _surface_textures(species_id, profile)
+	if textures.is_empty():
+		return
+	_apply_individual_surface_materials_recursive(node, species_id, profile, textures)
+
+
+static func _apply_individual_surface_materials_recursive(node: Node, species_id: String, profile: String, textures: Dictionary) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh != null:
+			for surface_index in range(mesh_instance.mesh.get_surface_count()):
+				var source := mesh_instance.get_active_material(surface_index) as StandardMaterial3D
+				if source == null:
+					continue
+				var material_name := source.resource_name.to_lower()
+				var layer_name := "%s %s" % [str(mesh_instance.name).to_lower(), material_name]
+				if not _is_animal_surface_layer(layer_name):
+					continue
+				var primary := PRIMARY_SURFACE_TOKENS.any(func(token: String): return token in material_name)
+				var cache_key := "%s|%s|%s|%s|%s" % [
+					species_id,
+					profile,
+					source.resource_name,
+					source.albedo_color.to_html(true),
+					"primary" if primary else "secondary",
+				]
+				var material := _surface_material_cache.get(cache_key) as StandardMaterial3D
+				if material == null:
+					material = source.duplicate(true) as StandardMaterial3D
+					material.resource_name = "%s_individual_surface__%s" % [species_id, source.resource_name]
+					material.albedo_texture = textures["albedo"]
+					material.normal_enabled = textures.has("normal")
+					material.normal_texture = textures.get("normal") as Texture2D
+					material.normal_scale = 0.58
+					material.roughness_texture = textures.get("roughness") as Texture2D
+					material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+					if profile == "mobile":
+						# AI can reach 100 simultaneous individuals. The unique albedo is
+						# retained, while far-distance micro-normal/roughness use a scalar
+						# so 30 species remain inside the mobile/Web memory contract.
+						material.normal_enabled = false
+						material.normal_texture = null
+						material.roughness_texture = null
+						material.roughness = 0.82
+					if primary:
+						material.albedo_color = Color(1.0, 1.0, 1.0, source.albedo_color.a)
+					else:
+						var tint := source.albedo_color
+						var highest := maxf(tint.r, maxf(tint.g, tint.b))
+						if highest < 0.42:
+							tint = tint.lightened((0.42 - highest) * 0.72)
+						material.albedo_color = tint
+					material.set_meta("individual_surface_species", species_id)
+					material.set_meta("individual_surface_albedo", surface_texture_paths(species_id, profile)["albedo"])
+					material.set_meta("individual_surface_profile", profile)
+					material.set_meta("individual_surface_channels", textures.keys())
+					_surface_material_cache[cache_key] = material
+				mesh_instance.set_surface_override_material(surface_index, material)
+	for child in node.get_children():
+		_apply_individual_surface_materials_recursive(child, species_id, profile, textures)
+
+
+static func _surface_textures(species_id: String, profile: String) -> Dictionary:
+	var cache_key := "%s|%s" % [species_id, profile]
+	if _surface_texture_cache.has(cache_key):
+		return _surface_texture_cache[cache_key]
+	var paths := surface_texture_paths(species_id, profile)
+	if paths.size() != 3:
+		return {}
+	var textures := {}
+	var active_channels := ["albedo"] if profile == "mobile" else ["albedo", "normal", "roughness"]
+	var detail_paths := surface_texture_paths(species_id, "mobile") if profile == "hero" else paths
+	for channel in active_channels:
+		# Keep the close-up colour atlas at 512 while sampling micro-normal and
+		# roughness from the same species' 128 derivative. At gameplay distance
+		# this is visually stable and avoids loading two extra 512 maps per Hero.
+		var path: String = paths[channel] if channel == "albedo" else detail_paths[channel]
+		if not ResourceLoader.exists(path):
+			return {}
+		var texture := load(path) as Texture2D
+		if texture == null:
+			return {}
+		textures[channel] = texture
+	_surface_texture_cache[cache_key] = textures
+	return textures
+
+
+static func _is_animal_surface_layer(layer_name: String) -> bool:
+	if NON_SURFACE_TOKENS.any(func(token: String): return token in layer_name):
+		return false
+	return PRIMARY_SURFACE_TOKENS.any(func(token: String): return token in layer_name) or SECONDARY_SURFACE_TOKENS.any(func(token: String): return token in layer_name)
 
 
 static func _apply_shared_fur_materials(node: Node, species_id: String) -> void:
@@ -145,10 +261,10 @@ static func _apply_shared_fur_materials(node: Node, species_id: String) -> void:
 					continue
 				var material := ShaderMaterial.new()
 				material.resource_name = "%s_coat_atlas_pbr" % species_id
-				material.shader = FUR_ATLAS_SHADER
-				material.set_shader_parameter("albedo_atlas", FUR_ALBEDO)
-				material.set_shader_parameter("normal_atlas", FUR_NORMAL)
-				material.set_shader_parameter("roughness_atlas", FUR_ROUGHNESS)
+				material.shader = load(FUR_ATLAS_SHADER_PATH) as Shader
+				material.set_shader_parameter("albedo_atlas", load(FUR_ALBEDO_PATH) as Texture2D)
+				material.set_shader_parameter("normal_atlas", load(FUR_NORMAL_PATH) as Texture2D)
+				material.set_shader_parameter("roughness_atlas", load(FUR_ROUGHNESS_PATH) as Texture2D)
 				material.set_shader_parameter("coat_tint", source.albedo_color)
 				material.set_shader_parameter("atlas_offset", FUR_ATLAS_REGIONS[species_id])
 				material.set_shader_parameter("pattern_scale", 2.55 if species_id == "rabbit" else 2.10 if species_id == "bear" else 2.35)
