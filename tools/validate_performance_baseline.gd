@@ -1,6 +1,6 @@
 extends SceneTree
 
-const EXPECTED_VERSION := "1.73"
+const EXPECTED_VERSION := "1.74"
 const CASES := [
 	{"level": 1, "minimum_fps": 58.0, "maximum_physics_ms": 10.0, "maximum_memory_mib": 120.0},
 	{"level": 5, "minimum_fps": 58.0, "maximum_physics_ms": 16.0, "maximum_memory_mib": 135.0},
@@ -38,6 +38,7 @@ func _validate() -> void:
 		var measured_memory_mib := snappedf(memory_mib, 0.1)
 		_expect(str(report.get("game_version", "")) == EXPECTED_VERSION, "第 %d 关报告版本不是 %s" % [level, EXPECTED_VERSION])
 		_expect(int(report.get("level", 0)) == level and str(report.get("quality", "")) == "medium", "第 %d 关报告关卡或画质不匹配" % level)
+		_expect(str(report.get("difficulty", "")) == "adventure", "第 %d 关正式性能基线没有固定为冒险难度" % level)
 		_expect(str(report.get("outcome", "")) == "duration_complete", "第 %d 关性能采样未完整结束" % level)
 		_expect(fps >= float(test_case["minimum_fps"]), "第 %d 关 %.1f FPS 低于 %.1f 门槛" % [level, fps, float(test_case["minimum_fps"])])
 		_expect(physics_ms <= float(test_case["maximum_physics_ms"]), "第 %d 关物理平均 %.2f ms 超过 %.2f ms 门槛" % [level, physics_ms, float(test_case["maximum_physics_ms"])])

@@ -56,8 +56,13 @@ const HUD_ABSORB_BACKGROUND := Color(0.07, 0.025, 0.11, 0.70)
 
 var game: Node
 var menu_root: Control
+var menu_background: TextureRect
 var menu_content_margin: MarginContainer
 var menu_start_button: Button
+var menu_difficulty_group: HBoxContainer
+var menu_difficulty_buttons: Array[Button] = []
+var menu_difficulty_description: Label
+var menu_difficulty_ids: Array[String] = ["easy", "adventure", "hard"]
 var menu_bestiary_button: Button
 var hud_root: Control
 var modal_root: Control
@@ -373,6 +378,16 @@ func _style_button(button: Button, primary: bool = true) -> void:
 	button.pressed.connect(_play_ui_sound)
 
 
+func _style_difficulty_button(button: Button) -> void:
+	button.custom_minimum_size = Vector2(112.0, 62.0 if _uses_touch_layout() else 58.0)
+	button.add_theme_font_size_override("font_size", _font_size(18, 21))
+	button.add_theme_color_override("font_color", Color("#f4fff2"))
+	button.toggle_mode = true
+	button.add_theme_stylebox_override("normal", _panel_style(Color(0.03, 0.12, 0.11, 0.92), 14, Color(0.50, 0.74, 0.42, 0.55), 1))
+	button.add_theme_stylebox_override("hover", _panel_style(Color("#36966a"), 14, Color(0.92, 1.0, 0.60, 0.9), 2))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color("#2b7653"), 14, Color(0.88, 0.96, 0.46, 0.88), 2))
+
+
 func _play_ui_sound() -> void:
 	if game != null and game.has_method("play_ui_sound"):
 		game.play_ui_sound()
@@ -384,14 +399,14 @@ func _build_menu() -> void:
 	menu_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(menu_root)
 
-	var background := TextureRect.new()
-	background.name = "Background"
-	background.texture = load("res://assets/ui/menu_background.jpg")
-	background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	menu_root.add_child(background)
+	menu_background = TextureRect.new()
+	menu_background.name = "Background"
+	menu_background.texture = load("res://assets/ui/menu_background.jpg")
+	menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_root.add_child(menu_background)
 
 	var shade := ColorRect.new()
 	shade.color = Color(0.015, 0.065, 0.065, 0.38)
@@ -437,13 +452,32 @@ func _build_menu() -> void:
 	spacer.custom_minimum_size.y = 22
 	content.add_child(spacer)
 
+	var campaign_row := HBoxContainer.new()
+	campaign_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	campaign_row.add_theme_constant_override("separation", 12)
+	content.add_child(campaign_row)
+
 	var start_button := Button.new()
 	menu_start_button = start_button
 	start_button.text = "开始轮回"
 	_style_button(start_button, true)
 	start_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	start_button.pressed.connect(func(): start_requested.emit())
-	content.add_child(start_button)
+	campaign_row.add_child(start_button)
+
+	menu_difficulty_group = HBoxContainer.new()
+	menu_difficulty_group.name = "DifficultySelect"
+	menu_difficulty_group.add_theme_constant_override("separation", 7)
+	campaign_row.add_child(menu_difficulty_group)
+	menu_difficulty_buttons.clear()
+	for difficulty_id in menu_difficulty_ids:
+		var difficulty_button := Button.new()
+		difficulty_button.text = {"easy": "简单", "adventure": "冒险", "hard": "困难"}.get(difficulty_id, difficulty_id)
+		_style_difficulty_button(difficulty_button)
+		difficulty_button.pressed.connect(_on_menu_difficulty_pressed.bind(difficulty_id))
+		difficulty_button.pressed.connect(_play_ui_sound)
+		menu_difficulty_group.add_child(difficulty_button)
+		menu_difficulty_buttons.append(difficulty_button)
 
 	var free_button := Button.new()
 	free_button.text = "自由模式"
@@ -466,11 +500,12 @@ func _build_menu() -> void:
 	settings_button.pressed.connect(func(): show_settings(false))
 	content.add_child(settings_button)
 
-	var description := Label.new()
-	description.text = "随机物种 · AI 自主互斗 · 程序化森林 · 活到最后"
-	description.add_theme_font_size_override("font_size", 16)
-	description.add_theme_color_override("font_color", Color(0.86, 0.94, 0.83, 0.86))
-	content.add_child(description)
+	menu_difficulty_description = Label.new()
+	menu_difficulty_description.name = "DifficultyDescription"
+	menu_difficulty_description.text = "冒险：完整生态智能 · AI会协作、避险并争夺成长资源"
+	menu_difficulty_description.add_theme_font_size_override("font_size", 16)
+	menu_difficulty_description.add_theme_color_override("font_color", Color(0.86, 0.94, 0.83, 0.86))
+	content.add_child(menu_difficulty_description)
 
 	var platform := Label.new()
 	platform.text = "Godot 4 · iOS / Android / Web / Desktop"
@@ -1084,12 +1119,15 @@ func _add_modal_panel(panel: PanelContainer, desired_size: Vector2) -> void:
 
 func show_menu() -> void:
 	_cancel_intro_tween()
+	if menu_background != null and menu_background.texture == null:
+		menu_background.texture = load("res://assets/ui/menu_background.jpg")
 	if intro_panel != null:
 		intro_panel.hide()
 	if menu_start_button != null and game != null:
 		menu_start_button.text = game.menu_start_text() if game.has_method("menu_start_text") else ("继续轮回" if game.has_campaign_progress() else "开始轮回")
 	if menu_bestiary_button != null and game != null and game.has_method("bestiary_progress_text"):
 		menu_bestiary_button.text = game.bestiary_progress_text()
+	refresh_menu_difficulty()
 	menu_root.show()
 	hud_root.hide()
 	modal_root.hide()
@@ -1099,8 +1137,34 @@ func show_menu() -> void:
 	sprint_held = false
 
 
-func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1, free_mode: bool = false) -> void:
+func refresh_menu_difficulty() -> void:
+	if menu_difficulty_group == null or menu_difficulty_description == null:
+		return
+	var selected_id := "adventure"
+	if game != null and game.has_method("get_selected_difficulty_id"):
+		selected_id = str(game.get_selected_difficulty_id())
+	for index in range(menu_difficulty_buttons.size()):
+		var difficulty_id := menu_difficulty_ids[index]
+		menu_difficulty_buttons[index].text = "%s%s" % [{"easy": "简单", "adventure": "冒险", "hard": "困难"}.get(difficulty_id, difficulty_id), " ✓" if difficulty_id == selected_id else ""]
+		menu_difficulty_buttons[index].set_pressed_no_signal(difficulty_id == selected_id)
+	var display_name: String = str(game.difficulty_display_name(selected_id)) if game != null and game.has_method("difficulty_display_name") else str({"easy": "简单", "adventure": "冒险", "hard": "困难"}.get(selected_id, "冒险"))
+	var description: String = str(game.difficulty_description(selected_id)) if game != null and game.has_method("difficulty_description") else "完整生态智能：会围猎、避险、抢夺资源并抓住战斗破绽。"
+	menu_difficulty_description.text = "%s：%s　进入一局后难度锁定" % [display_name, description]
+
+
+func _on_menu_difficulty_pressed(difficulty_id: String) -> void:
+	if game != null and game.has_method("set_selected_difficulty_id"):
+		game.set_selected_difficulty_id(difficulty_id)
+	refresh_menu_difficulty()
+
+
+func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1, free_mode: bool = false, difficulty_name: String = "冒险") -> void:
 	menu_root.hide()
+	# The full-screen JPEG is only needed on the home page. Releasing its only
+	# runtime reference during a match keeps the 100-animal mobile/Web memory
+	# budget focused on world and actor assets; returning home reloads it.
+	if menu_background != null:
+		menu_background.texture = null
 	hud_root.show()
 	modal_root.hide()
 	hide_tutorial()
@@ -1112,7 +1176,7 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	ecology_event_label.text = "生态热点 · 正在等待迁徙信号"
 	ecology_activity_label.text = "迁徙监测 · 尚无活动"
 	ecology_trace_label.text = "生态踪迹 · 暂无线索"
-	threat_label.text = "第%d关 · 自由模式" % level if free_mode else "第%d关 · 世界威胁 %d" % [level, threat_level]
+	threat_label.text = "第%d关 · 自由模式 · %s" % [level, difficulty_name] if free_mode else "第%d关 · %s · 世界威胁 %d" % [level, difficulty_name, threat_level]
 	_reset_live_information()
 	set_player(player_actor)
 
@@ -1888,9 +1952,11 @@ func _recent_run_summary() -> String:
 	if runs.is_empty():
 		return "最近轮回：暂无完成记录"
 	var latest: Dictionary = runs[0]
-	return "最近轮回：第%d关 · %s · %s · 存活%s · Lv.%d · %d击杀" % [
+	var difficulty_id := str(latest.get("difficulty", "adventure"))
+	var difficulty_name: String = str(game.difficulty_display_name(difficulty_id)) if game.has_method("difficulty_display_name") else str({"easy": "简单", "adventure": "冒险", "hard": "困难"}.get(difficulty_id, "冒险"))
+	return "最近轮回：第%d关 · %s · %s · %s · 存活%s · Lv.%d · %d击杀" % [
 		int(latest.get("level", 1)), Catalog.display_name(str(latest.get("species_id", "rabbit"))),
-		("胜利" if bool(latest.get("won", false)) else "死亡"), _format_report_time(roundi(float(latest.get("survival", 0.0)))),
+		difficulty_name, ("胜利" if bool(latest.get("won", false)) else "死亡"), _format_report_time(roundi(float(latest.get("survival", 0.0)))),
 		int(latest.get("player_level", 1)), int(latest.get("kills", 0)),
 	]
 
@@ -2009,7 +2075,9 @@ func show_free_mode() -> void:
 	refresh_species.call(species_select.selected)
 
 	var mode_hint := Label.new()
-	mode_hint.text = "自由模式不推进战役，不计入死亡次数，不增加世界威胁。"
+	var free_difficulty_id: String = str(game.get_selected_difficulty_id()) if game.has_method("get_selected_difficulty_id") else "adventure"
+	var free_difficulty_name: String = str(game.difficulty_display_name(free_difficulty_id)) if game.has_method("difficulty_display_name") else "冒险"
+	mode_hint.text = "自由模式使用首页所选的%s难度；不推进战役，不计入死亡，不增加世界威胁。" % free_difficulty_name
 	mode_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mode_hint.add_theme_font_size_override("font_size", _font_size(15, 17))
 	mode_hint.add_theme_color_override("font_color", Color("#d6cda8"))
@@ -2163,7 +2231,7 @@ func show_settings(from_pause: bool = false) -> void:
 	utility_row.add_child(reset_button)
 
 	var reset_hint := Label.new()
-	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音与画质会保留。"
+	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音、画质与难度会保留。"
 	reset_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reset_hint.add_theme_font_size_override("font_size", _font_size(16, 18))
 	reset_hint.add_theme_color_override("font_color", Color("#d5c7a7"))
@@ -2198,7 +2266,7 @@ func show_reset_confirmation() -> void:
 	title.add_theme_color_override("font_color", Color("#f3ddb8"))
 	box.add_child(title)
 	var body := Label.new()
-	body.text = "你将回到第一关，死亡次数和世界威胁归零。\n此操作无法撤销，但不会改变声音设置。"
+	body.text = "你将回到第一关，死亡次数和世界威胁归零。\n此操作无法撤销，但不会改变声音、画质和难度设置。"
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_theme_font_size_override("font_size", _font_size(20, 23))

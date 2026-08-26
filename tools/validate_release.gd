@@ -63,6 +63,7 @@ func _initialize() -> void:
 
 func _run_validation() -> void:
 	_validate_save_migration()
+	_validate_difficulty_contract()
 	_validate_bestiary_and_recap_contract()
 	_validate_release_candidate_contract()
 	_validate_quality_presets()
@@ -96,7 +97,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.73 发布候选校验通过：每级随机进化三选一与巨化成长已接入")
+		print("[release] V1.74 发布候选校验通过：三档难度、AI智能梯度与移动端首页选择已接入")
 		quit(0)
 	else:
 		for failure in failures:
@@ -124,6 +125,7 @@ func _validate_save_migration() -> void:
 	_expect(main.current_level == 10, "旧存档关卡未限制到 1–10")
 	_expect(main.last_player_species == "", "旧存档无效物种未清理")
 	_expect(main.quality_preset == "medium", "旧存档未获得安全画质默认值")
+	_expect(main.selected_difficulty_id == "adventure", "旧存档没有迁移到推荐的冒险难度")
 	_expect(not main.tutorial_completed, "旧存档应默认显示新手教学")
 	var migrated := ConfigFile.new()
 	_expect(migrated.load(test_path) == OK, "迁移后存档无法重新读取")
@@ -134,6 +136,7 @@ func _validate_save_migration() -> void:
 	main.current_level = 6
 	main.last_completed_level = 5
 	main.quality_preset = "high"
+	main.selected_difficulty_id = "hard"
 	main.tutorial_completed = true
 	main.selected_free_level = 9
 	main.selected_free_species = "eagle"
@@ -147,13 +150,54 @@ func _validate_save_migration() -> void:
 	_expect(reload.selected_free_level == 9 and reload.selected_free_species == "eagle", "自由模式选择无法回读")
 	_expect(reload.current_level == 6, "自由模式选择不应覆盖战役关卡")
 	_expect(reload.quality_preset == "high", "画质档位无法回读")
+	_expect(reload.selected_difficulty_id == "hard", "玩法难度无法写入或回读")
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
 	_expect(reload.discovered_species == ["rabbit", "eagle"], "图鉴发现顺序或内容无法回读")
 	_expect(int(reload.species_records.get("rabbit", {}).get("runs", 0)) == 3, "物种个人记录无法回读")
 	_expect(reload.recent_runs.size() == 1 and int(reload.recent_runs[0].get("level", 0)) == 4 and int(reload.recent_runs[0].get("fish_catches", 0)) == 3, "最近轮回或捕鱼记录无法回读")
+	_expect(str(reload.recent_runs[0].get("difficulty", "")) == "adventure", "旧的最近轮回记录没有补齐冒险难度")
 	DirAccess.remove_absolute(test_path)
 	main.free()
 	reload.free()
+
+
+func _validate_difficulty_contract() -> void:
+	_expect(MainScript.DIFFICULTY_ORDER == ["easy", "adventure", "hard"], "三档难度顺序或标识不稳定")
+	_expect(MainScript.sanitize_difficulty("missing") == "adventure", "无效难度没有回退到推荐的冒险档")
+	var easy := MainScript.difficulty_profile("easy")
+	var adventure := MainScript.difficulty_profile("adventure")
+	var hard := MainScript.difficulty_profile("hard")
+	_expect(float(easy["reaction_interval"]) > float(adventure["reaction_interval"]) and float(hard["reaction_interval"]) < float(adventure["reaction_interval"]), "AI思考频率没有形成简单→冒险→困难梯度")
+	_expect(float(easy["perception"]) < float(adventure["perception"]) and float(hard["perception"]) > float(adventure["perception"]), "AI感知范围没有形成难度梯度")
+	_expect(float(easy["memory"]) < float(adventure["memory"]) and float(hard["memory"]) > float(adventure["memory"]), "AI追踪记忆没有形成难度梯度")
+	_expect(float(easy["cooperation"]) < float(adventure["cooperation"]) and float(hard["cooperation"]) > float(adventure["cooperation"]), "AI同类协作没有形成难度梯度")
+	_expect(float(easy["ai_damage"]) < 1.0 and is_equal_approx(float(adventure["ai_damage"]), 1.0) and float(hard["ai_damage"]) > 1.0, "战斗容错没有保持冒险基准和小幅两侧梯度")
+	var main := MainScript.new()
+	main.run_uses_free_mode = true
+	main.run_difficulty_id = "easy"
+	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 0.90), "简单自由模式没有应用独立于世界威胁的AI伤害容错")
+	main.run_difficulty_id = "adventure"
+	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.0), "冒险自由模式没有保持当前基准伤害")
+	main.run_uses_free_mode = false
+	main.threat_level = 8
+	_expect(is_equal_approx(main.get_ai_damage_multiplier(), 1.36), "冒险难度改变了原有世界威胁基准")
+	main.run_difficulty_id = "hard"
+	_expect(main.get_ai_damage_multiplier() > 1.45, "困难难度没有叠加高压AI伤害与世界威胁")
+	var ui := UIScript.new()
+	root.add_child(ui)
+	ui.setup(main)
+	var selector := ui.menu_root.find_child("DifficultySelect", true, false) as HBoxContainer
+	var description := ui.menu_root.find_child("DifficultyDescription", true, false) as Label
+	_expect(selector != null and selector.get_child_count() == 3, "首页没有同时展示简单、冒险、困难三个难度按钮")
+	if selector != null:
+		for choice in selector.get_children():
+			_expect(choice is Button and (choice as Button).custom_minimum_size.y >= 52.0, "首页难度按钮触控高度不足")
+	_expect(description != null and description.text.contains("进入一局后难度锁定"), "首页没有解释难度进入一局后锁定")
+	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
+	_expect(actor_source.contains("reaction_interval") and actor_source.contains("group_alert_range") and actor_source.contains("target_noise"), "EcoActor没有接入反应、协作或目标判断精度梯度")
+	_expect(actor_source.contains("SEARCH_MEMORY_SECONDS") and actor_source.contains("_ai_difficulty_value(\"memory\")") and actor_source.contains("_ai_difficulty_value(\"perception\")"), "AI追踪记忆或感知没有读取局内难度")
+	ui.free()
+	main.free()
 
 
 func _validate_bestiary_and_recap_contract() -> void:
@@ -339,9 +383,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.73\"") and presets.contains("application/short_version=\"1.73\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=850") and presets.contains("application/version=\"850\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.73", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.74\"") and presets.contains("application/short_version=\"1.74\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=860") and presets.contains("application/version=\"860\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.74", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -354,12 +398,14 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(MainScript.benchmark_report_filename(5, "medium") == "benchmark_level_05_medium.json", "性能报告文件名没有包含关卡和画质")
 	_expect(MainScript.benchmark_report_filename(99, "invalid") == "benchmark_level_10_medium.json", "性能报告参数没有安全修正")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
-	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录或真实性能采样")
+	_expect(main_source.contains("--report-dir") and main_source.contains("--benchmark-level") and main_source.contains("--run-difficulty") and main_source.contains("Performance.TIME_PHYSICS_PROCESS"), "运行时缺少独立输出目录、难度覆盖或真实性能采样")
 	_expect(main_source.contains("stuck_recoveries,route_replans,food_bites,fish_catches,habit_activations,instinct_completions,experience_packs,experience_pack_xp") and main_source.contains("drowning_deaths") and main_source.contains("func _collect_batch_actor_metrics"), "生态批测没有记录 AI 脱困、改道、捕鱼、本能、经验争夺与溺水行为")
 	var baseline_script := FileAccess.get_file_as_string("res://tools/run_performance_baseline.sh")
 	_expect(baseline_script.contains("run_level 1 133701") and baseline_script.contains("run_level 5 133705") and baseline_script.contains("run_level 10 133710"), "性能基线没有覆盖第 1/5/10 关")
 	var doctor_script := FileAccess.get_file_as_string("res://tools/check_platform_toolchain.sh")
 	_expect(doctor_script.contains("android-36") and doctor_script.contains("web_nothreads_release.zip") and doctor_script.contains("ios.zip"), "三端工具链诊断不完整")
+	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
+	_expect(ui_source.contains("menu_background.texture = null") and ui_source.contains("menu_background.texture = load"), "进入生态世界后没有释放仅首页使用的大背景纹理")
 
 
 func _validate_web_audio_contract() -> void:

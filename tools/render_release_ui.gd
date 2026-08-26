@@ -10,6 +10,7 @@ const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 class PreviewGame:
 	extends Node
 	var quality := "medium"
+	var difficulty := "adventure"
 	var state := "playing"
 	var level_elapsed := 0.0
 	var world_seed := 11818
@@ -24,6 +25,16 @@ class PreviewGame:
 	func set_sfx_enabled(_value: bool) -> void: pass
 	func get_quality_preset() -> String: return quality
 	func set_quality_preset(value: String) -> void: quality = value
+	func get_selected_difficulty_id() -> String: return difficulty
+	func set_selected_difficulty_id(value: String) -> void: difficulty = value
+	func get_difficulty_ids() -> Array[String]: return ["easy", "adventure", "hard"]
+	func difficulty_display_name(value: String) -> String: return {"easy": "简单", "adventure": "冒险", "hard": "困难"}.get(value, "冒险")
+	func difficulty_menu_label(value: String) -> String: return {"easy": "简单 · 宽容", "adventure": "冒险 · 推荐", "hard": "困难 · 高压"}.get(value, "冒险 · 推荐")
+	func difficulty_description(value: String) -> String: return {
+		"easy": "AI观察更慢、协作更少，伤害较低，适合熟悉物种与地图。",
+		"adventure": "完整生态智能：会围猎、避险、抢夺资源并抓住战斗破绽。",
+		"hard": "AI反应更快、记忆与协作更强，会更早争夺成长资源并惩罚失误。",
+	}.get(value, "")
 	func has_campaign_progress() -> bool: return true
 	func menu_start_text() -> String: return "继续轮回"
 	func get_selected_free_level() -> int: return 7
@@ -40,6 +51,7 @@ func _initialize() -> void:
 func _render() -> void:
 	var mobile_free_mode_preview_only := "--mobile-free-mode-preview" in OS.get_cmdline_user_args()
 	var evolution_preview_only := "--evolution-preview" in OS.get_cmdline_user_args()
+	var difficulty_preview_only := "--difficulty-preview" in OS.get_cmdline_user_args()
 	var background_layer := CanvasLayer.new()
 	root.add_child(background_layer)
 	var background := TextureRect.new()
@@ -60,6 +72,19 @@ func _render() -> void:
 	ui.setup(game)
 	for _frame in range(5):
 		await process_frame
+	if difficulty_preview_only:
+		game.difficulty = "adventure"
+		ui.show_menu()
+		for _frame in range(5):
+			await process_frame
+		var result := root.get_texture().get_image().save_png("res://docs/images/v100-three-difficulties.png")
+		if result == OK:
+			print("DIFFICULTY_PREVIEW_OK")
+			quit(0)
+		else:
+			push_error("三档难度首页预览生成失败")
+			quit(1)
+		return
 	if evolution_preview_only:
 		await _render_evolution_preview(ui, game)
 		return

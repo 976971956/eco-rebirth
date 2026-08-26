@@ -9,10 +9,58 @@ const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
-const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.73"
+const SAVE_VERSION := 6
+const RELEASE_VERSION := "1.74"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
+const DIFFICULTY_ORDER: Array[String] = ["easy", "adventure", "hard"]
+const DIFFICULTY_PROFILES := {
+	"easy": {
+		"name": "简单",
+		"menu_label": "简单 · 宽容",
+		"description": "AI观察更慢、协作更少，伤害较低，适合熟悉物种与地图。",
+		"ai_health": 0.96,
+		"ai_damage": 0.90,
+		"ai_speed": 0.98,
+		"threat_scale": 0.65,
+		"reaction_interval": 1.26,
+		"perception": 0.86,
+		"memory": 0.72,
+		"cooperation": 0.76,
+		"target_noise": 0.14,
+		"opening_caution": 1.20,
+	},
+	"adventure": {
+		"name": "冒险",
+		"menu_label": "冒险 · 推荐",
+		"description": "完整生态智能：会围猎、避险、抢夺资源并抓住战斗破绽。",
+		"ai_health": 1.0,
+		"ai_damage": 1.0,
+		"ai_speed": 1.0,
+		"threat_scale": 1.0,
+		"reaction_interval": 1.0,
+		"perception": 1.0,
+		"memory": 1.0,
+		"cooperation": 1.0,
+		"target_noise": 0.0,
+		"opening_caution": 1.0,
+	},
+	"hard": {
+		"name": "困难",
+		"menu_label": "困难 · 高压",
+		"description": "AI反应更快、记忆与协作更强，会更早争夺成长资源并惩罚失误。",
+		"ai_health": 1.04,
+		"ai_damage": 1.08,
+		"ai_speed": 1.02,
+		"threat_scale": 1.15,
+		"reaction_interval": 0.76,
+		"perception": 1.16,
+		"memory": 1.35,
+		"cooperation": 1.28,
+		"target_noise": 0.0,
+		"opening_caution": 0.82,
+	},
+}
 const TUTORIAL_STEPS := [
 	{"id": "move", "title": "先熟悉移动", "desktop": "使用 WASD 或方向键移动，观察脚步和面朝方向。", "touch": "在左下区域按住并拖动摇杆，朝任意方向移动。"},
 	{"id": "sprint", "title": "学会控制耐力", "desktop": "移动时按住 Shift 冲刺。冲刺、攻击和技能都会消耗耐力。", "touch": "移动时按住右侧“冲刺”。冲刺、攻击和技能都会消耗耐力。"},
@@ -106,6 +154,9 @@ var tutorial_step: int = -1
 var tutorial_world_seed: int = 0
 var tutorial_advance_frame: int = -1
 var quality_preset: String = "medium"
+var selected_difficulty_id: String = "adventure"
+var run_difficulty_id: String = "adventure"
+var automated_difficulty_override: String = ""
 var selected_free_level: int = 1
 var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
@@ -150,7 +201,10 @@ func _ready() -> void:
 	var batch_arg := _find_cmdline_value("--batch-sim")
 	var benchmark_arg := _find_cmdline_value("--benchmark-level")
 	var seed_arg := _find_cmdline_value("--world-seed")
+	var difficulty_arg := _find_cmdline_value("--run-difficulty")
 	report_directory = _find_cmdline_value("--report-dir").strip_edges()
+	if DIFFICULTY_ORDER.has(difficulty_arg):
+		automated_difficulty_override = difficulty_arg
 	if seed_arg != "":
 		world_seed_override = int(seed_arg)
 	if benchmark_arg != "":
@@ -323,6 +377,12 @@ func _start_new_world(free_mode: bool = false) -> void:
 	if not batch_mode:
 		run_uses_free_mode = free_mode
 		current_level = selected_free_level if run_uses_free_mode else campaign_level
+	if automated_difficulty_override != "":
+		run_difficulty_id = automated_difficulty_override
+	elif batch_mode or benchmark_mode or "--autoplay" in OS.get_cmdline_user_args():
+		run_difficulty_id = "adventure"
+	else:
+		run_difficulty_id = selected_difficulty_id
 	state = "loading"
 	level_elapsed = 0.0
 	leaderboard_refresh_remaining = 0.0
@@ -407,7 +467,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		game_root.add_child(camera_rig)
 		camera_rig.setup(player)
 		world.prewarm_experience_pack_visuals(player.global_position)
-		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode)
+		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode, difficulty_display_name(run_difficulty_id))
 		ui.update_leaderboard(_build_level_leaderboard())
 		var requires_intro_confirmation := not benchmark_mode and "--autoplay" not in OS.get_cmdline_user_args()
 		if requires_intro_confirmation:
@@ -416,10 +476,10 @@ func _start_new_world(free_mode: bool = false) -> void:
 			ui.show_species_intro(player.species_id, world.current_level_profile())
 		else:
 			ui.hide_species_intro()
-		ui.add_event(("自由模式 · %s · %s" % [WorldScript.level_identity(current_level), Catalog.display_name(player.species_id)]) if run_uses_free_mode else ("%s · 新的生态已经苏醒" % WorldScript.level_identity(current_level)), "#a8e3ac")
+		ui.add_event(("自由模式 · %s · %s · %s" % [WorldScript.level_identity(current_level), Catalog.display_name(player.species_id), difficulty_display_name(run_difficulty_id)]) if run_uses_free_mode else ("%s · %s难度 · 新的生态已经苏醒" % [WorldScript.level_identity(current_level), difficulty_display_name(run_difficulty_id)]), "#a8e3ac")
 		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
 		ui.add_event("生态本能：%s" % player.instinct_status_text().replace("\n", " · "), "#f0d681")
-		ui.add_battle_report("%s已开启 · %s · %d个体进入竞争" % [WorldScript.level_identity(current_level), WorldScript.level_rule_summary(current_level), roster_size], "战场", "#a8cde3")
+		ui.add_battle_report("%s已开启 · %s难度 · %s · %d个体进入竞争" % [WorldScript.level_identity(current_level), difficulty_display_name(run_difficulty_id), WorldScript.level_rule_summary(current_level), roster_size], "战场", "#a8cde3")
 		ui.add_battle_report("你·%s的本能链：%s" % [Catalog.display_name(player.species_id), Catalog.instinct_chain_summary(player.species_id)], "本能", "#f0d681")
 		var unlocked_names: Array[String] = []
 		for species_id in Catalog.ORDER:
@@ -631,10 +691,11 @@ func _finish_loss(killer: EcoActor) -> void:
 	var recap := _record_completed_run(false, cause, killer_species, seconds)
 	_save_progress()
 	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
-	var body := "%s\n\n物种：%s　关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
+	var body := "%s\n\n物种：%s　关卡：%d　难度：%s　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
 		current_level,
+		difficulty_display_name(run_difficulty_id),
 		_format_time(seconds),
 		player.level if is_instance_valid(player) else 1,
 		player.experience if is_instance_valid(player) else 0,
@@ -672,9 +733,10 @@ func _finish_victory() -> void:
 	var recap := _record_completed_run(true, "成为最后的存活物种", "", seconds)
 	_save_progress()
 	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % campaign_level)
-	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
+	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　难度：%s　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		current_level,
+		difficulty_display_name(run_difficulty_id),
 		_format_time(seconds),
 		player.level,
 		player.experience,
@@ -1004,7 +1066,7 @@ func _begin_benchmark_sampling() -> void:
 	if is_instance_valid(world):
 		world.experience_drop_timer = WorldScript.EXPERIENCE_DROP_INTERVAL
 	benchmark_started_usec = Time.get_ticks_usec()
-	print("[benchmark] 第%d关 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, benchmark_quality, benchmark_species, benchmark_duration])
+	print("[benchmark] 第%d关 · %s难度 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, difficulty_display_name(run_difficulty_id), benchmark_quality, benchmark_species, benchmark_duration])
 
 
 func _tick_benchmark(delta: float) -> void:
@@ -1041,6 +1103,7 @@ func _finish_benchmark(outcome: String) -> void:
 		"game_version": RELEASE_VERSION,
 		"level": benchmark_level,
 		"quality": benchmark_quality,
+		"difficulty": run_difficulty_id,
 		"species": benchmark_species,
 		"world_seed": world_seed,
 		"target_simulation_seconds": benchmark_duration,
@@ -1454,7 +1517,55 @@ func consume_interact_request() -> bool:
 
 
 func get_ai_damage_multiplier() -> float:
-	return 1.0 if run_uses_free_mode else 1.0 + min(threat_level, 8) * 0.045
+	var profile := difficulty_profile(run_difficulty_id)
+	var threat_pressure := 0.0 if run_uses_free_mode else float(min(threat_level, 8)) * 0.045 * float(profile["threat_scale"])
+	return float(profile["ai_damage"]) * (1.0 + threat_pressure)
+
+
+func get_ai_difficulty_value(key: String, fallback: float = 1.0) -> float:
+	return float(difficulty_profile(run_difficulty_id).get(key, fallback))
+
+
+static func sanitize_difficulty(value: String) -> String:
+	return value if DIFFICULTY_ORDER.has(value) else "adventure"
+
+
+static func difficulty_profile(value: String) -> Dictionary:
+	return DIFFICULTY_PROFILES[sanitize_difficulty(value)]
+
+
+static func difficulty_display_name(value: String) -> String:
+	return str(difficulty_profile(value)["name"])
+
+
+static func difficulty_menu_label(value: String) -> String:
+	return str(difficulty_profile(value)["menu_label"])
+
+
+static func difficulty_description(value: String) -> String:
+	return str(difficulty_profile(value)["description"])
+
+
+func get_difficulty_ids() -> Array[String]:
+	return DIFFICULTY_ORDER.duplicate()
+
+
+func get_selected_difficulty_id() -> String:
+	return selected_difficulty_id
+
+
+func set_selected_difficulty_id(value: String) -> void:
+	selected_difficulty_id = sanitize_difficulty(value)
+	_save_progress()
+	if ui != null and ui.has_method("refresh_menu_difficulty"):
+		ui.refresh_menu_difficulty()
+	if ui != null:
+		var timing := "本局保持%s，下局切换为%s" % [difficulty_display_name(run_difficulty_id), difficulty_display_name(selected_difficulty_id)] if state in ["playing", "paused", "battle_report", "intro"] else "已选择%s难度" % difficulty_display_name(selected_difficulty_id)
+		ui.show_hint(timing)
+
+
+func get_active_difficulty_id() -> String:
+	return run_difficulty_id
 
 
 func show_hint(text_value: String) -> void:
@@ -1763,6 +1874,7 @@ func _record_completed_run(won: bool, cause: String, killer_species: String, sec
 		"level": current_level,
 		"won": won,
 		"free_mode": run_uses_free_mode,
+		"difficulty": run_difficulty_id,
 		"survival": seconds,
 		"player_level": player.level,
 		"experience": player.experience,
@@ -1934,6 +2046,7 @@ func _save_progress(path: String = CONFIG_PATH) -> void:
 	config.set_value("campaign", "last_completed_level", last_completed_level)
 	config.set_value("onboarding", "tutorial_completed", tutorial_completed)
 	config.set_value("video", "quality_preset", quality_preset)
+	config.set_value("gameplay", "difficulty", selected_difficulty_id)
 	config.set_value("gameplay", "selected_free_level", selected_free_level)
 	config.set_value("gameplay", "selected_free_species", selected_free_species)
 	config.set_value("bestiary", "discovered_species", discovered_species)
@@ -1958,6 +2071,8 @@ func _load_progress(path: String = CONFIG_PATH) -> void:
 	last_completed_level = clampi(int(config.get_value("campaign", "last_completed_level", maxi(campaign_level - 1, 0))), 0, LEVEL_CONFIG.size())
 	tutorial_completed = bool(config.get_value("onboarding", "tutorial_completed", false))
 	quality_preset = _sanitize_quality(str(config.get_value("video", "quality_preset", quality_preset)))
+	selected_difficulty_id = sanitize_difficulty(str(config.get_value("gameplay", "difficulty", "adventure")))
+	run_difficulty_id = selected_difficulty_id
 	selected_free_level = clampi(int(config.get_value("gameplay", "selected_free_level", campaign_level)), 1, LEVEL_CONFIG.size())
 	selected_free_species = str(config.get_value("gameplay", "selected_free_species", "rabbit"))
 	if not Catalog.ORDER.has(selected_free_species):
@@ -2030,6 +2145,7 @@ func _sanitize_recent_runs(value: Variant) -> Array[Dictionary]:
 			"level": clampi(int(raw.get("level", 1)), 1, LEVEL_CONFIG.size()),
 			"won": bool(raw.get("won", false)),
 			"free_mode": bool(raw.get("free_mode", false)),
+			"difficulty": sanitize_difficulty(str(raw.get("difficulty", "adventure"))),
 			"survival": clampf(float(raw.get("survival", 0.0)), 0.0, 86400.0),
 			"player_level": clampi(int(raw.get("player_level", 1)), 1, 8),
 			"experience": maxi(int(raw.get("experience", 0)), 0),

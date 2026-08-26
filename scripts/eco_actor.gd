@@ -303,10 +303,11 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	var world_seed_value := int(game.get("world_seed")) if is_instance_valid(game) and game.get("world_seed") != null else 1
 	behavior_rng.seed = behavior_seed(world_seed_value, actor_id, species_id)
 	name = "%s_%02d%s" % [species_id.capitalize(), actor_id, "_Player" if is_player else ""]
-	threat_health_scale = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.06
-	threat_speed_scale = 1.0 if is_player else 1.0 + float(min(threat_level, 8)) * 0.01
+	var world_threat_scale := _ai_difficulty_value("threat_scale")
+	threat_health_scale = 1.0 if is_player else (1.0 + float(min(threat_level, 8)) * 0.06 * world_threat_scale) * _ai_difficulty_value("ai_health")
+	threat_speed_scale = 1.0 if is_player else (1.0 + float(min(threat_level, 8)) * 0.01 * world_threat_scale) * _ai_difficulty_value("ai_speed")
 	if not is_player:
-		threat_perception_multiplier = 1.0 + float(min(threat_level, 8)) * 0.025
+		threat_perception_multiplier = (1.0 + float(min(threat_level, 8)) * 0.025 * world_threat_scale) * _ai_difficulty_value("perception")
 	_recalculate_growth_stats()
 	health = max_health
 	stamina = max_stamina
@@ -335,8 +336,8 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	if not is_player and is_instance_valid(game):
 		var game_level_value: Variant = game.get("current_level")
 		var game_level := int(game_level_value) if game_level_value != null else 0
-		calm_timer = opening_caution_seconds(game_level)
-	decision_timer = fmod(float(actor_id) * 0.073, 0.33) + 0.05
+		calm_timer = opening_caution_seconds(game_level) * _ai_difficulty_value("opening_caution")
+	decision_timer = (fmod(float(actor_id) * 0.073, 0.33) + 0.05) * _ai_difficulty_value("reaction_interval")
 	wander_timer = 0.1
 	# Offset visual-LOD clocks so a 100-actor roster does not evaluate every
 	# skeleton in the same rendered frame. This changes presentation scheduling
@@ -346,6 +347,12 @@ func setup(game_ref: Node, new_id: int, new_species_id: String, player_controlle
 	ecology_trace_last_position = global_position
 	ecology_trace_emit_timer = 0.35 + fmod(float(actor_id) * 0.113, 0.62)
 	_start_instinct_stage(0)
+
+
+func _ai_difficulty_value(key: String, fallback: float = 1.0) -> float:
+	if is_player or not is_instance_valid(game) or not game.has_method("get_ai_difficulty_value"):
+		return fallback
+	return float(game.get_ai_difficulty_value(key, fallback))
 
 
 func _recalculate_growth_stats() -> void:
@@ -2998,7 +3005,7 @@ func _update_ai(delta: float) -> void:
 		# attacks fixed-step, but stagger fresh perception across a 0.34–0.54 s
 		# window.  This remains faster than a human reaction while preventing a
 		# 100-animal level from repeating thousands of identical scans per frame.
-		decision_timer = 0.34 + fmod(float(actor_id) * 0.037, 0.20)
+		decision_timer = (0.34 + fmod(float(actor_id) * 0.037, 0.20)) * _ai_difficulty_value("reaction_interval")
 		_think()
 	attack_intent = false
 	wants_sprint = false
@@ -3250,6 +3257,10 @@ func _think() -> void:
 	var herd_escape_count := 0
 	var own_encounter_strength := _encounter_strength(self)
 	var local_reaction_radius := close_encounter_radius(float(data["attack_range"]), effective_size)
+	var cooperation_scale := _ai_difficulty_value("cooperation")
+	var group_alert_range := AI_GROUP_ALERT_RANGE * cooperation_scale
+	var pack_share_radius := AI_PACK_SHARE_RADIUS * cooperation_scale
+	var herd_share_radius := AI_HERD_SHARE_RADIUS * cooperation_scale
 	# New close encounters are sampled on alternating, actor-staggered thought
 	# cycles. The worst-case response delay remains under a second, while dense
 	# 100-animal scenes avoid repeating the extra perception pass every decision.
@@ -3266,7 +3277,7 @@ func _think() -> void:
 		if other == self or other.dead:
 			continue
 		var observer_distance := global_position.distance_to(other.global_position)
-		if observer_distance <= AI_GROUP_ALERT_RANGE and other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
+		if observer_distance <= group_alert_range and other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
 			var pressure_key: int = other.ai_target.actor_id
 			target_pressure_counts[pressure_key] = int(target_pressure_counts.get(pressure_key, 0)) + 1
 		if is_instance_valid(other.experience_pack_target) and other.experience_pack_target.active and (other.ai_state == "experience" or other.is_absorbing_experience()):
@@ -3275,16 +3286,16 @@ func _think() -> void:
 			experience_lead_progress[pack_key] = maxf(float(experience_lead_progress.get(pack_key, 0.0)), other.experience_absorb_ratio())
 		if other.species_id == species_id:
 			var group_distance := observer_distance
-			if Catalog.has_trait(species_id, "pack_hunter") and group_distance <= AI_PACK_SHARE_RADIUS:
+			if Catalog.has_trait(species_id, "pack_hunter") and group_distance <= pack_share_radius:
 				pack_support += 1
 				if other.ai_state == "hunt" and is_instance_valid(other.ai_target) and not other.ai_target.dead and other._can_detect_actor(other.ai_target):
 					var pack_target_distance := global_position.distance_to(other.ai_target.global_position)
-					if pack_target_distance <= AI_GROUP_ALERT_RANGE and group_distance < shared_pack_distance:
+					if pack_target_distance <= group_alert_range and group_distance < shared_pack_distance:
 						shared_pack_target = other.ai_target
 						shared_pack_distance = group_distance
-			if Catalog.has_trait(species_id, "herd_mover") and group_distance <= AI_HERD_SHARE_RADIUS and other.ai_state == "flee" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
+			if Catalog.has_trait(species_id, "herd_mover") and group_distance <= herd_share_radius and other.ai_state == "flee" and is_instance_valid(other.ai_target) and not other.ai_target.dead:
 				var herd_target_distance := global_position.distance_to(other.ai_target.global_position)
-				if herd_target_distance <= AI_GROUP_ALERT_RANGE and group_distance < shared_herd_distance:
+				if herd_target_distance <= group_alert_range and group_distance < shared_herd_distance:
 					shared_herd_threat = other.ai_target
 					shared_herd_distance = group_distance
 				if other.desired_direction.length() > 0.1:
@@ -3356,7 +3367,7 @@ func _think() -> void:
 				return
 		else:
 			search_position = last_known_target_position if has_last_known_target_position else ai_target.global_position
-			search_timer = SEARCH_MEMORY_SECONDS + effective_size * 0.16
+			search_timer = (SEARCH_MEMORY_SECONDS + effective_size * 0.16) * _ai_difficulty_value("memory")
 			ai_target = null
 			ai_state = "search"
 			state_commit_timer = 0.45
@@ -4095,7 +4106,7 @@ func _begin_ecology_trace_investigation() -> bool:
 	ai_target = null
 	resource_target = null
 	trace_investigation_position = trace_position
-	trace_investigation_timer = ECOLOGY_TRACE_INVESTIGATION_SECONDS
+	trace_investigation_timer = ECOLOGY_TRACE_INVESTIGATION_SECONDS * _ai_difficulty_value("memory")
 	last_investigated_trace_sequence = int(trace.get("sequence", last_investigated_trace_sequence))
 	state_commit_timer = 0.65
 	if game.has_method("on_ecology_trace_investigation"):
@@ -4109,13 +4120,13 @@ func _begin_danger_memory_avoidance() -> bool:
 	if not should_avoid_danger_memory(float(data["courage"]), hunger, health / maxf(max_health, 1.0), runtime_size_class(), Catalog.has_trait(species_id, "scavenger")):
 		return false
 	var origin := global_position if is_inside_tree() else position
-	var awareness_range := 10.0 + maxf(3.0 - effective_size, 0.0) * 2.2
+	var awareness_range := (10.0 + maxf(3.0 - effective_size, 0.0) * 2.2) * _ai_difficulty_value("perception")
 	var memory: Dictionary = game.world.nearest_danger_memory(origin, awareness_range, avoided_danger_sequences)
 	if memory.is_empty():
 		return false
 	avoided_danger_sequences[str(int(memory.get("sequence", 0)))] = true
 	danger_memory_position = memory.get("position", origin)
-	danger_memory_timer = DANGER_MEMORY_AVOID_SECONDS
+	danger_memory_timer = DANGER_MEMORY_AVOID_SECONDS * _ai_difficulty_value("memory")
 	ai_state = "danger_avoid"
 	ai_target = null
 	resource_target = null
@@ -4172,10 +4183,11 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 		support_count = 0
 		if Catalog.has_trait(species_id, "pack_hunter"):
 			for candidate in candidates:
-				if candidate != self and not candidate.dead and candidate.species_id == species_id and global_position.distance_to(candidate.global_position) <= AI_PACK_SHARE_RADIUS:
+				if candidate != self and not candidate.dead and candidate.species_id == species_id and global_position.distance_to(candidate.global_position) <= AI_PACK_SHARE_RADIUS * _ai_difficulty_value("cooperation"):
 					support_count += 1
 	var best: EcoActor
 	var best_score := -INF
+	var target_noise := _ai_difficulty_value("target_noise", 0.0)
 	for other in candidates:
 		if other == self or other.dead or other.spawn_protection > 0.0:
 			continue
@@ -4192,6 +4204,8 @@ func _best_prey(living_actors: Array[EcoActor] = [], target_pressure_counts: Dic
 		if not _can_detect_actor(other):
 			continue
 		var score := _prey_utility(other, support_count, int(target_pressure_counts.get(other.actor_id, 0)))
+		if target_noise > 0.0:
+			score *= behavior_rng.randf_range(1.0 - target_noise, 1.0 + target_noise)
 		if other.scent_mark_timer > 0.0:
 			score *= 1.35
 		if other.is_opportunity_exposed():
