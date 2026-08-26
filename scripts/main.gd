@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 5
-const RELEASE_VERSION := "1.72"
+const RELEASE_VERSION := "1.73"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const TUTORIAL_STEPS := [
@@ -117,6 +117,7 @@ var leaderboard_refresh_remaining: float = 0.0
 var orientation_blocked: bool = false
 var world_seed_override: int = -1
 var pending_player_adaptations: Array[int] = []
+var current_player_adaptation_choices: Array[String] = []
 var final_tracking_active: bool = false
 
 
@@ -318,6 +319,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 	get_tree().paused = false
 	_clear_game_root()
 	pending_player_adaptations.clear()
+	current_player_adaptation_choices.clear()
 	if not batch_mode:
 		run_uses_free_mode = free_mode
 		current_level = selected_free_level if run_uses_free_mode else campaign_level
@@ -1584,12 +1586,12 @@ func on_player_level_up(new_level: int, gains: Dictionary = {}) -> void:
 		audio.play_sfx("level_up", 1.0)
 
 
-func request_player_adaptation(actor: EcoActor, milestone_level: int) -> void:
-	if batch_mode or actor != player or milestone_level not in Catalog.GROWTH_MILESTONES:
+func request_player_adaptation(actor: EcoActor, selection_level: int) -> void:
+	if batch_mode or actor != player or selection_level not in Catalog.GROWTH_CHOICE_LEVELS:
 		return
 	var was_empty := pending_player_adaptations.is_empty()
-	if milestone_level not in pending_player_adaptations:
-		pending_player_adaptations.append(milestone_level)
+	if selection_level not in pending_player_adaptations:
+		pending_player_adaptations.append(selection_level)
 	if was_empty and state == "playing":
 		_present_next_player_adaptation.call_deferred()
 
@@ -1601,15 +1603,20 @@ func _present_next_player_adaptation() -> void:
 	get_tree().paused = true
 	if audio != null:
 		audio.set_context("pause")
-	ui.show_adaptation_choice(player, pending_player_adaptations[0])
+	var choices := player.level_up_adaptation_choices(pending_player_adaptations[0])
+	current_player_adaptation_choices.assign(choices.map(func(choice: Dictionary) -> String: return str(choice["id"])))
+	ui.show_adaptation_choice(player, pending_player_adaptations[0], choices)
 
 
 func _on_adaptation_selected(route_id: String) -> void:
 	if state != "adaptation" or not is_instance_valid(player) or pending_player_adaptations.is_empty():
 		return
+	if route_id not in current_player_adaptation_choices:
+		return
 	if not player.apply_adaptation(route_id):
 		return
 	pending_player_adaptations.pop_front()
+	current_player_adaptation_choices.clear()
 	if not pending_player_adaptations.is_empty():
 		_present_next_player_adaptation()
 		return
@@ -1626,10 +1633,10 @@ func on_actor_adaptation(actor: EcoActor, route_id: String, rank: int) -> void:
 	var adaptation_name := Catalog.adaptation_name(actor.species_id, route_id)
 	if actor == player:
 		ui.show_hint("获得「%s」%d级：%s" % [adaptation_name, rank, Catalog.adaptation_description(actor.species_id, route_id, rank)])
-		ui.add_event("局内适应 · %s %d级" % [adaptation_name, rank], "#d9b4ff")
-		ui.add_battle_report("你·%s形成「%s」%d级适应" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "适应", "#d9b4ff")
+		ui.add_event("随机进化 · %s %d级" % [adaptation_name, rank], "#d9b4ff")
+		ui.add_battle_report("你·%s选择「%s」%d级" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "进化", "#d9b4ff")
 	elif is_instance_valid(player) and player.global_position.distance_to(actor.global_position) <= 28.0:
-		ui.add_battle_report("%s形成「%s」%d级适应" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "适应", "#b8a2d9")
+		ui.add_battle_report("%s选择「%s」%d级" % [Catalog.display_name(actor.species_id), adaptation_name, rank], "进化", "#b8a2d9")
 
 
 func play_ui_sound() -> void:

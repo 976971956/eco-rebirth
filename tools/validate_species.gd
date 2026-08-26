@@ -21,6 +21,7 @@ class ValidationGame:
 	var player_level_events: Array[Dictionary] = []
 	var player_xp_events: Array[Dictionary] = []
 	var instinct_events: Array[Dictionary] = []
+	var adaptation_requests: Array[int] = []
 
 	func get_living_actors() -> Array[EcoActor]:
 		return actors.filter(func(actor: EcoActor) -> bool: return is_instance_valid(actor) and not actor.dead)
@@ -48,6 +49,10 @@ class ValidationGame:
 
 	func on_player_experience_gained(amount: int, source_name: String, reason: String = "击杀") -> void:
 		player_xp_events.append({"amount": amount, "source": source_name, "reason": reason})
+
+	func request_player_adaptation(actor: EcoActor, selection_level: int) -> void:
+		if actor == player:
+			adaptation_requests.append(selection_level)
 
 	func on_instinct_stage_completed(actor: EcoActor, stage_number: int, goal: Dictionary, xp_reward: int, health_restored: float, stamina_restored: float) -> void:
 		instinct_events.append({"actor": actor, "stage": stage_number, "goal": goal.duplicate(true), "xp": xp_reward, "health": health_restored, "stamina": stamina_restored})
@@ -324,8 +329,69 @@ func _run_validation() -> void:
 	fresh_growth_actor.setup(game_stub, 70, "wolf", false, Vector3(3.0, 0.0, 0.0), 0)
 	if not is_equal_approx(float(fresh_growth_actor.data["attack"]), growth_base_attack) or not is_equal_approx(fresh_growth_actor.max_health, growth_base_health):
 		failures.append("一名狼升级污染了后续生成的同物种基础数据")
+	var empty_evolution_ranks := {
+		"habitat": 0, "combat": 0, "ecology": 0,
+		"vitality": 0, "power": 0, "agility": 0,
+		"endurance": 0, "armor": 0, "body": 0,
+	}
+	var random_choices_a := Catalog.random_adaptation_choices("wolf", empty_evolution_ranks, 2, 424242, 3)
+	var random_choices_b := Catalog.random_adaptation_choices("wolf", empty_evolution_ranks, 2, 424242, 3)
+	var random_choice_ids: Array[String] = []
+	var random_choice_id_set := {}
+	for choice in random_choices_a:
+		var random_choice_id := str(choice["id"])
+		random_choice_ids.append(random_choice_id)
+		random_choice_id_set[random_choice_id] = true
+	if random_choices_a != random_choices_b or random_choices_a.size() != 3 or random_choice_id_set.size() != random_choice_ids.size():
+		failures.append("每级随机进化候选不稳定、不是三选一或出现重复状态")
+	if not Catalog.adaptation_choices("wolf", empty_evolution_ranks).any(func(choice: Dictionary) -> bool: return str(choice["id"]) == "body"):
+		failures.append("随机进化状态池缺少动物巨化选项")
+	var body_actor: EcoActor = ActorScript.new()
+	body_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(body_actor)
+	body_actor.setup(game_stub, 71, "rabbit", false, Vector3(6.0, 0.0, 0.0), 0)
+	var body_size_before := body_actor.effective_size
+	var body_health_before := body_actor.max_health
+	var body_attack_before := float(body_actor.data["attack"])
+	var body_armor_before := float(body_actor.data["armor"])
+	var body_visual_before := body_actor.body_root.scale.x
+	if not body_actor.apply_adaptation("body"):
+		failures.append("动物无法选择巨化生长状态")
+	elif body_actor.effective_size <= body_size_before or body_actor.max_health <= body_health_before or float(body_actor.data["attack"]) <= body_attack_before or float(body_actor.data["armor"]) <= body_armor_before or body_actor.body_root.scale.x <= body_visual_before:
+		failures.append("巨化生长没有同步模型、有效体型、生命、攻击或护甲")
+	if not Catalog.GROWTH_CHOICE_LEVELS == [2, 3, 4, 5, 6, 7, 8, 9, 10]:
+		failures.append("Lv.2–10 没有做到每升一级选择一次随机状态")
+	var every_level_player: EcoActor = ActorScript.new()
+	every_level_player.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(every_level_player)
+	every_level_player.setup(game_stub, 170, "rabbit", true, Vector3(9.0, 0.0, 0.0), 0)
+	game_stub.player = every_level_player
+	game_stub.adaptation_requests.clear()
+	for _selection_level in range(2, every_level_player.MAX_LEVEL + 1):
+		every_level_player._level_up()
+	if game_stub.adaptation_requests != Catalog.GROWTH_CHOICE_LEVELS:
+		failures.append("玩家实例没有在 Lv.2–10 逐级请求随机进化")
+	var ai_choice_actor: EcoActor = ActorScript.new()
+	ai_choice_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	container.add_child(ai_choice_actor)
+	ai_choice_actor.setup(game_stub, 171, "wolf", false, Vector3(12.0, 0.0, 0.0), 0)
+	var ai_expected_choices := ai_choice_actor.level_up_adaptation_choices(2)
+	var ai_expected_ids: Array[String] = []
+	for choice in ai_expected_choices:
+		ai_expected_ids.append(str(choice["id"]))
+	ai_choice_actor._level_up()
+	var ai_selected_ids: Array[String] = []
+	for route_id in Catalog.LEVEL_UP_OPTION_ORDER:
+		if int(ai_choice_actor.adaptation_ranks.get(route_id, 0)) > 0:
+			ai_selected_ids.append(route_id)
+	if ai_selected_ids.size() != 1 or ai_selected_ids[0] not in ai_expected_ids:
+		failures.append("AI 没有只从当次随机三个候选中选择进化")
+	game_stub.player = null
 	growth_actor.free()
 	fresh_growth_actor.free()
+	body_actor.free()
+	every_level_player.free()
+	ai_choice_actor.free()
 
 	var proximity_wolf: EcoActor = ActorScript.new()
 	proximity_wolf.process_mode = Node.PROCESS_MODE_DISABLED
@@ -631,7 +697,7 @@ func _run_validation() -> void:
 		var base_stamina := actor.max_stamina
 		var base_effective_size := actor.effective_size
 		for _growth_level in range(2, actor.MAX_LEVEL + 1):
-			actor._level_up()
+			actor._level_up(false)
 		if actor.max_health <= base_health or float(actor.data["attack"]) <= base_attack or float(actor.data["speed"]) <= base_speed or actor.max_stamina <= base_stamina:
 			failures.append("%s 升到满级后没有全面提升生命、攻击、速度与耐力" % species_id)
 		var expected_max_stats := Catalog.growth_stats(species_id, actor.MAX_LEVEL)
@@ -639,8 +705,8 @@ func _run_validation() -> void:
 			failures.append("%s 的 Lv.10 体型或核心属性偏离确定性体型曲线" % species_id)
 		if actor.effective_size <= base_effective_size or Catalog.visual_growth_scale(species_id, actor.MAX_LEVEL) <= 1.0 or float(actor.data["speed"]) > base_speed * 1.20:
 			failures.append("%s 的体型展示没有成长或速度成长越过 20%% 上限" % species_id)
-		if not Catalog.SPECIES_ADAPTATION_NAMES.has(species_id) or Catalog.adaptation_choices(species_id).size() != 3:
-			failures.append("%s 缺少三条完整局内适应路线" % species_id)
+		if not Catalog.SPECIES_ADAPTATION_NAMES.has(species_id) or Catalog.adaptation_choices(species_id).size() != Catalog.LEVEL_UP_OPTION_ORDER.size():
+			failures.append("%s 缺少完整的随机进化状态池" % species_id)
 		var combat_tier := Catalog.combat_tier(species_id)
 		if combat_tier < 1 or combat_tier > 5:
 			failures.append("%s 的生态威胁级不在 1–5 范围" % species_id)
@@ -1210,7 +1276,7 @@ func _run_validation() -> void:
 		failures.append("恢复游戏后战斗延迟计时器没有继续")
 
 	if failures.is_empty():
-		print("SPECIES_VALIDATION_OK: %d species, 30 signature skills and commitments, porcupine invulnerable ball/50%% reflection/exit exposure, three-stage instinct chains, water/breath/drowning/fishing, ecological habits, XP/growth, ecology AI, progressive pools 1-10, flight/weather/canopy rules" % Catalog.ORDER.size())
+		print("SPECIES_VALIDATION_OK: %d species, every-level random evolution/body growth, player-AI choice symmetry, 30 signature skills and commitments, porcupine invulnerable ball/50%% reflection/exit exposure, instinct chains, water/fishing, ecology AI, progressive pools 1-10" % Catalog.ORDER.size())
 		quit(0)
 	else:
 		for failure in failures:

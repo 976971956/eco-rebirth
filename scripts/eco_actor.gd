@@ -89,7 +89,10 @@ const MAX_LEVEL := Catalog.MAX_GROWTH_LEVEL
 var effective_size: float = 1.0
 var threat_health_scale: float = 1.0
 var threat_speed_scale: float = 1.0
-var adaptation_ranks := {"habitat": 0, "combat": 0, "ecology": 0}
+# Ranks are sparse: every reader uses `get(id, 0)`, so an animal only stores
+# states it has actually selected. This matters in the 100-actor final map and
+# avoids nine zero-valued dictionary entries on every newly spawned AI.
+var adaptation_ranks: Dictionary = {}
 var attack_timer: float = 0.0
 var skill_timer: float = 0.0
 var skill_guard_timer: float = 0.0
@@ -350,16 +353,22 @@ func _recalculate_growth_stats() -> void:
 		base_data = Catalog.get_data(species_id)
 	if data.is_empty():
 		data = base_data.duplicate(true)
-	var stats := Catalog.growth_stats(species_id, level, MAX_LEVEL)
+	var body_rank := int(adaptation_ranks.get("body", 0))
+	var vitality_rank := int(adaptation_ranks.get("vitality", 0))
+	var power_rank := int(adaptation_ranks.get("power", 0))
+	var agility_rank := int(adaptation_ranks.get("agility", 0))
+	var endurance_rank := int(adaptation_ranks.get("endurance", 0))
+	var armor_rank := int(adaptation_ranks.get("armor", 0))
+	var stats := Catalog.growth_stats(species_id, level, MAX_LEVEL, body_rank)
 	effective_size = float(stats["effective_size"])
-	max_health = float(stats["health"]) * threat_health_scale
-	max_stamina = float(stats["stamina"])
+	max_health = float(stats["health"]) * (1.0 + float(vitality_rank) * 0.08) * threat_health_scale
+	max_stamina = float(stats["stamina"]) * (1.0 + float(endurance_rank) * 0.07)
 	data["health"] = max_health
 	data["stamina"] = max_stamina
-	data["attack"] = float(stats["attack"])
-	data["armor"] = float(stats["armor"])
-	data["speed"] = float(stats["speed"]) * threat_speed_scale
-	data["regen"] = float(stats["regen"])
+	data["attack"] = float(stats["attack"]) * (1.0 + float(power_rank) * 0.06)
+	data["armor"] = float(stats["armor"]) + float(armor_rank) * 2.5
+	data["speed"] = float(stats["speed"]) * (1.0 + float(agility_rank) * 0.025) * threat_speed_scale
+	data["regen"] = float(stats["regen"]) * (1.0 + float(endurance_rank) * 0.05)
 	data["hunger_rate"] = float(stats["hunger_rate"])
 	var combat_rank := int(adaptation_ranks.get("combat", 0))
 	data["skill_cost"] = float(base_data["skill_cost"]) * pow(0.94, combat_rank)
@@ -382,27 +391,52 @@ func threat_gap_to(target: EcoActor) -> int:
 
 func adaptation_summary_text() -> String:
 	var parts: Array[String] = []
-	for route_id in Catalog.ADAPTATION_ROUTE_ORDER:
+	for route_id in Catalog.LEVEL_UP_OPTION_ORDER:
 		var rank := int(adaptation_ranks.get(route_id, 0))
 		if rank > 0:
-			parts.append("%s%d" % [Catalog.adaptation_name(species_id, route_id), rank])
-	return "未选择局内适应" if parts.is_empty() else "适应·%s" % "/".join(parts)
+			parts.append("%s%d" % [Catalog.adaptation_short_name(species_id, route_id), rank])
+	if parts.is_empty():
+		return "尚未选择随机进化"
+	var hidden_count := maxi(parts.size() - 3, 0)
+	return "进化·%s%s" % ["/".join(parts.slice(0, mini(parts.size(), 3))), " +%d项" % hidden_count if hidden_count > 0 else ""]
 
 
 func apply_adaptation(route_id: String) -> bool:
-	if route_id not in Catalog.ADAPTATION_ROUTE_ORDER:
+	if route_id not in Catalog.LEVEL_UP_OPTION_ORDER:
 		return false
 	var old_rank := int(adaptation_ranks.get(route_id, 0))
-	if old_rank >= 3:
+	if old_rank >= Catalog.adaptation_max_rank(route_id):
 		return false
+	var old_max_health := max_health
+	var old_max_stamina := max_stamina
 	adaptation_ranks[route_id] = old_rank + 1
 	_recalculate_growth_stats()
+	health = minf(max_health, health + maxf(max_health - old_max_health, 0.0))
+	stamina = minf(max_stamina, stamina + maxf(max_stamina - old_max_stamina, 0.0))
+	_update_exhaustion_state()
+	_update_growth_presentation()
+	health_changed.emit(health, max_health)
+	stamina_changed.emit(stamina, max_stamina)
+	_update_health_bar()
 	if game != null and game.has_method("on_actor_adaptation"):
 		game.on_actor_adaptation(self, route_id, old_rank + 1)
 	return true
 
 
-func choose_ai_adaptation() -> String:
+func adaptation_selection_seed(selection_level: int) -> int:
+	var current_world_seed := 0
+	if game != null:
+		var seed_value: Variant = game.get("world_seed")
+		if seed_value != null:
+			current_world_seed = int(seed_value)
+	return current_world_seed * 131 + actor_id * 8191 + selection_level * 524287
+
+
+func level_up_adaptation_choices(selection_level: int) -> Array[Dictionary]:
+	return Catalog.random_adaptation_choices(species_id, adaptation_ranks, selection_level, adaptation_selection_seed(selection_level), 3)
+
+
+func choose_ai_adaptation(candidate_route_ids: Array = []) -> String:
 	var habitat_score := 1.0 + (1.0 - stamina / maxf(max_stamina, 1.0)) * 0.75
 	var combat_score := 0.72 + float(data["aggression"]) * 0.80 + float(kills) * 0.08
 	var ecology_score := 0.90 + hunger / 100.0 * 0.75 + (0.32 if level <= 4 else 0.0)
@@ -412,11 +446,34 @@ func choose_ai_adaptation() -> String:
 		combat_score += 0.24
 	if Catalog.has_trait(species_id, "scavenger") or str(data["diet"]) == "herbivore":
 		ecology_score += 0.22
-	var scored := [
-		{"id": "habitat", "score": habitat_score},
-		{"id": "combat", "score": combat_score},
-		{"id": "ecology", "score": ecology_score},
-	]
+	var health_ratio := health / maxf(max_health, 1.0)
+	var stamina_ratio := stamina / maxf(max_stamina, 1.0)
+	var scores := {
+		"habitat": habitat_score,
+		"combat": combat_score,
+		"ecology": ecology_score,
+		"vitality": 0.82 + (1.0 - health_ratio) * 1.05,
+		"power": 0.74 + float(data["aggression"]) * 0.92 + float(kills) * 0.06,
+		"agility": 0.78 + (1.0 - float(data["courage"])) * 0.42 + (0.18 if Catalog.has_trait(species_id, "escape") or Catalog.has_trait(species_id, "finisher") else 0.0),
+		"endurance": 0.86 + (1.0 - stamina_ratio) * 0.92,
+		"armor": 0.78 + (1.0 - health_ratio) * 0.62 + (0.18 if Catalog.has_trait(species_id, "retaliator") or Catalog.has_trait(species_id, "armored") else 0.0),
+		"body": 0.82 + maxf(3.8 - effective_size, 0.0) * 0.10 + (0.16 if level <= 5 else 0.0),
+	}
+	var allowed_ids: Array = candidate_route_ids
+	if allowed_ids.is_empty():
+		for choice in Catalog.adaptation_choices(species_id, adaptation_ranks):
+			allowed_ids.append(str(choice["id"]))
+	var scored: Array[Dictionary] = []
+	for route_id_value in allowed_ids:
+		var route_id := str(route_id_value)
+		if int(adaptation_ranks.get(route_id, 0)) >= Catalog.adaptation_max_rank(route_id):
+			continue
+		scored.append({
+			"id": route_id,
+			"score": float(scores.get(route_id, 0.5)) - float(int(adaptation_ranks.get(route_id, 0))) * 0.10,
+		})
+	if scored.is_empty():
+		return ""
 	scored.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if is_equal_approx(float(a["score"]), float(b["score"])):
 			return str(a["id"]) < str(b["id"])
@@ -823,7 +880,7 @@ func _build_visual() -> void:
 			"lion": _build_lion()
 	_collect_tail_visuals()
 	authored_visual_scale = body_root.scale
-	base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+	base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL) * Catalog.body_evolution_visual_multiplier(int(adaptation_ranks.get("body", 0)))
 	body_root.scale = base_visual_scale
 	_build_health_bar()
 	if is_player:
@@ -833,7 +890,7 @@ func _build_visual() -> void:
 
 func _update_growth_presentation() -> void:
 	if body_root != null:
-		base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+		base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL) * Catalog.body_evolution_visual_multiplier(int(adaptation_ranks.get("body", 0)))
 		body_root.scale = base_visual_scale
 	var collision := get_node_or_null("BodyCollision") as CollisionShape3D
 	if collision != null and collision.shape is CapsuleShape3D:
@@ -1545,7 +1602,7 @@ func _set_porcupine_ball_visual(active: bool) -> void:
 	if is_instance_valid(porcupine_ball_visual):
 		porcupine_ball_visual.visible = active
 		porcupine_ball_visual.position.y = -visual_immersion_offset
-		porcupine_ball_visual.scale = Vector3.ONE * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL)
+		porcupine_ball_visual.scale = Vector3.ONE * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL) * Catalog.body_evolution_visual_multiplier(int(adaptation_ranks.get("body", 0)))
 
 
 func _build_capybara() -> void:
@@ -5695,7 +5752,7 @@ func gain_experience(amount: int, defeated_species: String = "", reason: String 
 		game.on_player_experience_gained(amount, defeated_species, reason)
 
 
-func _level_up() -> void:
+func _level_up(resolve_random_choice: bool = true) -> void:
 	var old_max_health := max_health
 	var old_max_stamina := max_stamina
 	var old_attack := float(data["attack"])
@@ -5730,11 +5787,13 @@ func _level_up() -> void:
 			"regen": float(data["regen"]) - old_regen,
 			"size": effective_size - old_effective_size,
 		})
-	if level in Catalog.GROWTH_MILESTONES:
+	if resolve_random_choice and level in Catalog.GROWTH_CHOICE_LEVELS:
 		if is_player and game.has_method("request_player_adaptation"):
 			game.request_player_adaptation(self, level)
 		elif not is_player:
-			apply_adaptation(choose_ai_adaptation())
+			var choices := level_up_adaptation_choices(level)
+			var candidate_ids: Array = choices.map(func(choice: Dictionary) -> String: return str(choice["id"]))
+			apply_adaptation(choose_ai_adaptation(candidate_ids))
 
 
 func die(killer: EcoActor) -> void:

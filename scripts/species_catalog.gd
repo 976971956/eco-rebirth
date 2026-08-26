@@ -167,7 +167,7 @@ const GROWTH_PROFILES := {
 # threat tier.  This makes a fully grown rabbit a genuine medium-sized animal,
 # while naturally large species still retain the highest possible ceiling.
 const MAX_GROWTH_LEVEL := 10
-const GROWTH_MILESTONES: Array[int] = [3, 6, 9]
+const GROWTH_CHOICE_LEVELS: Array[int] = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 const EXPERIENCE_THRESHOLDS: Array[int] = [45, 90, 150, 225, 315, 420, 540, 675, 825]
 const BODY_GROWTH_BY_SIZE := {
 	1: {"start": 1.0, "maximum": 3.2, "visual_max": 1.75},
@@ -186,10 +186,22 @@ const GROWTH_ARCHETYPE_CORE_MODIFIERS := {
 }
 
 const ADAPTATION_ROUTE_ORDER: Array[String] = ["habitat", "combat", "ecology"]
+const LEVEL_UP_OPTION_ORDER: Array[String] = ["habitat", "combat", "ecology", "vitality", "power", "agility", "endurance", "armor", "body"]
+const LEVEL_UP_OPTION_MAX_RANK := {
+	"habitat": 3, "combat": 3, "ecology": 3,
+	"vitality": 5, "power": 5, "agility": 4,
+	"endurance": 5, "armor": 5, "body": 3,
+}
 const ADAPTATION_ROUTE_DISPLAY_NAMES := {
 	"habitat": "生境适应",
 	"combat": "战斗技艺",
 	"ecology": "生态关系",
+	"vitality": "生命状态",
+	"power": "攻击状态",
+	"agility": "速度状态",
+	"endurance": "耐力状态",
+	"armor": "防御状态",
+	"body": "体型状态",
 }
 const INSTINCT_STAGE_ORDER: Array[String] = ["prepare", "survive", "compete"]
 const INSTINCT_STAGE_REWARDS := [
@@ -1438,23 +1450,34 @@ static func visual_growth_scale(species_id: String, level: int, maximum_level: i
 	return lerpf(1.0, float(profile["visual_max"]), growth_progress(level, maximum_level))
 
 
-static func growth_stats(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> Dictionary:
+static func body_evolution_size_multiplier(rank: int) -> float:
+	return pow(1.04, clampi(rank, 0, int(LEVEL_UP_OPTION_MAX_RANK["body"])))
+
+
+static func body_evolution_visual_multiplier(rank: int) -> float:
+	return pow(1.05, clampi(rank, 0, int(LEVEL_UP_OPTION_MAX_RANK["body"])))
+
+
+static func growth_stats(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL, body_evolution_rank: int = 0) -> Dictionary:
 	var base := get_data(species_id)
 	var archetype := growth_archetype(species_id)
 	var modifiers: Dictionary = GROWTH_ARCHETYPE_CORE_MODIFIERS.get(archetype, GROWTH_ARCHETYPE_CORE_MODIFIERS["survivor"])
 	var progress := growth_progress(level, maximum_level)
-	var effective_size := effective_body_size(species_id, level, maximum_level)
+	var effective_size := effective_body_size(species_id, level, maximum_level) * body_evolution_size_multiplier(body_evolution_rank)
 	# Health, attack and armor share one body-mass curve. Species identity is a
 	# deliberately narrow ±6% role modifier; locomotion, skills and habits remain
 	# the main matchup differences between animals of equal current size.
 	var health := (28.0 + 28.0 * pow(effective_size, 1.65)) * float(modifiers["health"])
 	var attack := (3.0 + 4.0 * pow(effective_size, 1.50)) * float(modifiers["attack"])
 	var armor := 8.0 * maxf(effective_size - 1.0, 0.0) + float(modifiers["armor"])
+	# 巨化不只改变外观和血量：额外的体重与皮下组织会稳定提供少量护甲。
+	# 这也让天生 0 护甲的小型物种选择巨化后能获得真实的抗击收益。
+	armor += float(clampi(body_evolution_rank, 0, int(LEVEL_UP_OPTION_MAX_RANK["body"]))) * 0.8
 	if has_trait(species_id, "armored"):
 		armor += 10.0
 	return {
 		"effective_size": effective_size,
-		"visual_scale": visual_growth_scale(species_id, level, maximum_level),
+		"visual_scale": visual_growth_scale(species_id, level, maximum_level) * body_evolution_visual_multiplier(body_evolution_rank),
 		"health": maxf(health, 20.0),
 		"attack": maxf(attack, 4.0),
 		"armor": maxf(armor, 0.0),
@@ -1477,14 +1500,35 @@ static func experience_threshold(level: int, effective_size_value: float) -> int
 
 static func adaptation_name(species_id: String, route_id: String) -> String:
 	var route_index := ADAPTATION_ROUTE_ORDER.find(route_id)
-	var names: Array = SPECIES_ADAPTATION_NAMES.get(species_id, ["主场本能", "战术磨炼", "生态共生"])
-	if route_index < 0 or route_index >= names.size():
-		return "生态适应"
-	return str(names[route_index])
+	if route_index >= 0:
+		var names: Array = SPECIES_ADAPTATION_NAMES.get(species_id, ["主场本能", "战术磨炼", "生态共生"])
+		if route_index < names.size():
+			return str(names[route_index])
+	match route_id:
+		"vitality": return "强健体魄"
+		"power": return "锋牙利爪"
+		"agility": return "灵敏步态"
+		"endurance": return "持久耐力"
+		"armor": return "厚实防护"
+		"body": return "巨化生长"
+		_: return "生态适应"
+
+
+static func adaptation_short_name(species_id: String, route_id: String) -> String:
+	if route_id in ADAPTATION_ROUTE_ORDER:
+		return adaptation_name(species_id, route_id)
+	return {
+		"vitality": "生命", "power": "攻击", "agility": "速度",
+		"endurance": "耐力", "armor": "护甲", "body": "体型",
+	}.get(route_id, "进化")
+
+
+static func adaptation_max_rank(route_id: String) -> int:
+	return maxi(int(LEVEL_UP_OPTION_MAX_RANK.get(route_id, 0)), 0)
 
 
 static func adaptation_description(species_id: String, route_id: String, next_rank: int = 1) -> String:
-	var rank := clampi(next_rank, 1, 3)
+	var rank := clampi(next_rank, 1, maxi(adaptation_max_rank(route_id), 1))
 	match route_id:
 		"habitat":
 			return "主场移动与恢复 +%d%%，冲刺消耗降低 %d%%；更善于利用掩体和水陆路线。" % [rank * 3, rank * 6]
@@ -1492,22 +1536,53 @@ static func adaptation_description(species_id: String, route_id: String, next_ra
 			return "主动技能消耗与冷却各降低 %d%%，抓住强敌破绽时获得更稳定的战术收益。" % [rank * 6]
 		"ecology":
 			return "首次探索新食物的经验 +%d%%，营养与生态习性恢复 +%d%%。" % [rank * 12, rank * 6]
+		"vitality":
+			return "最大生命累计提高 %d%%；选择时补足新增生命上限。" % [rank * 8]
+		"power":
+			return "普通攻击与主动技能的基础伤害累计提高 %d%%。" % [rank * 6]
+		"agility":
+			return "陆地与水中基础移动速度累计提高 %.1f%%；更快换位，但冲刺仍消耗耐力。" % [float(rank) * 2.5]
+		"endurance":
+			return "最大耐力累计提高 %d%%，耐力恢复累计提高 %d%%。" % [rank * 7, rank * 5]
+		"armor":
+			return "护甲累计提高 %.1f，适合承受围攻和争夺高价值资源。" % [float(rank) * 2.5]
+		"body":
+			return "有效体型累计提高约 %d%%，模型累计放大约 %d%%；生命、攻击、护甲、碰撞和触及距离按新体型重算，但食量与下级经验成本也会上升。" % [rank * 4, rank * 5]
 		_:
 			return "形成一项新的局内生态能力。"
 
 
 static func adaptation_choices(species_id: String, current_ranks: Dictionary = {}) -> Array[Dictionary]:
 	var choices: Array[Dictionary] = []
-	for route_id in ADAPTATION_ROUTE_ORDER:
-		var next_rank := clampi(int(current_ranks.get(route_id, 0)) + 1, 1, 3)
+	for route_id in LEVEL_UP_OPTION_ORDER:
+		var current_rank := int(current_ranks.get(route_id, 0))
+		var maximum_rank := adaptation_max_rank(route_id)
+		if current_rank >= maximum_rank:
+			continue
+		var next_rank := current_rank + 1
 		choices.append({
 			"id": route_id,
 			"route": str(ADAPTATION_ROUTE_DISPLAY_NAMES[route_id]),
 			"name": adaptation_name(species_id, route_id),
 			"rank": next_rank,
+			"maximum_rank": maximum_rank,
 			"description": adaptation_description(species_id, route_id, next_rank),
 		})
 	return choices
+
+
+static func random_adaptation_choices(species_id: String, current_ranks: Dictionary, selection_level: int, selection_seed: int, choice_count: int = 3) -> Array[Dictionary]:
+	var eligible := adaptation_choices(species_id, current_ranks)
+	if eligible.size() <= choice_count:
+		return eligible
+	var rng := RandomNumberGenerator.new()
+	rng.seed = absi(selection_seed) + absi(species_id.hash()) * 31 + clampi(selection_level, 2, MAX_GROWTH_LEVEL) * 104729
+	for choice_index in range(eligible.size() - 1, 0, -1):
+		var swap_index := rng.randi_range(0, choice_index)
+		var swap_value: Dictionary = eligible[choice_index]
+		eligible[choice_index] = eligible[swap_index]
+		eligible[swap_index] = swap_value
+	return eligible.slice(0, mini(choice_count, eligible.size()))
 
 
 static func instinct_chain(species_id: String) -> Array[Dictionary]:
@@ -1572,7 +1647,7 @@ static func instinct_chain_summary(species_id: String) -> String:
 
 static func growth_description(species_id: String) -> String:
 	var profile := body_growth_profile(species_id)
-	return "%s：最高 Lv.10 · 实时体型 %.1f → %.1f · 体型同步提高生命、攻击、护甲、速度与耐力；Lv.3/6/9 选择局内适应" % [
+	return "%s：最高 Lv.10 · 实时体型 %.1f → %.1f · 体型同步提高生命、攻击、护甲、速度与耐力；Lv.2–10 每级随机进化三选一" % [
 		str(growth_profile(species_id)["name"]), float(profile["start"]), float(profile["maximum"]),
 	]
 

@@ -39,6 +39,7 @@ func _initialize() -> void:
 
 func _render() -> void:
 	var mobile_free_mode_preview_only := "--mobile-free-mode-preview" in OS.get_cmdline_user_args()
+	var evolution_preview_only := "--evolution-preview" in OS.get_cmdline_user_args()
 	var background_layer := CanvasLayer.new()
 	root.add_child(background_layer)
 	var background := TextureRect.new()
@@ -59,6 +60,9 @@ func _render() -> void:
 	ui.setup(game)
 	for _frame in range(5):
 		await process_frame
+	if evolution_preview_only:
+		await _render_evolution_preview(ui, game)
+		return
 	var home_result := OK
 	if not mobile_free_mode_preview_only:
 		home_result = root.get_texture().get_image().save_png("res://docs/images/v14-home.png")
@@ -362,10 +366,11 @@ func _render() -> void:
 	preview_actor.health = preview_actor.max_health
 	preview_actor.stamina = preview_actor.max_stamina
 	ui.update_hud(preview_actor, 16, 20, "古木林地 · 白昼 · 晴朗", "生态热点 · 下一次信号 26s", "迁徙监测 · 尚无活动", "生态本能 · 嫩草 东北 18m · 完美习性")
-	ui.show_adaptation_choice(preview_actor, 3)
+	var evolution_preview_choices := _evolution_preview_choices(preview_actor)
+	ui.show_adaptation_choice(preview_actor, 3, evolution_preview_choices)
 	for _frame in range(5):
 		await process_frame
-	var adaptation_result := root.get_texture().get_image().save_png("res://docs/images/v86-growth-adaptation-choice.png")
+	var adaptation_result := root.get_texture().get_image().save_png("res://docs/images/v99-every-level-random-evolution.png")
 	ui.show_settings(false)
 	for _frame in range(5):
 		await process_frame
@@ -376,3 +381,32 @@ func _render() -> void:
 	else:
 		push_error("发布界面预览生成失败")
 		quit(1)
+
+
+func _render_evolution_preview(ui: GameUI, game: PreviewGame) -> void:
+	var preview_actor: EcoActor = ActorScript.new()
+	preview_actor.process_mode = Node.PROCESS_MODE_DISABLED
+	game.add_child(preview_actor)
+	preview_actor.setup(game, 73, "rabbit", true, Vector3.ZERO, 0)
+	preview_actor.level = 3
+	preview_actor._recalculate_growth_stats()
+	preview_actor.health = preview_actor.max_health
+	preview_actor.stamina = preview_actor.max_stamina
+	ui.show_adaptation_choice(preview_actor, 3, _evolution_preview_choices(preview_actor))
+	for _frame in range(5):
+		await process_frame
+	var result := root.get_texture().get_image().save_png("res://docs/images/v99-every-level-random-evolution.png")
+	if result == OK:
+		print("EVOLUTION_PREVIEW_OK")
+		quit(0)
+	else:
+		push_error("每级随机进化预览生成失败")
+		quit(1)
+
+
+func _evolution_preview_choices(actor: EcoActor) -> Array[Dictionary]:
+	var preview_choices: Array[Dictionary] = []
+	for choice in Catalog.adaptation_choices(actor.species_id, actor.adaptation_ranks):
+		if str(choice["id"]) in ["body", "power", "vitality"]:
+			preview_choices.append(choice)
+	return preview_choices

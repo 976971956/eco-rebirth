@@ -1676,7 +1676,7 @@ func add_event(text_value: String, color_hex: String = "#dcebd6") -> void:
 		event_feed.append_text("%s\n" % line)
 
 
-func show_adaptation_choice(player_actor: EcoActor, milestone_level: int) -> void:
+func show_adaptation_choice(player_actor: EcoActor, selection_level: int, choices: Array[Dictionary] = []) -> void:
 	hide_tutorial()
 	_cancel_intro_tween()
 	if intro_panel != null:
@@ -1689,13 +1689,13 @@ func show_adaptation_choice(player_actor: EcoActor, milestone_level: int) -> voi
 	box.add_theme_constant_override("separation", 13)
 	panel.add_child(box)
 	var title := Label.new()
-	title.text = "Lv.%d · 选择一次局内适应" % milestone_level
+	title.text = "Lv.%d · 随机进化三选一" % selection_level
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", _font_size(36, 42))
 	title.add_theme_color_override("font_color", Color("#f2e5ff"))
 	box.add_child(title)
 	var summary := Label.new()
-	summary.text = "%s当前体型 %.1f。适应只在本局生效，可重复强化同一路线，也可混合构筑。" % [Catalog.display_name(player_actor.species_id), player_actor.effective_size]
+	summary.text = "%s当前体型 %.1f。每次升级选择一项本局状态；巨化会变大并提高体型属性，也会增加食量和后续升级成本。" % [Catalog.display_name(player_actor.species_id), player_actor.effective_size]
 	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	summary.add_theme_font_size_override("font_size", _font_size(17, 20))
@@ -1707,12 +1707,17 @@ func show_adaptation_choice(player_actor: EcoActor, milestone_level: int) -> voi
 	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cards.add_theme_constant_override("h_separation", 12)
 	box.add_child(cards)
-	var route_colors := {"habitat": Color("#72d8a7"), "combat": Color("#e8a875"), "ecology": Color("#b89be8")}
-	for choice in Catalog.adaptation_choices(player_actor.species_id, player_actor.adaptation_ranks):
+	var route_colors := {
+		"habitat": Color("#72d8a7"), "combat": Color("#e8a875"), "ecology": Color("#b89be8"),
+		"vitality": Color("#e87878"), "power": Color("#ef9a62"), "agility": Color("#73cddd"),
+		"endurance": Color("#d9bf62"), "armor": Color("#91a6b8"), "body": Color("#d68ae8"),
+	}
+	var displayed_choices := choices if not choices.is_empty() else player_actor.level_up_adaptation_choices(selection_level)
+	for choice in displayed_choices:
 		var route_id := str(choice["id"])
 		var card_color: Color = route_colors.get(route_id, Color("#a8d7c0"))
 		var card := Button.new()
-		card.text = "%s\n「%s」 %d级\n\n%s" % [str(choice["route"]), str(choice["name"]), int(choice["rank"]), str(choice["description"])]
+		card.text = "%s\n「%s」 %d/%d级\n\n%s" % [str(choice["route"]), str(choice["name"]), int(choice["rank"]), int(choice.get("maximum_rank", 3)), str(choice["description"])]
 		card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		card.custom_minimum_size = Vector2(150, 250 if _uses_compact_touch_layout() else 280)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1726,7 +1731,7 @@ func show_adaptation_choice(player_actor: EcoActor, milestone_level: int) -> voi
 		card.pressed.connect(_on_adaptation_card_pressed.bind(route_id))
 		cards.add_child(card)
 	var footer := Label.new()
-	footer.text = "生境适应偏向主场与耐力 · 战斗技艺改造现有技能 · 生态关系强化觅食与习性"
+	footer.text = "候选由本局世界种子随机生成 · 玩家与 AI 使用同一状态池 · 全部效果仅在本局生效"
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	footer.add_theme_font_size_override("font_size", _font_size(15, 18))

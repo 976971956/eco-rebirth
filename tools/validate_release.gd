@@ -96,7 +96,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.72 发布候选校验通过：手机网页自由模式开始按钮固定可见")
+		print("[release] V1.73 发布候选校验通过：每级随机进化三选一与巨化成长已接入")
 		quit(0)
 	else:
 		for failure in failures:
@@ -339,9 +339,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.72\"") and presets.contains("application/short_version=\"1.72\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=840") and presets.contains("application/version=\"840\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.72", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.73\"") and presets.contains("application/short_version=\"1.73\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=850") and presets.contains("application/version=\"850\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.73", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -1970,14 +1970,26 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 
 func _validate_growth_hud_contract() -> void:
 	_expect(ActorScript.MAX_LEVEL == 10 and Catalog.MAX_GROWTH_LEVEL == 10, "局内成长上限没有统一为 Lv.10")
-	_expect(Catalog.GROWTH_MILESTONES == [3, 6, 9], "局内适应没有在 Lv.3/6/9 触发")
-	_expect(Catalog.SPECIES_ADAPTATION_NAMES.size() == Catalog.ORDER.size(), "三路线适应没有覆盖全部 30 种动物")
+	_expect(Catalog.GROWTH_CHOICE_LEVELS == [2, 3, 4, 5, 6, 7, 8, 9, 10], "每次升级没有在 Lv.2–10 触发随机进化")
+	_expect(Catalog.SPECIES_ADAPTATION_NAMES.size() == Catalog.ORDER.size(), "物种专属生态进化没有覆盖全部 30 种动物")
 	for species_id in Catalog.ORDER:
-		_expect(Catalog.adaptation_choices(species_id).size() == 3, "%s 没有生境、战斗、生态三条适应" % species_id)
+		var all_choices := Catalog.adaptation_choices(species_id)
+		_expect(all_choices.size() == Catalog.LEVEL_UP_OPTION_ORDER.size(), "%s 没有完整的九项进化状态池" % species_id)
+		_expect(all_choices.any(func(choice: Dictionary) -> bool: return str(choice["id"]) == "body"), "%s 的随机状态池没有巨化生长" % species_id)
+		var random_choices_a := Catalog.random_adaptation_choices(species_id, {}, 2, 173042, 3)
+		var random_choices_b := Catalog.random_adaptation_choices(species_id, {}, 2, 173042, 3)
+		var random_choice_ids := {}
+		for choice in random_choices_a:
+			random_choice_ids[str(choice["id"])] = true
+		_expect(random_choices_a == random_choices_b and random_choice_ids.size() == 3, "%s 的每级随机三选一不可复现或包含重复项" % species_id)
 		_expect(Catalog.maximum_effective_body_size(species_id) > Catalog.effective_body_size(species_id, 1), "%s 的实时体型不会成长" % species_id)
 	var rabbit_max := Catalog.growth_stats("rabbit", 10)
+	var rabbit_giant := Catalog.growth_stats("rabbit", 10, 10, Catalog.adaptation_max_rank("body"))
 	var cheetah_start := Catalog.growth_stats("cheetah", 1)
 	_expect(float(rabbit_max["effective_size"]) > float(cheetah_start["effective_size"]), "满级雪兔体型仍低于所有中型动物")
+	_expect(float(rabbit_giant["effective_size"]) > float(rabbit_max["effective_size"]) and float(rabbit_giant["visual_scale"]) > float(rabbit_max["visual_scale"]), "巨化生长没有同步放大实时体型和动物模型")
+	_expect(float(rabbit_giant["health"]) > float(rabbit_max["health"]) and float(rabbit_giant["attack"]) > float(rabbit_max["attack"]) and float(rabbit_giant["armor"]) > float(rabbit_max["armor"]), "巨化生长没有按体型重算生命、攻击和护甲")
+	_expect(float(rabbit_giant["hunger_rate"]) > float(rabbit_max["hunger_rate"]) and Catalog.experience_threshold(9, float(rabbit_giant["effective_size"])) > Catalog.experience_threshold(9, float(rabbit_max["effective_size"])), "巨化生长没有提高食量和后续升级成本")
 	_expect(Catalog.runtime_opportunity_threat_gap(float(rabbit_max["effective_size"]), float(cheetah_start["effective_size"]), 120.0, 100.0) == 0, "实时逆袭判定仍把长大的弱物种当作初始小型物种")
 	for authored_size in range(1, 6):
 		var health_values: Array[float] = []
@@ -2000,13 +2012,14 @@ func _validate_growth_hud_contract() -> void:
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.count("_sync_player_status_ranges(player_actor)") >= 2, "玩家升级后 HUD 没有持续同步生命与耐力上限")
 	_expect(ui_source.contains("float(player_actor.data[\"regen\"])") and ui_source.contains("恢复 %.1f"), "HUD 没有显示会随等级成长的耐力恢复")
-	_expect(ui_source.contains("func show_adaptation_choice") and ui_source.contains("adaptation_selected"), "玩家缺少移动端可用的三选一适应界面")
+	_expect(ui_source.contains("func show_adaptation_choice") and ui_source.contains("随机进化三选一") and ui_source.contains("adaptation_selected"), "玩家缺少移动端可用的每级随机进化界面")
 	var actor_source := FileAccess.get_file_as_string("res://scripts/eco_actor.gd")
 	_expect(actor_source.contains("\"regen\": float(data[\"regen\"]) - old_regen"), "升级反馈没有传递耐力恢复增量")
 	_expect(actor_source.contains("effective_size") and actor_source.contains("func threat_gap_to") and actor_source.contains("func _best_nutrient_food"), "实时体型没有接入战斗、逆袭或 AI 营养觅食")
 	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
 	_expect(main_source.contains("gains.get(\"regen\""), "玩家升级提示没有显示耐力恢复增量")
-	_expect(main_source.contains("request_player_adaptation") and main_source.contains("killer.effective_size"), "主流程没有暂停选择局内适应或按实时体型结算击杀经验")
+	_expect(main_source.contains("request_player_adaptation") and main_source.contains("current_player_adaptation_choices") and main_source.contains("route_id not in current_player_adaptation_choices") and main_source.contains("killer.effective_size"), "主流程没有逐级暂停、限定当次随机候选或按实时体型结算经验")
+	_expect(actor_source.contains("func level_up_adaptation_choices") and actor_source.contains("choose_ai_adaptation(candidate_ids)"), "玩家与 AI 没有共用每级随机三选一状态池")
 	var food_source := FileAccess.get_file_as_string("res://scripts/food_patch.gd")
 	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
 	_expect(food_source.contains("nutrient_tier") and food_source.contains("get_experience_reward"), "普通、丰饶、稀有营养食物没有独立经验价值")
