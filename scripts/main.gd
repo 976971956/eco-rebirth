@@ -10,7 +10,7 @@ const AudioScript = preload("res://scripts/audio_manager.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 6
-const RELEASE_VERSION := "1.74"
+const RELEASE_VERSION := "1.75"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const DIFFICULTY_ORDER: Array[String] = ["easy", "adventure", "hard"]
@@ -862,12 +862,15 @@ func _on_experience_drop_started(event: Dictionary) -> void:
 		return
 	var region_names: Array = event.get("region_names", [])
 	var region_text := "、".join(region_names)
-	var count := int(event.get("available", 0))
+	var count := int(event.get("spawned_count", event.get("available", 0)))
+	var active_count := int(event.get("available", count))
+	var active_cap := int(event.get("active_cap", active_count))
 	var level_pack_count := int(event.get("level_pack_count", 0))
 	var luck_text := "；本轮藏有%d个升1级跃迁包" % level_pack_count if level_pack_count > 0 else "；升1级跃迁包本轮未必出现"
-	ui.show_hint("进化能量雨：全图%d处生态区落下%d个经验包，每60秒刷新%s" % [region_names.size(), count, luck_text])
-	ui.add_event("全图经验雨 · %d个经验包 / 60秒周期" % count, "#c694ff")
-	ui.add_battle_report("进化能量雨覆盖%s；高价值经验包吸收更久，受击会中断" % region_text, "进化", "#c694ff")
+	var area_text := "终局圈" if bool(event.get("collapse", false)) else "全图%d处生态区" % region_names.size()
+	ui.show_hint("进化能量雨：%s新增%d个，当前%d/%d；每60秒持续刷新%s" % [area_text, count, active_count, active_cap, luck_text])
+	ui.add_event("持续经验雨 · 新增%d个 · 常驻%d/%d" % [count, active_count, active_cap], "#c694ff")
+	ui.add_battle_report("进化能量雨覆盖%s；旧包可跨轮保留，终局仍会在收束圈刷新" % ("终局圈" if region_text.is_empty() else region_text), "进化", "#c694ff")
 	if audio != null:
 		audio.play_sfx("world", -0.5)
 
@@ -875,7 +878,7 @@ func _on_experience_drop_started(event: Dictionary) -> void:
 func _on_experience_drop_ended(event: Dictionary) -> void:
 	if batch_mode or ui == null:
 		return
-	ui.add_event("本轮经验信号已经消散", "#ad9ec5")
+	ui.add_event("经验信号已经关闭", "#ad9ec5")
 
 
 func on_experience_pack_absorbed(actor: EcoActor, pack: ExperiencePack, reward: int, was_level_pack: bool) -> void:
@@ -1064,6 +1067,11 @@ func _begin_benchmark_sampling() -> void:
 		return
 	level_elapsed = 0.0
 	if is_instance_valid(world):
+		# Measure the sustainable worst case, not the quiet first minute: two
+		# immediate waves fill the level-dependent persistent cap (15–150 packs),
+		# while the normal trim path discards any excess exactly as gameplay does.
+		world.start_experience_drop()
+		world.start_experience_drop()
 		world.experience_drop_timer = WorldScript.EXPERIENCE_DROP_INTERVAL
 	benchmark_started_usec = Time.get_ticks_usec()
 	print("[benchmark] 第%d关 · %s难度 · %s画质 · %s · 目标%.1f秒" % [benchmark_level, difficulty_display_name(run_difficulty_id), benchmark_quality, benchmark_species, benchmark_duration])

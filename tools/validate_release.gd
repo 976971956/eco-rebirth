@@ -97,7 +97,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.74 发布候选校验通过：三档难度、AI智能梯度与移动端首页选择已接入")
+		print("[release] V1.75 发布候选校验通过：持续经验雨与优化后的 Lv.1–10 成长曲线已接入")
 		quit(0)
 	else:
 		for failure in failures:
@@ -383,9 +383,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.74\"") and presets.contains("application/short_version=\"1.74\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=860") and presets.contains("application/version=\"860\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.74", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.75\"") and presets.contains("application/short_version=\"1.75\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=870") and presets.contains("application/version=\"870\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.75", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -406,6 +406,7 @@ func _validate_performance_baseline_contract() -> void:
 	_expect(doctor_script.contains("android-36") and doctor_script.contains("web_nothreads_release.zip") and doctor_script.contains("ios.zip"), "三端工具链诊断不完整")
 	var ui_source := FileAccess.get_file_as_string("res://scripts/game_ui.gd")
 	_expect(ui_source.contains("menu_background.texture = null") and ui_source.contains("menu_background.texture = load"), "进入生态世界后没有释放仅首页使用的大背景纹理")
+	_expect(main_source.count("world.start_experience_drop()") >= 2 and main_source.contains("persistent cap (15–150 packs)"), "正式性能基线没有预填持续经验雨的活动上限")
 
 
 func _validate_web_audio_contract() -> void:
@@ -1952,7 +1953,7 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 	_expect(ExperiencePackScript.absorption_seconds(rich_xp) > ExperiencePackScript.absorption_seconds(small_xp), "经验量越高时吸收时间没有变长")
 	_expect(ExperiencePackScript.absorption_seconds(1, true) > ExperiencePackScript.absorption_seconds(rich_xp), "直接升1级经验包没有最长吸收风险")
 	_expect(WorldScript.experience_drop_first_delay(1, 0.0) == 60.0 and WorldScript.experience_drop_repeat_delay(10, 1.0) == 60.0, "经验雨没有保持严格60秒全图周期")
-	_expect(WorldScript.EXPERIENCE_DROP_DURATION < WorldScript.EXPERIENCE_DROP_INTERVAL, "经验包持续时间会与下一轮无限叠加")
+	_expect(WorldScript.experience_drop_active_cap(1) == 15 and WorldScript.experience_drop_active_cap(10) == 150, "持续经验雨没有用关卡相关上限约束活动包数量")
 	_expect(WorldScript.experience_drop_region_count(1) == 4 and WorldScript.experience_drop_region_count(10) == 4, "经验雨没有覆盖完整四生态区")
 	_expect(WorldScript.experience_drop_target_count(1) == 10 and WorldScript.experience_drop_target_count(10) == 100, "经验包数量没有与关卡初始动物数保持1:1")
 	_expect(WorldScript.experience_drop_packs_per_region(1) == 3 and WorldScript.experience_drop_packs_per_region(10) == 25, "经验包四区容量没有随关卡正确扩展")
@@ -1979,6 +1980,19 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 				minimum_pack_spacing = minf(minimum_pack_spacing, Vector2(pack.position.x - other.position.x, pack.position.z - other.position.z).length())
 		_expect(occupied_quadrants.size() == 4, "第%d关经验包没有覆盖全地图四象限" % int(drop_case["level"]))
 		_expect(minimum_pack_spacing + 0.01 >= WorldScript.EXPERIENCE_PACK_MIN_SPACING, "第%d关经验包随机落点发生重叠" % int(drop_case["level"]))
+		var second_event := drop_world.start_experience_drop()
+		var current_wave_count := 0
+		for active_pack in drop_world.experience_packs:
+			if active_pack.event_sequence == int(second_event.get("sequence", -1)):
+				current_wave_count += 1
+		_expect(current_wave_count == int(drop_case["target"]), "第%d关下一轮没有继续完整刷新%d个经验包" % [int(drop_case["level"]), int(drop_case["target"])])
+		_expect(drop_world.experience_packs.size() == WorldScript.experience_drop_active_cap(int(drop_case["level"])), "第%d关跨轮保留经验包时越过活动上限" % int(drop_case["level"]))
+		drop_world.trigger_collapse()
+		drop_world._process_experience_drops(0.0)
+		var finale_event := drop_world.start_experience_drop()
+		_expect(not finale_event.is_empty() and bool(finale_event.get("collapse", false)), "第%d关终局收束后经验雨停止刷新" % int(drop_case["level"]))
+		for finale_pack in drop_world.experience_packs:
+			_expect(not drop_world._experience_pack_outside_collapse(finale_pack.position), "第%d关终局经验包落在收束圈外" % int(drop_case["level"]))
 		drop_world.free()
 	var safe_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.85, 40.0, false)
 	var danger_utility := ActorScript.experience_pack_utility(32, 2.4, 16.0, 3, 0.35, 3.0, false)
@@ -1993,7 +2007,7 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 	_expect(actor_source.contains("func begin_experience_absorption") and actor_source.contains("受到攻击，经验吸收被打断"), "玩家与 AI 没有共享可打断经验吸收")
 	_expect(actor_source.contains("ai_state = \"experience\"") and actor_source.contains("experience_pressure_counts") and actor_source.contains("_best_experience_pack"), "AI 没有主动发现、分流并争夺经验包")
 	var world_source := FileAccess.get_file_as_string("res://scripts/eco_world.gd")
-	_expect(world_source.contains("start_experience_drop") and world_source.contains("_experience_pack_position_for_cell") and world_source.contains("_experience_pack_landing_is_valid") and world_source.contains("experience_drop_started.emit"), "世界没有周期生成可通行的全图经验雨")
+	_expect(world_source.contains("start_experience_drop") and world_source.contains("_trim_experience_packs_for_new_wave") and world_source.contains("_experience_pack_outside_collapse") and world_source.contains("experience_drop_started.emit"), "世界没有持续生成、限量保留或跟随收束圈的经验雨")
 	var main := MainScript.new()
 	main.batch_mode = true
 	var survivor_root := Node3D.new()
@@ -2016,6 +2030,7 @@ func _validate_experience_drop_and_final_tracking_contract() -> void:
 
 func _validate_growth_hud_contract() -> void:
 	_expect(ActorScript.MAX_LEVEL == 10 and Catalog.MAX_GROWTH_LEVEL == 10, "局内成长上限没有统一为 Lv.10")
+	_expect(Catalog.EXPERIENCE_THRESHOLDS == [45, 82, 128, 185, 255, 335, 430, 540, 665], "Lv.1–10经验门槛没有使用优化后的中后期曲线")
 	_expect(Catalog.GROWTH_CHOICE_LEVELS == [2, 3, 4, 5, 6, 7, 8, 9, 10], "每次升级没有在 Lv.2–10 触发随机进化")
 	_expect(Catalog.SPECIES_ADAPTATION_NAMES.size() == Catalog.ORDER.size(), "物种专属生态进化没有覆盖全部 30 种动物")
 	for species_id in Catalog.ORDER:
@@ -2029,6 +2044,12 @@ func _validate_growth_hud_contract() -> void:
 			random_choice_ids[str(choice["id"])] = true
 		_expect(random_choices_a == random_choices_b and random_choice_ids.size() == 3, "%s 的每级随机三选一不可复现或包含重复项" % species_id)
 		_expect(Catalog.maximum_effective_body_size(species_id) > Catalog.effective_body_size(species_id, 1), "%s 的实时体型不会成长" % species_id)
+		var previous_stats := Catalog.growth_stats(species_id, 1)
+		for growth_level in range(2, Catalog.MAX_GROWTH_LEVEL + 1):
+			var current_stats := Catalog.growth_stats(species_id, growth_level)
+			for stat_key in ["effective_size", "health", "attack", "armor", "speed", "stamina", "regen"]:
+				_expect(float(current_stats[stat_key]) > float(previous_stats[stat_key]), "%s Lv.%d 的%s没有逐级成长" % [species_id, growth_level, stat_key])
+			previous_stats = current_stats
 	var rabbit_max := Catalog.growth_stats("rabbit", 10)
 	var rabbit_giant := Catalog.growth_stats("rabbit", 10, 10, Catalog.adaptation_max_rank("body"))
 	var cheetah_start := Catalog.growth_stats("cheetah", 1)

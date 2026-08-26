@@ -3984,7 +3984,9 @@ func _best_experience_pack(threat_distance: float, pressure_counts: Dictionary =
 	var eco_world := game.world as EcoWorld
 	var search_range := eco_world.experience_drop_attraction_radius()
 	var origin := global_position if is_inside_tree() else position
-	var event_remaining := float(eco_world.active_experience_drop.get("remaining", 0.0))
+	# Persistent waves no longer vanish at the next 60-second refresh. Keep the
+	# expiry term only for compatibility with any finite-duration test event.
+	var event_remaining := INF if bool(eco_world.active_experience_drop.get("persistent", false)) else float(eco_world.active_experience_drop.get("remaining", 0.0))
 	var travel_speed := float(data["speed"]) * 1.18
 	var best_pack: ExperiencePack
 	var best_score := -INF
@@ -5776,10 +5778,11 @@ func _level_up(resolve_random_choice: bool = true) -> void:
 	var old_effective_size := effective_size
 	level += 1
 	_recalculate_growth_stats()
-	# Abundant nutrient food is the primary recovery loop. Level-up grants the
-	# newly added pool plus a small rescue buffer, not a repeatable full heal.
-	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.12)
-	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.22)
+	# Level-up remains a tactical comeback moment without becoming a full heal.
+	# The stronger mid/late curve now restores the newly added pool plus a clear,
+	# bounded rescue buffer so the upgrade is immediately felt in combat.
+	health = minf(max_health, health + (max_health - old_max_health) + max_health * 0.15)
+	stamina = minf(max_stamina, stamina + (max_stamina - old_max_stamina) + max_stamina * 0.28)
 	_update_exhaustion_state()
 	_update_growth_presentation()
 	if is_instance_valid(final_tracking_marker):

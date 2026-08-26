@@ -1,10 +1,13 @@
 extends SceneTree
 
-const EXPECTED_VERSION := "1.74"
+const EXPECTED_VERSION := "1.75"
 const CASES := [
 	{"level": 1, "minimum_fps": 58.0, "maximum_physics_ms": 10.0, "maximum_memory_mib": 120.0},
 	{"level": 5, "minimum_fps": 58.0, "maximum_physics_ms": 16.0, "maximum_memory_mib": 135.0},
-	{"level": 10, "minimum_fps": 55.0, "maximum_physics_ms": 22.0, "maximum_memory_mib": 150.0},
+	# V1.75 deliberately preloads the full 150-pack persistent cap. The previous
+	# 150 MiB limit measured the quiet first minute with zero packs; 165 MiB keeps
+	# a narrow, explicit ceiling while covering the real worst steady state.
+	{"level": 10, "minimum_fps": 55.0, "maximum_physics_ms": 22.0, "maximum_memory_mib": 165.0},
 ]
 
 var failures: Array[String] = []
@@ -34,7 +37,8 @@ func _validate() -> void:
 		var memory_mib := float(report.get("max_static_memory_bytes", INF)) / 1048576.0
 		# Godot's allocator can vary by a few KiB between otherwise identical
 		# macOS runs. Compare at the same 0.1 MiB precision used by the report so a
-		# displayed 150.0 MiB passes, while a real 150.1 MiB regression still fails.
+		# value displayed at the configured boundary passes, while the next 0.1 MiB
+		# remains a real regression.
 		var measured_memory_mib := snappedf(memory_mib, 0.1)
 		_expect(str(report.get("game_version", "")) == EXPECTED_VERSION, "第 %d 关报告版本不是 %s" % [level, EXPECTED_VERSION])
 		_expect(int(report.get("level", 0)) == level and str(report.get("quality", "")) == "medium", "第 %d 关报告关卡或画质不匹配" % level)

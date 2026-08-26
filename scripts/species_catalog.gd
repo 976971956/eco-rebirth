@@ -168,7 +168,7 @@ const GROWTH_PROFILES := {
 # while naturally large species still retain the highest possible ceiling.
 const MAX_GROWTH_LEVEL := 10
 const GROWTH_CHOICE_LEVELS: Array[int] = [2, 3, 4, 5, 6, 7, 8, 9, 10]
-const EXPERIENCE_THRESHOLDS: Array[int] = [45, 90, 150, 225, 315, 420, 540, 675, 825]
+const EXPERIENCE_THRESHOLDS: Array[int] = [45, 82, 128, 185, 255, 335, 430, 540, 665]
 const BODY_GROWTH_BY_SIZE := {
 	1: {"start": 1.0, "maximum": 3.2, "visual_max": 1.75},
 	2: {"start": 1.8, "maximum": 3.8, "visual_max": 1.55},
@@ -177,12 +177,12 @@ const BODY_GROWTH_BY_SIZE := {
 	5: {"start": 4.9, "maximum": 6.4, "visual_max": 1.18},
 }
 const GROWTH_ARCHETYPE_CORE_MODIFIERS := {
-	"survivor": {"health": 0.96, "attack": 0.94, "armor": -1.0, "speed_growth": 0.18, "stamina_growth": 0.34},
-	"skirmisher": {"health": 0.94, "attack": 1.04, "armor": -1.0, "speed_growth": 0.17, "stamina_growth": 0.32},
-	"hunter": {"health": 0.99, "attack": 1.06, "armor": 0.0, "speed_growth": 0.14, "stamina_growth": 0.28},
-	"runner": {"health": 1.01, "attack": 0.96, "armor": 0.0, "speed_growth": 0.18, "stamina_growth": 0.36},
-	"guardian": {"health": 1.07, "attack": 0.99, "armor": 2.0, "speed_growth": 0.11, "stamina_growth": 0.30},
-	"giant": {"health": 1.08, "attack": 1.03, "armor": 3.0, "speed_growth": 0.09, "stamina_growth": 0.27},
+	"survivor": {"health": 0.96, "attack": 0.94, "armor": -1.0, "speed_growth": 0.19, "stamina_growth": 0.38},
+	"skirmisher": {"health": 0.94, "attack": 1.04, "armor": -1.0, "speed_growth": 0.185, "stamina_growth": 0.36},
+	"hunter": {"health": 0.99, "attack": 1.06, "armor": 0.0, "speed_growth": 0.16, "stamina_growth": 0.33},
+	"runner": {"health": 1.01, "attack": 0.96, "armor": 0.0, "speed_growth": 0.19, "stamina_growth": 0.40},
+	"guardian": {"health": 1.07, "attack": 0.99, "armor": 2.0, "speed_growth": 0.13, "stamina_growth": 0.35},
+	"giant": {"health": 1.08, "attack": 1.03, "armor": 3.0, "speed_growth": 0.11, "stamina_growth": 0.32},
 }
 
 const ADAPTATION_ROUTE_ORDER: Array[String] = ["habitat", "combat", "ecology"]
@@ -1433,7 +1433,9 @@ static func growth_progress(level: int, maximum_level: int = MAX_GROWTH_LEVEL) -
 	if maximum_level <= 1:
 		return 1.0
 	var linear_progress := clampf(float(level - 1) / float(maximum_level - 1), 0.0, 1.0)
-	return pow(linear_progress, 0.85)
+	# A near-linear maturity curve trims the old Lv.2 spike and moves more of the
+	# visible body/stat payoff into Lv.5–10, where experience costs are higher.
+	return pow(linear_progress, 0.92)
 
 
 static func effective_body_size(species_id: String, level: int, maximum_level: int = MAX_GROWTH_LEVEL) -> float:
@@ -1483,7 +1485,7 @@ static func growth_stats(species_id: String, level: int, maximum_level: int = MA
 		"armor": maxf(armor, 0.0),
 		"speed": float(base["speed"]) * (1.0 + progress * float(modifiers["speed_growth"])),
 		"stamina": float(base["stamina"]) * (1.0 + progress * float(modifiers["stamina_growth"])),
-		"regen": float(base["regen"]) * (1.0 + progress * 0.25),
+		"regen": float(base["regen"]) * (1.0 + progress * 0.30),
 		# A growing body needs more food and is easier to track. This keeps level
 		# growth from becoming a free, consequence-less stat snowball.
 		"hunger_rate": float(base["hunger_rate"]) * (1.0 + progress * 0.12 + maxf(effective_size / maxf(float(body_growth_profile(species_id)["start"]), 0.1) - 1.0, 0.0) * 0.10),
@@ -1494,7 +1496,10 @@ static func experience_threshold(level: int, effective_size_value: float) -> int
 	if level < 1 or level >= MAX_GROWTH_LEVEL:
 		return 0
 	var base_threshold := EXPERIENCE_THRESHOLDS[clampi(level - 1, 0, EXPERIENCE_THRESHOLDS.size() - 1)]
-	var body_cost := clampf(0.82 + maxf(effective_size_value, 0.5) * 0.12, 0.90, 1.58)
+	# Late levels should remain a contest, not a grind wall. Large bodies still
+	# pay more, but the spread is narrower so a lucky giant does not need roughly
+	# twice the activity of a small survivor for the same final level.
+	var body_cost := clampf(0.84 + maxf(effective_size_value, 0.5) * 0.105, 0.93, 1.48)
 	return maxi(roundi(float(base_threshold) * body_cost), 1)
 
 
