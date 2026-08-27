@@ -15,6 +15,7 @@ const FlightRig = preload("res://scripts/species_flight_rig.gd")
 const CrocodileRig = preload("res://scripts/species_crocodile_rig.gd")
 const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
 const FoodPatchScript = preload("res://scripts/food_patch.gd")
+const DeveloperTuningScript = preload("res://scripts/developer_tuning.gd")
 
 var failures: Array[String] = []
 
@@ -63,6 +64,7 @@ func _initialize() -> void:
 
 func _run_validation() -> void:
 	_validate_save_migration()
+	_validate_developer_mode_contract()
 	_validate_difficulty_contract()
 	_validate_bestiary_and_recap_contract()
 	_validate_release_candidate_contract()
@@ -97,7 +99,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.75 发布候选校验通过：持续经验雨与优化后的 Lv.1–10 成长曲线已接入")
+		print("[release] V1.76 发布候选校验通过：跨端开发者调参与非正式调试局保护已接入")
 		quit(0)
 	else:
 		for failure in failures:
@@ -127,6 +129,7 @@ func _validate_save_migration() -> void:
 	_expect(main.quality_preset == "medium", "旧存档未获得安全画质默认值")
 	_expect(main.selected_difficulty_id == "adventure", "旧存档没有迁移到推荐的冒险难度")
 	_expect(not main.tutorial_completed, "旧存档应默认显示新手教学")
+	_expect(not main.developer_mode_enabled and DeveloperTuningScript.is_default(main.developer_tuning_values), "旧存档没有迁移到关闭且默认的开发者参数")
 	var migrated := ConfigFile.new()
 	_expect(migrated.load(test_path) == OK, "迁移后存档无法重新读取")
 	_expect(int(migrated.get_value("meta", "save_version", 0)) == MainScript.SAVE_VERSION, "迁移后未写入存档版本")
@@ -140,6 +143,9 @@ func _validate_save_migration() -> void:
 	main.tutorial_completed = true
 	main.selected_free_level = 9
 	main.selected_free_species = "eagle"
+	main.developer_mode_enabled = true
+	main.developer_tuning_values["health_scale"] = 1.75
+	main.developer_tuning_values["experience_interval_seconds"] = 35.0
 	main.discovered_species = ["rabbit", "eagle"]
 	main.species_records = {"rabbit": {"runs": 3, "wins": 1, "best_level": 4, "best_survival": 123.0, "best_player_level": 3, "most_kills": 2}}
 	main.recent_runs = [{"species_id": "rabbit", "level": 4, "won": false, "survival": 123.0, "player_level": 3, "kills": 2, "fish_catches": 3}]
@@ -151,6 +157,7 @@ func _validate_save_migration() -> void:
 	_expect(reload.current_level == 6, "自由模式选择不应覆盖战役关卡")
 	_expect(reload.quality_preset == "high", "画质档位无法回读")
 	_expect(reload.selected_difficulty_id == "hard", "玩法难度无法写入或回读")
+	_expect(reload.developer_mode_enabled and is_equal_approx(float(reload.developer_tuning_values["health_scale"]), 1.75) and is_equal_approx(float(reload.developer_tuning_values["experience_interval_seconds"]), 35.0), "开发者模式开关或参数无法写入、清洗并回读")
 	_expect(reload.tutorial_completed, "教学完成状态无法回读")
 	_expect(reload.discovered_species == ["rabbit", "eagle"], "图鉴发现顺序或内容无法回读")
 	_expect(int(reload.species_records.get("rabbit", {}).get("runs", 0)) == 3, "物种个人记录无法回读")
@@ -159,6 +166,68 @@ func _validate_save_migration() -> void:
 	DirAccess.remove_absolute(test_path)
 	main.free()
 	reload.free()
+
+
+func _validate_developer_mode_contract() -> void:
+	_expect(MainScript.SAVE_VERSION == 7, "开发者参数持久化后没有递增存档 schema")
+	_expect(DeveloperTuningScript.PARAMETERS.size() == 28 and DeveloperTuningScript.CATEGORIES.size() == 4, "开发者模式没有覆盖 28 项动物、成长资源、世界与 AI 核心数值")
+	var hostile_values := {"health_scale": 99.0, "hunger_rate_scale": -5.0, "experience_interval_seconds": NAN, "unknown": 12.0}
+	var sanitized := DeveloperTuningScript.sanitize_values(hostile_values)
+	_expect(is_equal_approx(float(sanitized["health_scale"]), 5.0) and is_equal_approx(float(sanitized["hunger_rate_scale"]), 0.0), "开发者数值没有限制在声明的安全范围")
+	_expect(is_equal_approx(float(sanitized["experience_interval_seconds"]), 60.0) and not sanitized.has("unknown"), "无效开发者数值或未知字段没有安全回退")
+	var exported := DeveloperTuningScript.export_json(true, {"attack_scale": 1.85})
+	var imported := DeveloperTuningScript.import_json(exported)
+	_expect(not imported.is_empty() and bool(imported["enabled"]) and is_equal_approx(float(imported["values"]["attack_scale"]), 1.85), "开发者参数 JSON 无法稳定导出和导入")
+
+	var main := MainScript.new()
+	main.developer_mode_enabled = true
+	main.developer_tuning_values = DeveloperTuningScript.default_values()
+	main.developer_tuning_values["health_scale"] = 2.0
+	main.developer_tuning_values["attack_scale"] = 1.5
+	main.developer_tuning_values["body_size_scale"] = 1.25
+	main.developer_tuning_values["experience_need_scale"] = 0.5
+	main.developer_tuning_values["ai_think_speed_scale"] = 2.0
+	var actor := ActorScript.new()
+	actor.game = main
+	actor.species_id = "rabbit"
+	actor.base_data = Catalog.get_data("rabbit")
+	actor.data = actor.base_data.duplicate(true)
+	actor._recalculate_growth_stats()
+	var base_stats := Catalog.growth_stats("rabbit", 1)
+	_expect(is_equal_approx(actor.max_health, float(base_stats["health"]) * 2.0) and is_equal_approx(float(actor.data["attack"]), float(base_stats["attack"]) * 1.5), "动物生命或攻击没有读取实时开发者参数")
+	_expect(is_equal_approx(actor.effective_size, float(base_stats["effective_size"]) * 1.25) and actor.experience_to_next_level() < Catalog.experience_threshold(1, actor.effective_size), "体型或升级需求没有读取开发者参数")
+	main.run_difficulty_id = "adventure"
+	_expect(is_equal_approx(main.get_ai_difficulty_value("reaction_interval"), 0.5), "AI 思考速度没有叠加开发者参数")
+	main.batch_mode = true
+	_expect(is_equal_approx(main.get_active_developer_tuning_value("health_scale"), 1.0) and is_equal_approx(main.get_ai_difficulty_value("reaction_interval"), 1.0), "批量生态模拟读取了本机开发者参数，结果将不可复现")
+	main.batch_mode = false
+	main.run_uses_developer_tuning = true
+	main.player = actor
+	var debug_recap := main._record_completed_run(true, "开发调试", "", 30.0)
+	_expect(bool(debug_recap.get("developer_mode", false)) and main.species_records.is_empty() and main.recent_runs.is_empty(), "开发调试局污染了正式图鉴战绩或最近轮回")
+
+	var world := WorldScript.new()
+	world.campaign_level = 4
+	var world_values := DeveloperTuningScript.default_values()
+	world_values["experience_interval_seconds"] = 30.0
+	world_values["experience_wave_scale"] = 2.0
+	world_values["experience_cap_scale"] = 1.5
+	world.apply_developer_tuning(world_values)
+	_expect(is_equal_approx(world.experience_drop_interval_seconds(), 30.0) and world.experience_drop_target_count_runtime() == 80 and world.experience_drop_active_cap_runtime() == 90, "经验雨间隔、波次或容量没有读取开发者参数")
+
+	var ui := UIScript.new()
+	root.add_child(ui)
+	ui.setup(main)
+	ui.show_developer_settings(false)
+	var toggle := ui.modal_root.find_child("DeveloperModeToggle", true, false) as CheckButton
+	var category := ui.modal_root.find_child("DeveloperCategorySelect", true, false) as OptionButton
+	var parameter_list := ui.modal_root.find_child("DeveloperParameterList", true, false) as VBoxContainer
+	_expect(toggle != null and toggle.custom_minimum_size.y >= 52.0 and category != null and category.item_count == 4, "开发者模式开关或四类选择器不满足移动端触控契约")
+	_expect(parameter_list != null and parameter_list.get_child_count() >= 9, "开发者模式当前分类没有生成可滚动数值项")
+	ui.free()
+	world.free()
+	actor.free()
+	main.free()
 
 
 func _validate_difficulty_contract() -> void:
@@ -383,9 +452,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.75\"") and presets.contains("application/short_version=\"1.75\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=870") and presets.contains("application/version=\"870\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.75", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.76\"") and presets.contains("application/short_version=\"1.76\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=880") and presets.contains("application/version=\"880\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.76", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")

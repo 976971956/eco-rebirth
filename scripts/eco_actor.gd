@@ -355,6 +355,12 @@ func _ai_difficulty_value(key: String, fallback: float = 1.0) -> float:
 	return float(game.get_ai_difficulty_value(key, fallback))
 
 
+func _developer_tuning_value(key: String, fallback: float = 1.0) -> float:
+	if not is_instance_valid(game) or not game.has_method("get_active_developer_tuning_value"):
+		return fallback
+	return float(game.get_active_developer_tuning_value(key))
+
+
 func _recalculate_growth_stats() -> void:
 	if base_data.is_empty():
 		base_data = Catalog.get_data(species_id)
@@ -367,19 +373,37 @@ func _recalculate_growth_stats() -> void:
 	var endurance_rank := int(adaptation_ranks.get("endurance", 0))
 	var armor_rank := int(adaptation_ranks.get("armor", 0))
 	var stats := Catalog.growth_stats(species_id, level, MAX_LEVEL, body_rank)
-	effective_size = float(stats["effective_size"])
-	max_health = float(stats["health"]) * (1.0 + float(vitality_rank) * 0.08) * threat_health_scale
-	max_stamina = float(stats["stamina"]) * (1.0 + float(endurance_rank) * 0.07)
+	effective_size = float(stats["effective_size"]) * _developer_tuning_value("body_size_scale")
+	max_health = float(stats["health"]) * (1.0 + float(vitality_rank) * 0.08) * threat_health_scale * _developer_tuning_value("health_scale")
+	max_stamina = float(stats["stamina"]) * (1.0 + float(endurance_rank) * 0.07) * _developer_tuning_value("stamina_scale")
 	data["health"] = max_health
 	data["stamina"] = max_stamina
-	data["attack"] = float(stats["attack"]) * (1.0 + float(power_rank) * 0.06)
-	data["armor"] = float(stats["armor"]) + float(armor_rank) * 2.5
-	data["speed"] = float(stats["speed"]) * (1.0 + float(agility_rank) * 0.025) * threat_speed_scale
-	data["regen"] = float(stats["regen"]) * (1.0 + float(endurance_rank) * 0.05)
-	data["hunger_rate"] = float(stats["hunger_rate"])
+	data["attack"] = float(stats["attack"]) * (1.0 + float(power_rank) * 0.06) * _developer_tuning_value("attack_scale")
+	data["armor"] = (float(stats["armor"]) + float(armor_rank) * 2.5) * _developer_tuning_value("armor_scale")
+	data["speed"] = float(stats["speed"]) * (1.0 + float(agility_rank) * 0.025) * threat_speed_scale * _developer_tuning_value("speed_scale")
+	data["regen"] = float(stats["regen"]) * (1.0 + float(endurance_rank) * 0.05) * _developer_tuning_value("stamina_regen_scale")
+	data["hunger_rate"] = float(stats["hunger_rate"]) * _developer_tuning_value("hunger_rate_scale")
 	var combat_rank := int(adaptation_ranks.get("combat", 0))
-	data["skill_cost"] = float(base_data["skill_cost"]) * pow(0.94, combat_rank)
-	data["skill_cooldown"] = float(base_data["skill_cooldown"]) * pow(0.94, combat_rank)
+	data["skill_cost"] = float(base_data["skill_cost"]) * pow(0.94, combat_rank) * _developer_tuning_value("skill_cost_scale")
+	data["skill_cooldown"] = float(base_data["skill_cooldown"]) * pow(0.94, combat_rank) * _developer_tuning_value("skill_cooldown_scale")
+
+
+func refresh_developer_tuning() -> void:
+	if dead or base_data.is_empty():
+		return
+	var health_ratio := clampf(health / maxf(max_health, 1.0), 0.0, 1.0)
+	var stamina_ratio := clampf(stamina / maxf(max_stamina, 1.0), 0.0, 1.0)
+	_recalculate_growth_stats()
+	health = max_health * health_ratio
+	stamina = max_stamina * stamina_ratio
+	while level < MAX_LEVEL and experience >= experience_to_next_level():
+		experience -= experience_to_next_level()
+		_level_up()
+	_update_growth_presentation()
+	_update_exhaustion_state()
+	health_changed.emit(health, max_health)
+	stamina_changed.emit(stamina, max_stamina)
+	_update_health_bar()
 
 
 func runtime_size_class() -> int:
@@ -897,7 +921,7 @@ func _build_visual() -> void:
 
 func _update_growth_presentation() -> void:
 	if body_root != null:
-		base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL) * Catalog.body_evolution_visual_multiplier(int(adaptation_ranks.get("body", 0)))
+		base_visual_scale = authored_visual_scale * Catalog.visual_growth_scale(species_id, level, MAX_LEVEL) * Catalog.body_evolution_visual_multiplier(int(adaptation_ranks.get("body", 0))) * _developer_tuning_value("body_size_scale")
 		body_root.scale = base_visual_scale
 	var collision := get_node_or_null("BodyCollision") as CollisionShape3D
 	if collision != null and collision.shape is CapsuleShape3D:
@@ -2370,10 +2394,11 @@ func _update_experience_absorption(delta: float) -> void:
 	experience_absorb_elapsed = 0.0
 	experience_absorb_duration = 0.0
 	experience_packs_absorbed += 1
-	experience_from_packs += reward
-	gain_experience(reward, pack.display_name(), "经验包")
+	var applied_reward := reward if was_level_pack else _scaled_experience_amount(reward)
+	experience_from_packs += applied_reward
+	gain_experience(reward, pack.display_name(), "经验包", not was_level_pack)
 	if game.has_method("on_experience_pack_absorbed"):
-		game.on_experience_pack_absorbed(self, pack, reward, was_level_pack)
+		game.on_experience_pack_absorbed(self, pack, applied_reward, was_level_pack)
 
 
 func _process(delta: float) -> void:
@@ -5655,7 +5680,9 @@ func try_consume_resource(resource: Node3D) -> bool:
 	hunger = maxf(hunger - eaten * satiety_efficiency * nutrition_multiplier, 0.0)
 	var health_restore := eaten * healing_efficiency * nutrition_multiplier
 	if is_corpse:
-		health_restore = corpse_health_restore(eaten, bite_capacity, max_health, effective_size, corpse_size, ecology_adaptation_multiplier())
+		health_restore = corpse_health_restore(eaten, bite_capacity, max_health, effective_size, corpse_size, ecology_adaptation_multiplier()) * _developer_tuning_value("corpse_heal_scale")
+	else:
+		health_restore *= _developer_tuning_value("food_heal_scale")
 	health = minf(health + health_restore, max_health)
 	var habit_result := _apply_food_habit(resource, "corpse" if is_corpse else str(resource.food_kind))
 	if species_id == "raccoon":
@@ -5746,7 +5773,7 @@ func _apply_food_habit(resource: Node3D, food_kind: String) -> Dictionary:
 func experience_to_next_level() -> int:
 	if level >= MAX_LEVEL:
 		return 0
-	return Catalog.experience_threshold(level, effective_size)
+	return maxi(roundi(float(Catalog.experience_threshold(level, effective_size)) * _developer_tuning_value("experience_need_scale")), 1)
 
 
 func experience_remaining_to_level() -> int:
@@ -5755,17 +5782,22 @@ func experience_remaining_to_level() -> int:
 	return maxi(experience_to_next_level() - experience, 1)
 
 
-func gain_experience(amount: int, defeated_species: String = "", reason: String = "击杀") -> void:
+func _scaled_experience_amount(amount: int) -> int:
+	return maxi(roundi(float(amount) * _developer_tuning_value("experience_gain_scale")), 1)
+
+
+func gain_experience(amount: int, defeated_species: String = "", reason: String = "击杀", apply_developer_scale: bool = true) -> void:
 	if dead or level >= MAX_LEVEL or amount <= 0:
 		return
-	experience += amount
+	var applied_amount := _scaled_experience_amount(amount) if apply_developer_scale else amount
+	experience += applied_amount
 	while level < MAX_LEVEL and experience >= experience_to_next_level():
 		experience -= experience_to_next_level()
 		_level_up()
 	if level >= MAX_LEVEL:
 		experience = 0
 	if is_player and game.has_method("on_player_experience_gained"):
-		game.on_player_experience_gained(amount, defeated_species, reason)
+		game.on_player_experience_gained(applied_amount, defeated_species, reason)
 
 
 func _level_up(resolve_random_choice: bool = true) -> void:

@@ -5,6 +5,7 @@ const ActorScript = preload("res://scripts/eco_actor.gd")
 const Catalog = preload("res://scripts/species_catalog.gd")
 const WorldScript = preload("res://scripts/eco_world.gd")
 const ExperiencePackScript = preload("res://scripts/experience_pack.gd")
+const DeveloperTuningScript = preload("res://scripts/developer_tuning.gd")
 
 
 class PreviewGame:
@@ -17,6 +18,8 @@ class PreviewGame:
 	var current_level := 2
 	var world: Node
 	var preview_living: Array[EcoActor] = []
+	var developer_enabled := false
+	var developer_values: Dictionary = DeveloperTuningScript.default_values()
 	func get_living_actors() -> Array[EcoActor]: return preview_living
 	func play_ui_sound() -> void: pass
 	func is_music_enabled() -> bool: return true
@@ -42,6 +45,22 @@ class PreviewGame:
 	func set_selected_free_level(_value: int) -> void: pass
 	func set_selected_free_species(_value: String) -> void: pass
 	func reset_tutorial_progress() -> void: pass
+	func is_developer_mode_enabled() -> bool: return developer_enabled
+	func set_developer_mode_enabled(value: bool) -> void: developer_enabled = value
+	func get_developer_categories() -> Array[Dictionary]: return DeveloperTuningScript.category_definitions()
+	func get_developer_parameter_definitions(category_id: String = "") -> Array[Dictionary]: return DeveloperTuningScript.parameter_definitions(category_id)
+	func get_developer_tuning_value(parameter_id: String) -> float: return float(developer_values.get(parameter_id, 1.0))
+	func set_developer_tuning_value(parameter_id: String, value: float) -> void:
+		developer_values[parameter_id] = value
+		developer_values = DeveloperTuningScript.sanitize_values(developer_values)
+	func reset_developer_tuning() -> void: developer_values = DeveloperTuningScript.default_values()
+	func export_developer_tuning_json() -> String: return DeveloperTuningScript.export_json(developer_enabled, developer_values)
+	func import_developer_tuning_json(text: String) -> bool:
+		var payload := DeveloperTuningScript.import_json(text)
+		if payload.is_empty(): return false
+		developer_enabled = bool(payload["enabled"])
+		developer_values = payload["values"]
+		return true
 
 
 func _initialize() -> void:
@@ -52,6 +71,7 @@ func _render() -> void:
 	var mobile_free_mode_preview_only := "--mobile-free-mode-preview" in OS.get_cmdline_user_args()
 	var evolution_preview_only := "--evolution-preview" in OS.get_cmdline_user_args()
 	var difficulty_preview_only := "--difficulty-preview" in OS.get_cmdline_user_args()
+	var developer_preview_only := "--developer-preview" in OS.get_cmdline_user_args()
 	var background_layer := CanvasLayer.new()
 	root.add_child(background_layer)
 	var background := TextureRect.new()
@@ -72,6 +92,22 @@ func _render() -> void:
 	ui.setup(game)
 	for _frame in range(5):
 		await process_frame
+	if developer_preview_only:
+		game.developer_enabled = true
+		game.developer_values["health_scale"] = 1.50
+		game.developer_values["body_size_scale"] = 1.20
+		game.developer_values["speed_scale"] = 1.15
+		ui.show_developer_settings(false)
+		for _frame in range(8):
+			await process_frame
+		var developer_result := root.get_texture().get_image().save_png("res://docs/images/v101-developer-mode.png")
+		if developer_result == OK:
+			print("DEVELOPER_MODE_PREVIEW_OK")
+			quit(0)
+		else:
+			push_error("开发者模式预览生成失败")
+			quit(1)
+		return
 	if difficulty_preview_only:
 		game.difficulty = "adventure"
 		ui.show_menu()

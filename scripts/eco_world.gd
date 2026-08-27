@@ -90,6 +90,7 @@ var weather_id: String = "clear"
 var time_phase: String = "day"
 var visual_effects_enabled: bool = true
 var quality_preset: String = "medium"
+var developer_tuning_values: Dictionary = {}
 var collapse_active: bool = false
 var collapse_radius: float = INF
 var rng := RandomNumberGenerator.new()
@@ -161,9 +162,10 @@ func level_brief() -> String:
 	return "%s：%s" % [level_identity(campaign_level), level_rule_summary(campaign_level)]
 
 
-func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enable_visual_effects: bool = true, forced_weather: String = "", forced_time_phase: String = "", quality_value: String = "medium") -> void:
+func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enable_visual_effects: bool = true, forced_weather: String = "", forced_time_phase: String = "", quality_value: String = "medium", tuning_values: Dictionary = {}) -> void:
 	rng.seed = seed_value
 	event_rng.seed = seed_value ^ 0x5EED771
+	developer_tuning_values = tuning_values.duplicate(true)
 	world_size = size_value
 	campaign_level = level_value
 	level_profile_data = level_profile(campaign_level)
@@ -197,7 +199,28 @@ func setup(seed_value: int, size_value: float = 86.0, level_value: int = 1, enab
 	movement_traces.clear()
 	danger_memories.clear()
 	ecology_event_timer = ecology_event_first_delay(campaign_level, event_rng.randf())
-	experience_drop_timer = experience_drop_first_delay(campaign_level, event_rng.randf())
+	experience_drop_timer = experience_drop_interval_seconds()
+	apply_developer_tuning(developer_tuning_values, false)
+
+
+func _developer_tuning_value(key: String, fallback: float = 1.0) -> float:
+	return float(developer_tuning_values.get(key, fallback))
+
+
+func apply_developer_tuning(values: Dictionary, preserve_experience_progress: bool = true) -> void:
+	var old_interval := experience_drop_interval_seconds()
+	developer_tuning_values = values.duplicate(true)
+	var new_interval := experience_drop_interval_seconds()
+	if preserve_experience_progress and experience_drop_timer > 0.0:
+		experience_drop_timer = clampf(experience_drop_timer / maxf(old_interval, 0.01) * new_interval, 0.0, new_interval)
+	_trim_experience_packs_for_new_wave(0)
+	if not active_experience_drop.is_empty():
+		active_experience_drop["interval"] = new_interval
+		active_experience_drop["active_cap"] = experience_drop_active_cap_runtime()
+		active_experience_drop["available"] = experience_packs.size()
+	for patch in food_patches:
+		if is_instance_valid(patch) and patch.has_method("apply_developer_tuning"):
+			patch.apply_developer_tuning(_developer_tuning_value("food_capacity_scale"), _developer_tuning_value("food_regrow_speed_scale"))
 
 
 func prewarm_experience_pack_visuals(anchor: Vector3) -> void:
@@ -1245,7 +1268,7 @@ func _process(delta: float) -> void:
 	if collapse_active:
 		var min_radius := world_size * float(level_profile_data.get("collapse", COLLAPSE_MIN_RADIUS_RATIO))
 		if collapse_radius > min_radius:
-			var shrink_rate := (world_size * 0.47 - min_radius) / COLLAPSE_SHRINK_SECONDS
+			var shrink_rate := (world_size * 0.47 - min_radius) / COLLAPSE_SHRINK_SECONDS * _developer_tuning_value("collapse_speed_scale")
 			collapse_radius = maxf(collapse_radius - shrink_rate * delta, min_radius)
 
 
@@ -1493,6 +1516,24 @@ static func experience_drop_grid_dimension(level: int) -> int:
 	return ceili(sqrt(float(experience_drop_target_count(level))))
 
 
+func experience_drop_interval_seconds() -> float:
+	return clampf(_developer_tuning_value("experience_interval_seconds", EXPERIENCE_DROP_INTERVAL), 10.0, 300.0)
+
+
+func experience_drop_target_count_runtime() -> int:
+	return clampi(roundi(float(experience_drop_target_count(campaign_level)) * _developer_tuning_value("experience_wave_scale")), 1, 300)
+
+
+func experience_drop_active_cap_runtime() -> int:
+	var target_count := experience_drop_target_count_runtime()
+	var scaled_cap := roundi(float(experience_drop_active_cap(campaign_level)) * _developer_tuning_value("experience_cap_scale"))
+	return clampi(maxi(target_count, scaled_cap), target_count, 300)
+
+
+func experience_drop_grid_dimension_runtime() -> int:
+	return ceili(sqrt(float(experience_drop_target_count_runtime())))
+
+
 func _process_experience_drops(delta: float) -> void:
 	_process_experience_visual_queue()
 	for pack_index in range(experience_packs.size() - 1, -1, -1):
@@ -1514,10 +1555,11 @@ func _process_experience_drops(delta: float) -> void:
 
 func start_experience_drop() -> Dictionary:
 	experience_drop_sequence += 1
-	experience_drop_timer = EXPERIENCE_DROP_INTERVAL
-	var target_count := experience_drop_target_count(campaign_level)
+	var interval := experience_drop_interval_seconds()
+	experience_drop_timer = interval
+	var target_count := experience_drop_target_count_runtime()
 	_trim_experience_packs_for_new_wave(target_count)
-	var grid_dimension := experience_drop_grid_dimension(campaign_level)
+	var grid_dimension := experience_drop_grid_dimension_runtime()
 	var cells := _experience_drop_cells(grid_dimension)
 	var centers: Array[Vector3] = []
 	var region_ids: Array[String] = []
@@ -1533,7 +1575,7 @@ func start_experience_drop() -> Dictionary:
 			region_ids.append(region_id)
 			region_names.append(str(REGION_NAMES.get(region_id, "未知区域")))
 			centers.append(candidate)
-		var tier := ExperiencePackScript.tier_roll(event_rng.randf(), campaign_level)
+		var tier := ExperiencePackScript.tier_roll(event_rng.randf(), campaign_level, _developer_tuning_value("level_pack_chance_scale"))
 		var amount := ExperiencePackScript.rolled_experience(tier, campaign_level, event_rng.randf())
 		var pack := ExperiencePackScript.new()
 		pack.position = candidate
@@ -1558,15 +1600,15 @@ func start_experience_drop() -> Dictionary:
 	active_experience_drop = {
 		"sequence": experience_drop_sequence,
 		"title": "进化能量雨",
-		"description": "%s每60秒持续刷新%d个可争夺经验包；旧包可跨轮保留，能量越强吸收越久" % ["终局圈内" if collapse_active else "全图", target_count],
+		"description": "%s每%.0f秒持续刷新%d个可争夺经验包；旧包可跨轮保留，能量越强吸收越久" % ["终局圈内" if collapse_active else "全图", interval, target_count],
 		"regions": region_ids,
 		"region_names": region_names,
 		"centers": centers,
-		"interval": EXPERIENCE_DROP_INTERVAL,
+		"interval": interval,
 		"target_count": target_count,
 		"spawned_count": spawned_count,
 		"available": experience_packs.size(),
-		"active_cap": experience_drop_active_cap(campaign_level),
+		"active_cap": experience_drop_active_cap_runtime(),
 		"level_pack_count": level_pack_count,
 		"persistent": true,
 		"next_refresh": experience_drop_timer,
@@ -1666,7 +1708,7 @@ func _experience_pack_outside_collapse(candidate: Vector3) -> bool:
 
 
 func _trim_experience_packs_for_new_wave(incoming_count: int) -> void:
-	var keep_count := maxi(experience_drop_active_cap(campaign_level) - maxi(incoming_count, 0), 0)
+	var keep_count := maxi(experience_drop_active_cap_runtime() - maxi(incoming_count, 0), 0)
 	if experience_packs.size() <= keep_count:
 		return
 	var candidates: Array[ExperiencePack] = experience_packs.duplicate()
@@ -1817,6 +1859,7 @@ func _build_ecology_event_food(profile: Dictionary, center: Vector3) -> void:
 		patch.setup(str(foods[index % foods.size()]), event_rng, "common", ecology_event_sequence, event_id == "fruit_fall")
 		patch.mark_ecology_hotspot(ecology_event_sequence)
 		patch.boost(ecology_event_food_boost(event_id, campaign_level))
+		patch.apply_developer_tuning(_developer_tuning_value("food_capacity_scale"), _developer_tuning_value("food_regrow_speed_scale"))
 		add_child(patch)
 		food_patches.append(patch)
 		active_event_patches.append(patch)

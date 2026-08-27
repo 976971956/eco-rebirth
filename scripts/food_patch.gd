@@ -26,6 +26,8 @@ const FOOD_VISUAL_SIGNATURES := {
 var amount: float = 45.0
 var max_amount: float = 45.0
 var regrow_delay: float = 16.0
+var base_max_amount: float = 45.0
+var base_regrow_delay: float = 16.0
 var empty_time: float = 0.0
 var active: bool = true
 var regrow_enabled: bool = true
@@ -59,6 +61,8 @@ func setup(kind: String, rng: RandomNumberGenerator, tier: String = "common", cl
 		max_amount *= 1.36
 	amount = max_amount
 	regrow_delay = float(config["regrow"])
+	base_max_amount = max_amount
+	base_regrow_delay = regrow_delay
 	# FoodPatch already is a Node3D. Reusing it as the visual root removes one
 	# transform node per resource, which matters on 100-actor mobile maps.
 	visual_root = self
@@ -75,6 +79,13 @@ func setup(kind: String, rng: RandomNumberGenerator, tier: String = "common", cl
 	set_meta("compact_visual", compact_visual)
 	_build_visual(visual_rng, compact_visual)
 	set_process(food_kind == "fish")
+
+
+func apply_developer_tuning(capacity_scale: float, regrow_speed_scale: float) -> void:
+	var remaining_ratio := clampf(amount / maxf(max_amount, 0.01), 0.0, 1.0)
+	max_amount = base_max_amount * clampf(capacity_scale, 0.25, 4.0)
+	amount = max_amount * remaining_ratio
+	regrow_delay = INF if regrow_speed_scale <= 0.0 else base_regrow_delay / clampf(regrow_speed_scale, 0.05, 5.0)
 
 
 func _build_visual(rng: RandomNumberGenerator, compact_visual: bool = false) -> void:
@@ -389,7 +400,8 @@ func _animate_fish_school(delta: float) -> void:
 
 
 func boost(multiplier: float) -> void:
-	max_amount *= multiplier
+	base_max_amount *= multiplier
+	max_amount = base_max_amount
 	amount = max_amount
 	active = true
 	_update_visual()

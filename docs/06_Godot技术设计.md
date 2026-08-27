@@ -440,3 +440,26 @@ Resource 默认可能被多个实例共享。任何运行时会变化的状态�
 - [Godot 多线程与线程安全提示](https://docs.godotengine.org/en/stable/tutorials/performance/using_multiple_threads.html)
 - [使用低层 Servers 优化大量对象](https://docs.godotengine.org/en/stable/tutorials/performance/using_servers.html)
 - [使用 MultiMesh 优化大量重复实例](https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html)
+
+## 17. V1.76 开发者调参层
+
+当前原型不把 30 物种常量迁移为 `Resource`。新增的 `DeveloperTuning` 是位于正式默认值之上的可选运行时白名单：
+
+```text
+SpeciesCatalog / LEVEL_CONFIG / 正式常量
+                 ↓
+DeveloperTuning 白名单与安全清洗
+                 ↓
+Main 持久化、自动化隔离、调试局标记
+          ↙                         ↘
+EcoActor 共享属性/成长        EcoWorld 资源/经验雨/终局
+```
+
+- `developer_tuning.gd` 只声明元数据和纯清洗/JSON 函数，不访问场景树；
+- `main.gd` 是存档和当前有效配置的唯一拥有者，自动化模式固定返回默认值；
+- `EcoActor` 在重算成长时读取统一乘数，玩家与 AI 不分叉；
+- `EcoWorld` 保存本局配置副本，负责经验雨、食物和收束的即时调整；
+- 地图大小和动物数量在创建世界前读取，标为下局生效；
+- UI 从参数元数据生成滚动行，不在 `game_ui.gd` 重复硬编码范围。
+
+这一层不修改 `SpeciesCatalog.DATA`，关闭开发者模式即可回到正式默认平衡，也避免导入 JSON 后污染源码常量。

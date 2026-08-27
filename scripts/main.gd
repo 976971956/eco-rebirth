@@ -7,10 +7,11 @@ const CorpseScript = preload("res://scripts/corpse.gd")
 const CameraScript = preload("res://scripts/camera_rig.gd")
 const UIScript = preload("res://scripts/game_ui.gd")
 const AudioScript = preload("res://scripts/audio_manager.gd")
+const DeveloperTuningScript = preload("res://scripts/developer_tuning.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
-const SAVE_VERSION := 6
-const RELEASE_VERSION := "1.75"
+const SAVE_VERSION := 7
+const RELEASE_VERSION := "1.76"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const DIFFICULTY_ORDER: Array[String] = ["easy", "adventure", "hard"]
@@ -157,6 +158,9 @@ var quality_preset: String = "medium"
 var selected_difficulty_id: String = "adventure"
 var run_difficulty_id: String = "adventure"
 var automated_difficulty_override: String = ""
+var developer_mode_enabled: bool = false
+var developer_tuning_values: Dictionary = DeveloperTuningScript.default_values()
+var run_uses_developer_tuning: bool = false
 var selected_free_level: int = 1
 var selected_free_species: String = "rabbit"
 var run_uses_free_mode: bool = false
@@ -383,6 +387,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		run_difficulty_id = "adventure"
 	else:
 		run_difficulty_id = selected_difficulty_id
+	run_uses_developer_tuning = developer_mode_is_active()
 	state = "loading"
 	level_elapsed = 0.0
 	leaderboard_refresh_remaining = 0.0
@@ -407,8 +412,8 @@ func _start_new_world(free_mode: bool = false) -> void:
 	rng.seed = world_seed
 
 	var level_config: Dictionary = LEVEL_CONFIG[current_level - 1]
-	var individual_count: int = level_config["individuals"]
-	var world_size_value: float = level_config["world_size"]
+	var individual_count := clampi(roundi(float(level_config["individuals"]) * get_active_developer_tuning_value("actor_count_scale")), 2, 150)
+	var world_size_value := clampf(float(level_config["world_size"]) * get_active_developer_tuning_value("world_size_scale"), 70.0, 650.0)
 	var species_range: Vector2i = level_config["species_range"]
 
 	game_root = Node3D.new()
@@ -416,7 +421,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 	add_child(game_root)
 	world = WorldScript.new()
 	game_root.add_child(world)
-	world.setup(world_seed, world_size_value, current_level, not batch_mode, "", "", quality_preset)
+	world.setup(world_seed, world_size_value, current_level, not batch_mode, "", "", quality_preset, active_developer_tuning_values())
 	world.ecology_event_started.connect(_on_ecology_event_started)
 	world.ecology_event_ended.connect(_on_ecology_event_ended)
 	world.experience_drop_started.connect(_on_experience_drop_started)
@@ -431,7 +436,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 	corpses.clear()
 
 	var roster := Catalog.build_roster(rng, individual_count, species_range, current_level)
-	if not batch_mode:
+	if not batch_mode and not run_uses_developer_tuning:
 		_discover_roster(roster)
 	roster_size = roster.size()
 	var player_index := _select_player_roster_index(roster)
@@ -467,7 +472,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 		game_root.add_child(camera_rig)
 		camera_rig.setup(player)
 		world.prewarm_experience_pack_visuals(player.global_position)
-		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode, difficulty_display_name(run_difficulty_id))
+		ui.show_hud(player, world_seed, run_threat, current_level, run_uses_free_mode, difficulty_display_name(run_difficulty_id), run_uses_developer_tuning)
 		ui.update_leaderboard(_build_level_leaderboard())
 		var requires_intro_confirmation := not benchmark_mode and "--autoplay" not in OS.get_cmdline_user_args()
 		if requires_intro_confirmation:
@@ -480,6 +485,9 @@ func _start_new_world(free_mode: bool = false) -> void:
 		ui.add_event("环境：%s" % world.condition_summary(), "#a8cde3")
 		ui.add_event("生态本能：%s" % player.instinct_status_text().replace("\n", " · "), "#f0d681")
 		ui.add_battle_report("%s已开启 · %s难度 · %s · %d个体进入竞争" % [WorldScript.level_identity(current_level), difficulty_display_name(run_difficulty_id), WorldScript.level_rule_summary(current_level), roster_size], "战场", "#a8cde3")
+		if run_uses_developer_tuning:
+			ui.add_event("开发调试局 · 战役进度与图鉴战绩不会写入", "#f0b45c")
+			ui.add_battle_report("本局启用了开发者调参；所有动物共享参数，结算不写入正式进度", "调试", "#f0b45c")
 		ui.add_battle_report("你·%s的本能链：%s" % [Catalog.display_name(player.species_id), Catalog.instinct_chain_summary(player.species_id)], "本能", "#f0d681")
 		var unlocked_names: Array[String] = []
 		for species_id in Catalog.ORDER:
@@ -663,7 +671,7 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 
 	if actor == player:
 		state = "ending"
-		if not run_uses_free_mode:
+		if not run_uses_free_mode and not run_uses_developer_tuning:
 			total_deaths += 1
 			threat_level = mini(threat_level + 1, 8)
 		_finish_loss(killer)
@@ -672,7 +680,7 @@ func _on_actor_died(actor: EcoActor, killer: EcoActor) -> void:
 	var living := get_living_actors()
 	if living.size() == 1 and living[0] == player and is_instance_valid(player) and not player.dead:
 		state = "ending"
-		if not run_uses_free_mode:
+		if not run_uses_free_mode and not run_uses_developer_tuning:
 			threat_level = maxi(threat_level - 2, 0)
 			last_completed_level = current_level
 			campaign_level = mini(current_level + 1, LEVEL_CONFIG.size())
@@ -690,7 +698,7 @@ func _finish_loss(killer: EcoActor) -> void:
 	var killer_species := killer.species_id if is_instance_valid(killer) else ""
 	var recap := _record_completed_run(false, cause, killer_species, seconds)
 	_save_progress()
-	var pressure_text := "自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level
+	var pressure_text := "开发调试局不写入战役进度、威胁或图鉴战绩" if run_uses_developer_tuning else ("自由模式不改变战役进度与威胁" if run_uses_free_mode else "世界威胁升至：%d" % threat_level)
 	var body := "%s\n\n物种：%s　关卡：%d　难度：%s　存活：%s　成长：Lv.%d（%d 经验）\n击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n%s\n\n复盘建议：%s%s%s\n\n旧世界已经终结。下一次，你会成为另一种生命。" % [
 		cause,
 		Catalog.display_name(player.species_id) if is_instance_valid(player) else "未知",
@@ -732,7 +740,7 @@ func _finish_victory() -> void:
 	var seconds := float(Time.get_ticks_msec() - world_started_msec) / 1000.0
 	var recap := _record_completed_run(true, "成为最后的存活物种", "", seconds)
 	_save_progress()
-	var progression_text := "自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % campaign_level)
+	var progression_text := "开发调试局完成；战役进度、威胁与图鉴战绩保持不变。" if run_uses_developer_tuning else ("自由模式第 %d 关挑战完成；战役进度保持不变。" % current_level if run_uses_free_mode else ("已通关全部十关，下一局将继续在第十关高压力生态中轮回。" if last_completed_level >= LEVEL_CONFIG.size() else "即将进入第 %d 关：更大的地图与更多个体。" % campaign_level))
 	var body := "你以%s的身份成为最后的战斗个体。\n\n关卡：%d　难度：%s　存活：%s　成长：Lv.%d（%d 经验）\n直接击杀：%d　生态助攻：%d　战术行动：%d　进食：%d（捕鱼%d）　本能：%d/3\n伤害：造成 %d / 承受 %d　冲刺：%s\n生态热点：抵达 %d / 出现 %d　猎手峰值：%d\n生态踪迹：追踪 %d　危险绕行 %d\n轮回死亡：%d　世界种子：%s\n\n%s\n下一局建议：%s%s%s\n\n生态没有真正的终点——这里只有暂时的幸存者。" % [
 		Catalog.display_name(player.species_id),
 		current_level,
@@ -771,12 +779,13 @@ func _finish_victory() -> void:
 
 func _check_collapse_trigger() -> void:
 	var level_config: Dictionary = LEVEL_CONFIG[current_level - 1]
-	var establishment: float = level_config["establishment"]
+	var collapse_start_scale := get_active_developer_tuning_value("collapse_start_scale")
+	var establishment: float = float(level_config["establishment"]) * collapse_start_scale
 	if level_elapsed < establishment:
 		return
 	var ratio: float = level_config["convergence_ratio"]
 	var living_ratio := float(get_living_actors().size()) / maxf(float(roster_size), 1.0)
-	var forced_collapse: float = float(level_config["forced_collapse"])
+	var forced_collapse: float = float(level_config["forced_collapse"]) * collapse_start_scale
 	if living_ratio > ratio and level_elapsed < forced_collapse:
 		return
 	collapse_triggered = true
@@ -865,11 +874,12 @@ func _on_experience_drop_started(event: Dictionary) -> void:
 	var count := int(event.get("spawned_count", event.get("available", 0)))
 	var active_count := int(event.get("available", count))
 	var active_cap := int(event.get("active_cap", active_count))
+	var interval := float(event.get("interval", WorldScript.EXPERIENCE_DROP_INTERVAL))
 	var level_pack_count := int(event.get("level_pack_count", 0))
 	var luck_text := "；本轮藏有%d个升1级跃迁包" % level_pack_count if level_pack_count > 0 else "；升1级跃迁包本轮未必出现"
 	var area_text := "终局圈" if bool(event.get("collapse", false)) else "全图%d处生态区" % region_names.size()
-	ui.show_hint("进化能量雨：%s新增%d个，当前%d/%d；每60秒持续刷新%s" % [area_text, count, active_count, active_cap, luck_text])
-	ui.add_event("持续经验雨 · 新增%d个 · 常驻%d/%d" % [count, active_count, active_cap], "#c694ff")
+	ui.show_hint("进化能量雨：%s新增%d个，当前%d/%d；每%.0f秒持续刷新%s" % [area_text, count, active_count, active_cap, interval, luck_text])
+	ui.add_event("持续经验雨 · %.0f秒新增%d个 · 常驻%d/%d" % [interval, count, active_count, active_cap], "#c694ff")
 	ui.add_battle_report("进化能量雨覆盖%s；旧包可跨轮保留，终局仍会在收束圈刷新" % ("终局圈" if region_text.is_empty() else region_text), "进化", "#c694ff")
 	if audio != null:
 		audio.play_sfx("world", -0.5)
@@ -1531,7 +1541,109 @@ func get_ai_damage_multiplier() -> float:
 
 
 func get_ai_difficulty_value(key: String, fallback: float = 1.0) -> float:
-	return float(difficulty_profile(run_difficulty_id).get(key, fallback))
+	var value := float(difficulty_profile(run_difficulty_id).get(key, fallback))
+	match key:
+		"reaction_interval":
+			value /= maxf(get_active_developer_tuning_value("ai_think_speed_scale"), 0.01)
+		"perception":
+			value *= get_active_developer_tuning_value("ai_perception_scale")
+		"memory":
+			value *= get_active_developer_tuning_value("ai_memory_scale")
+		"cooperation":
+			value *= get_active_developer_tuning_value("ai_cooperation_scale")
+	return value
+
+
+func developer_mode_is_active() -> bool:
+	return developer_mode_enabled and not batch_mode and not benchmark_mode and "--autoplay" not in OS.get_cmdline_user_args()
+
+
+func is_developer_mode_enabled() -> bool:
+	return developer_mode_enabled
+
+
+func get_developer_categories() -> Array[Dictionary]:
+	return DeveloperTuningScript.category_definitions()
+
+
+func get_developer_parameter_definitions(category_id: String = "") -> Array[Dictionary]:
+	return DeveloperTuningScript.parameter_definitions(category_id)
+
+
+func get_developer_tuning_value(parameter_id: String) -> float:
+	var definition := DeveloperTuningScript.parameter_definition(parameter_id)
+	if definition.is_empty():
+		return 1.0
+	return float(developer_tuning_values.get(parameter_id, definition["default"]))
+
+
+func get_active_developer_tuning_value(parameter_id: String) -> float:
+	var definition := DeveloperTuningScript.parameter_definition(parameter_id)
+	if definition.is_empty():
+		return 1.0
+	return get_developer_tuning_value(parameter_id) if developer_mode_is_active() else float(definition["default"])
+
+
+func active_developer_tuning_values() -> Dictionary:
+	return developer_tuning_values.duplicate(true) if developer_mode_is_active() else DeveloperTuningScript.default_values()
+
+
+func set_developer_mode_enabled(enabled: bool) -> void:
+	developer_mode_enabled = enabled
+	if enabled and is_instance_valid(world):
+		run_uses_developer_tuning = true
+	_apply_developer_tuning_to_runtime()
+	_save_progress()
+	if ui != null:
+		ui.show_hint("开发者模式已开启；当前调试局不会写入正式进度" if enabled else "开发者模式已关闭；当前调试局仍保持非正式标记")
+
+
+func set_developer_tuning_value(parameter_id: String, value: float) -> void:
+	if DeveloperTuningScript.parameter_definition(parameter_id).is_empty():
+		return
+	var candidate := developer_tuning_values.duplicate(true)
+	candidate[parameter_id] = value
+	developer_tuning_values = DeveloperTuningScript.sanitize_values(candidate)
+	if developer_mode_enabled and is_instance_valid(world):
+		run_uses_developer_tuning = true
+	_apply_developer_tuning_to_runtime()
+	_save_progress()
+
+
+func reset_developer_tuning() -> void:
+	developer_tuning_values = DeveloperTuningScript.default_values()
+	_apply_developer_tuning_to_runtime()
+	_save_progress()
+	if ui != null:
+		ui.show_hint("开发者参数已恢复默认值")
+
+
+func export_developer_tuning_json() -> String:
+	return DeveloperTuningScript.export_json(developer_mode_enabled, developer_tuning_values)
+
+
+func import_developer_tuning_json(json_text: String) -> bool:
+	var payload := DeveloperTuningScript.import_json(json_text)
+	if payload.is_empty():
+		return false
+	developer_mode_enabled = bool(payload["enabled"])
+	developer_tuning_values = DeveloperTuningScript.sanitize_values(payload["values"])
+	if developer_mode_enabled and is_instance_valid(world):
+		run_uses_developer_tuning = true
+	_apply_developer_tuning_to_runtime()
+	_save_progress()
+	return true
+
+
+func _apply_developer_tuning_to_runtime() -> void:
+	var active_values := active_developer_tuning_values()
+	if is_instance_valid(world) and world.has_method("apply_developer_tuning"):
+		world.apply_developer_tuning(active_values)
+	for actor in actors:
+		if is_instance_valid(actor) and not actor.dead and actor.has_method("refresh_developer_tuning"):
+			actor.refresh_developer_tuning()
+	if ui != null and ui.has_method("update_developer_run_badge"):
+		ui.update_developer_run_badge(run_uses_developer_tuning)
 
 
 static func sanitize_difficulty(value: String) -> String:
@@ -1863,6 +1975,16 @@ func _record_completed_run(won: bool, cause: String, killer_species: String, sec
 	if not is_instance_valid(player):
 		return {}
 	var species_id := player.species_id
+	if run_uses_developer_tuning:
+		return {
+			"species_id": species_id,
+			"won": won,
+			"cause": cause,
+			"killer_species": killer_species,
+			"survival": seconds,
+			"advice": "这是开发调试局：可继续调整参数验证手感，本局不会写入战役进度、图鉴战绩或最近轮回。",
+			"developer_mode": true,
+		}
 	var record: Dictionary = species_records.get(species_id, {})
 	record["runs"] = int(record.get("runs", 0)) + 1
 	record["wins"] = int(record.get("wins", 0)) + (1 if won else 0)
@@ -2057,6 +2179,9 @@ func _save_progress(path: String = CONFIG_PATH) -> void:
 	config.set_value("gameplay", "difficulty", selected_difficulty_id)
 	config.set_value("gameplay", "selected_free_level", selected_free_level)
 	config.set_value("gameplay", "selected_free_species", selected_free_species)
+	config.set_value("developer", "enabled", developer_mode_enabled)
+	config.set_value("developer", "schema", DeveloperTuningScript.SCHEMA_VERSION)
+	config.set_value("developer", "values", DeveloperTuningScript.sanitize_values(developer_tuning_values))
 	config.set_value("bestiary", "discovered_species", discovered_species)
 	config.set_value("bestiary", "species_records", species_records)
 	config.set_value("bestiary", "recent_runs", recent_runs)
@@ -2085,6 +2210,8 @@ func _load_progress(path: String = CONFIG_PATH) -> void:
 	selected_free_species = str(config.get_value("gameplay", "selected_free_species", "rabbit"))
 	if not Catalog.ORDER.has(selected_free_species):
 		selected_free_species = "rabbit"
+	developer_mode_enabled = bool(config.get_value("developer", "enabled", false))
+	developer_tuning_values = DeveloperTuningScript.sanitize_values(config.get_value("developer", "values", {}))
 	discovered_species.clear()
 	var loaded_discoveries: Array = config.get_value("bestiary", "discovered_species", [])
 	for species_id_value in loaded_discoveries:

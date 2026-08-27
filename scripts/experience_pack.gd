@@ -23,9 +23,9 @@ var base_height: float = 0.0
 var animation_phase: float = 0.0
 
 
-static func tier_roll(random_unit: float, level: int) -> String:
+static func tier_roll(random_unit: float, level: int, level_pack_chance_scale: float = 1.0) -> String:
 	var safe_roll := clampf(random_unit, 0.0, 0.999999)
-	var level_pack_chance := 0.035 + float(clampi(level, 1, 10) - 1) * 0.0045
+	var level_pack_chance := clampf((0.035 + float(clampi(level, 1, 10) - 1) * 0.0045) * clampf(level_pack_chance_scale, 0.0, 10.0), 0.0, 0.75)
 	var rich_chance := 0.28 + float(clampi(level, 1, 10) - 1) * 0.006
 	if safe_roll < level_pack_chance:
 		return TIER_LEVEL

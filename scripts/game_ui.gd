@@ -140,6 +140,9 @@ var sprint_button_icon: TouchActionIcon
 var skill_button_name_label: Label
 var skill_button_state_label: Label
 var settings_from_pause: bool = false
+var developer_settings_from_pause: bool = false
+var developer_category_id: String = "actor"
+var developer_run_active: bool = false
 var tutorial_panel: PanelContainer
 var tutorial_title: Label
 var tutorial_body: Label
@@ -1158,7 +1161,7 @@ func _on_menu_difficulty_pressed(difficulty_id: String) -> void:
 	refresh_menu_difficulty()
 
 
-func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1, free_mode: bool = false, difficulty_name: String = "冒险") -> void:
+func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level: int = 1, free_mode: bool = false, difficulty_name: String = "冒险", developer_run: bool = false) -> void:
 	menu_root.hide()
 	# The full-screen JPEG is only needed on the home page. Releasing its only
 	# runtime reference during a match keeps the 100-animal mobile/Web memory
@@ -1176,9 +1179,22 @@ func show_hud(player_actor: EcoActor, world_seed: int, threat_level: int, level:
 	ecology_event_label.text = "生态热点 · 正在等待迁徙信号"
 	ecology_activity_label.text = "迁徙监测 · 尚无活动"
 	ecology_trace_label.text = "生态踪迹 · 暂无线索"
+	developer_run_active = developer_run
 	threat_label.text = "第%d关 · 自由模式 · %s" % [level, difficulty_name] if free_mode else "第%d关 · %s · 世界威胁 %d" % [level, difficulty_name, threat_level]
+	update_developer_run_badge(developer_run)
 	_reset_live_information()
 	set_player(player_actor)
+
+
+func update_developer_run_badge(enabled: bool) -> void:
+	developer_run_active = enabled
+	if threat_label == null:
+		return
+	var badge := " · 开发调试"
+	if enabled and not threat_label.text.ends_with(badge):
+		threat_label.text += badge
+	elif not enabled and threat_label.text.ends_with(badge):
+		threat_label.text = threat_label.text.trim_suffix(badge)
 
 
 func show_tutorial_step(step: int, total: int, title_text: String, body_text: String) -> void:
@@ -2126,7 +2142,7 @@ func show_settings(from_pause: bool = false) -> void:
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.11, 0.09, 0.98), 24, Color(0.58, 0.93, 0.60, 0.62), 2))
-	_add_modal_panel(panel, Vector2(620, 560) if _uses_compact_touch_layout() else (Vector2(700, 620) if _uses_touch_layout() else Vector2(660, 600)))
+	_add_modal_panel(panel, Vector2(700, 620) if _uses_compact_touch_layout() else (Vector2(760, 660) if _uses_touch_layout() else Vector2(720, 640)))
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 7)
@@ -2140,7 +2156,7 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "声音、画质与教学选项会自动保存。"
+	subtitle.text = "声音、画质、教学与开发参数会自动保存。"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", _font_size(17, 19))
 	subtitle.add_theme_color_override("font_color", Color("#c5d9c2"))
@@ -2213,8 +2229,10 @@ func show_settings(from_pause: bool = false) -> void:
 	utility_row.add_theme_constant_override("separation", 12)
 	box.add_child(utility_row)
 	var tutorial_button := Button.new()
-	tutorial_button.text = "重新开启新手教学"
+	tutorial_button.text = "重开教学"
 	_style_button(tutorial_button, false)
+	tutorial_button.custom_minimum_size = Vector2(176, 58)
+	tutorial_button.add_theme_font_size_override("font_size", _font_size(19, 21))
 	tutorial_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	tutorial_button.pressed.connect(func():
 		game.reset_tutorial_progress()
@@ -2226,12 +2244,24 @@ func show_settings(from_pause: bool = false) -> void:
 	var reset_button := Button.new()
 	reset_button.text = "重置游戏进度"
 	_style_button(reset_button, false)
+	reset_button.custom_minimum_size = Vector2(176, 58)
+	reset_button.add_theme_font_size_override("font_size", _font_size(19, 21))
 	reset_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	reset_button.pressed.connect(func(): show_reset_confirmation())
 	utility_row.add_child(reset_button)
 
+	var developer_button := Button.new()
+	developer_button.name = "OpenDeveloperMode"
+	var developer_enabled := game != null and game.has_method("is_developer_mode_enabled") and bool(game.is_developer_mode_enabled())
+	developer_button.text = "开发者模式%s" % (" · 开" if developer_enabled else "")
+	_style_button(developer_button, false)
+	developer_button.custom_minimum_size = Vector2(176, 58)
+	developer_button.add_theme_font_size_override("font_size", _font_size(19, 21))
+	developer_button.pressed.connect(func(): show_developer_settings(settings_from_pause))
+	utility_row.add_child(developer_button)
+
 	var reset_hint := Label.new()
-	reset_hint.text = "重置会清除关卡、威胁和教学状态；声音、画质与难度会保留。"
+	reset_hint.text = "重置会清除关卡、威胁和教学；声音、画质、难度与开发参数会保留。"
 	reset_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reset_hint.add_theme_font_size_override("font_size", _font_size(16, 18))
 	reset_hint.add_theme_color_override("font_color", Color("#d5c7a7"))
@@ -2250,6 +2280,198 @@ func show_settings(from_pause: bool = false) -> void:
 	box.add_child(close_button)
 
 
+func show_developer_settings(from_pause: bool = false) -> void:
+	developer_settings_from_pause = from_pause
+	_clear_modal_content(Color(0.012, 0.025, 0.038, 0.91))
+
+	var panel := PanelContainer.new()
+	panel.name = "DeveloperModePanel"
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.075, 0.095, 0.99), 22, Color(0.95, 0.64, 0.25, 0.78), 2))
+	_add_modal_panel(panel, Vector2(1110, 650) if _uses_touch_layout() else Vector2(1040, 650))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 18)
+	box.add_child(header)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title_box)
+	var title := Label.new()
+	title.text = "开发者模式 · 实时平衡台"
+	title.add_theme_font_size_override("font_size", _font_size(31, 35))
+	title.add_theme_color_override("font_color", Color("#ffe1a3"))
+	title_box.add_child(title)
+	var safety := Label.new()
+	safety.text = "调试局不会推进战役、威胁、图鉴战绩或最近轮回；所有动物共用属性参数。"
+	safety.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	safety.add_theme_font_size_override("font_size", _font_size(15, 17))
+	safety.add_theme_color_override("font_color", Color("#cbdad5"))
+	title_box.add_child(safety)
+
+	var enabled := game != null and game.has_method("is_developer_mode_enabled") and bool(game.is_developer_mode_enabled())
+	var mode_toggle := CheckButton.new()
+	mode_toggle.name = "DeveloperModeToggle"
+	mode_toggle.text = "已开启" if enabled else "启用开发者模式"
+	mode_toggle.button_pressed = enabled
+	mode_toggle.custom_minimum_size = Vector2(250, 58)
+	mode_toggle.add_theme_font_size_override("font_size", _font_size(20, 23))
+	mode_toggle.add_theme_color_override("font_color", Color("#fff0c9"))
+	mode_toggle.toggled.connect(func(value: bool):
+		game.set_developer_mode_enabled(value)
+		show_developer_settings(developer_settings_from_pause)
+	)
+	header.add_child(mode_toggle)
+
+	var selector_row := HBoxContainer.new()
+	selector_row.add_theme_constant_override("separation", 12)
+	box.add_child(selector_row)
+	var category_select := OptionButton.new()
+	category_select.name = "DeveloperCategorySelect"
+	category_select.custom_minimum_size = Vector2(250, 54)
+	category_select.add_theme_font_size_override("font_size", _font_size(19, 22))
+	var categories: Array[Dictionary] = game.get_developer_categories() if game != null and game.has_method("get_developer_categories") else []
+	var selected_category_index := 0
+	for index in range(categories.size()):
+		category_select.add_item(str(categories[index]["name"]))
+		category_select.set_item_metadata(index, str(categories[index]["id"]))
+		if str(categories[index]["id"]) == developer_category_id:
+			selected_category_index = index
+	category_select.selected = selected_category_index
+	category_select.item_selected.connect(func(index: int):
+		developer_category_id = str(category_select.get_item_metadata(index))
+		show_developer_settings(developer_settings_from_pause)
+	)
+	selector_row.add_child(category_select)
+	var category_hint := Label.new()
+	category_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	category_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	category_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	category_hint.add_theme_font_size_override("font_size", _font_size(15, 17))
+	category_hint.add_theme_color_override("font_color", Color("#b7d4d2"))
+	for category in categories:
+		if str(category["id"]) == developer_category_id:
+			category_hint.text = str(category["description"])
+			break
+	selector_row.add_child(category_hint)
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "DeveloperParameterScroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
+	var parameter_list := VBoxContainer.new()
+	parameter_list.name = "DeveloperParameterList"
+	parameter_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parameter_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(parameter_list)
+	var parameters: Array[Dictionary] = game.get_developer_parameter_definitions(developer_category_id) if game != null and game.has_method("get_developer_parameter_definitions") else []
+	for parameter in parameters:
+		parameter_list.add_child(_developer_parameter_row(parameter, enabled))
+
+	var footer := HBoxContainer.new()
+	footer.alignment = BoxContainer.ALIGNMENT_CENTER
+	footer.add_theme_constant_override("separation", 10)
+	box.add_child(footer)
+	var reset_button := _developer_footer_button("恢复默认", false)
+	reset_button.disabled = not enabled
+	reset_button.pressed.connect(func():
+		game.reset_developer_tuning()
+		show_developer_settings(developer_settings_from_pause)
+	)
+	footer.add_child(reset_button)
+	var copy_button := _developer_footer_button("复制 JSON", false)
+	copy_button.pressed.connect(func():
+		DisplayServer.clipboard_set(str(game.export_developer_tuning_json()))
+		copy_button.text = "已复制"
+	)
+	footer.add_child(copy_button)
+	var import_button := _developer_footer_button("导入剪贴板", false)
+	import_button.pressed.connect(func():
+		var imported := bool(game.import_developer_tuning_json(DisplayServer.clipboard_get()))
+		if imported:
+			show_developer_settings(developer_settings_from_pause)
+		else:
+			import_button.text = "JSON 无效"
+	)
+	footer.add_child(import_button)
+	var close_button := _developer_footer_button("返回设置", true)
+	close_button.pressed.connect(func(): show_settings(developer_settings_from_pause))
+	footer.add_child(close_button)
+
+
+func _developer_parameter_row(parameter: Dictionary, enabled: bool) -> Control:
+	var row := PanelContainer.new()
+	row.custom_minimum_size = Vector2(0, 76 if _uses_touch_layout() else 70)
+	row.add_theme_stylebox_override("panel", _panel_style(Color(0.01, 0.045, 0.06, 0.88), 12, Color(0.35, 0.58, 0.62, 0.35), 1))
+	var content := HBoxContainer.new()
+	content.add_theme_constant_override("separation", 8)
+	row.add_child(content)
+	var label_box := VBoxContainer.new()
+	label_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(label_box)
+	var name_label := Label.new()
+	var apply_text := "即时" if str(parameter.get("apply", "live")) == "live" else "下局"
+	name_label.text = "%s　[%s生效]" % [str(parameter["name"]), apply_text]
+	name_label.add_theme_font_size_override("font_size", _font_size(18, 21))
+	name_label.add_theme_color_override("font_color", Color("#f1ead1"))
+	label_box.add_child(name_label)
+	var description := Label.new()
+	description.text = str(parameter["description"])
+	description.add_theme_font_size_override("font_size", _font_size(13, 15))
+	description.add_theme_color_override("font_color", Color("#aebfbd"))
+	label_box.add_child(description)
+
+	var parameter_id := str(parameter["id"])
+	var spin := SpinBox.new()
+	spin.name = "DeveloperValue_%s" % parameter_id
+	spin.min_value = float(parameter["min"])
+	spin.max_value = float(parameter["max"])
+	spin.step = float(parameter["step"])
+	spin.allow_greater = false
+	spin.allow_lesser = false
+	spin.update_on_text_changed = true
+	spin.suffix = str(parameter.get("unit", ""))
+	spin.custom_arrow_step = float(parameter["step"])
+	spin.custom_minimum_size = Vector2(182, 54)
+	spin.value = float(game.get_developer_tuning_value(parameter_id))
+	spin.editable = enabled
+	spin.get_line_edit().add_theme_font_size_override("font_size", _font_size(18, 21))
+	spin.value_changed.connect(func(value: float): game.set_developer_tuning_value(parameter_id, value))
+
+	var minus_button := _developer_step_button("−")
+	minus_button.disabled = not enabled
+	minus_button.pressed.connect(func(): spin.value = maxf(spin.value - float(parameter["step"]), spin.min_value))
+	content.add_child(minus_button)
+	content.add_child(spin)
+	var plus_button := _developer_step_button("+")
+	plus_button.disabled = not enabled
+	plus_button.pressed.connect(func(): spin.value = minf(spin.value + float(parameter["step"]), spin.max_value))
+	content.add_child(plus_button)
+	return row
+
+
+func _developer_step_button(text_value: String) -> Button:
+	var button := Button.new()
+	button.text = text_value
+	button.custom_minimum_size = Vector2(56, 54)
+	button.add_theme_font_size_override("font_size", _font_size(24, 28))
+	button.add_theme_stylebox_override("normal", _panel_style(Color(0.04, 0.13, 0.15, 0.96), 10, Color(0.65, 0.84, 0.80, 0.45), 1))
+	button.add_theme_stylebox_override("pressed", _panel_style(Color(0.12, 0.29, 0.28, 0.98), 10, Color("#f7cf76"), 2))
+	button.pressed.connect(_play_ui_sound)
+	return button
+
+
+func _developer_footer_button(text_value: String, primary: bool) -> Button:
+	var button := Button.new()
+	button.text = text_value
+	_style_button(button, primary)
+	button.custom_minimum_size = Vector2(190, 54)
+	button.add_theme_font_size_override("font_size", _font_size(18, 20))
+	return button
+
+
 func show_reset_confirmation() -> void:
 	_clear_modal_content(Color(0.008, 0.025, 0.022, 0.90))
 	var panel := PanelContainer.new()
@@ -2266,7 +2488,7 @@ func show_reset_confirmation() -> void:
 	title.add_theme_color_override("font_color", Color("#f3ddb8"))
 	box.add_child(title)
 	var body := Label.new()
-	body.text = "你将回到第一关，死亡次数和世界威胁归零。\n此操作无法撤销，但不会改变声音、画质和难度设置。"
+	body.text = "你将回到第一关，死亡次数和世界威胁归零。\n此操作无法撤销，但不会改变声音、画质、难度与开发参数。"
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_theme_font_size_override("font_size", _font_size(20, 23))
