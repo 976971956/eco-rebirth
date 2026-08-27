@@ -99,7 +99,7 @@ func _run_validation() -> void:
 	_validate_experience_drop_and_final_tracking_contract()
 	_validate_growth_hud_contract()
 	if failures.is_empty():
-		print("[release] V1.76 发布候选校验通过：跨端开发者调参与非正式调试局保护已接入")
+		print("[release] V1.77 发布候选校验通过：30 物种连续轮廓、PBR 分档与近距 Hero 池已接入")
 		quit(0)
 	else:
 		for failure in failures:
@@ -452,9 +452,9 @@ func _validate_death_lifecycle_contract() -> void:
 func _validate_export_contract() -> void:
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
 	_expect(presets.contains("gradle_build/target_sdk=\"36\""), "Android 目标 API 未更新到 36")
-	_expect(presets.contains("version/name=\"1.76\"") and presets.contains("application/short_version=\"1.76\""), "Android/iOS 发布版本不一致")
-	_expect(presets.contains("version/code=880") and presets.contains("application/version=\"880\""), "Android/iOS 内部构建号没有同步递增")
-	_expect(MainScript.RELEASE_VERSION == "1.76", "运行时性能报告版本没有与导出版本同步")
+	_expect(presets.contains("version/name=\"1.77\"") and presets.contains("application/short_version=\"1.77\""), "Android/iOS 发布版本不一致")
+	_expect(presets.contains("version/code=890") and presets.contains("application/version=\"890\""), "Android/iOS 内部构建号没有同步递增")
+	_expect(MainScript.RELEASE_VERSION == "1.77", "运行时性能报告版本没有与导出版本同步")
 	_expect(presets.contains("privacy/camera_usage_description=\"当前版本不使用相机功能。\""), "iOS 相机隐私用途说明为空")
 	_expect(presets.contains("privacy/microphone_usage_description=\"当前版本不使用麦克风功能。\""), "iOS 麦克风隐私用途说明为空")
 	_expect(presets.contains("privacy/photolibrary_usage_description=\"当前版本不使用照片图库功能。\""), "iOS 照片图库隐私用途说明为空")
@@ -808,6 +808,8 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.profile_for(true, "high") == "hero", "高画质玩家没有选择 Hero 物种模型")
 	_expect(VisualCatalog.profile_for(true, "low") == "mobile", "低画质玩家没有降级到 Mobile 物种模型")
 	_expect(VisualCatalog.profile_for(false, "high") == "mobile", "AI 错误加载 Hero 物种模型，移动端可能超预算")
+	_expect(VisualCatalog.profile_for(false, "high", true) == "hero", "近距离 AI 没有进入受预算保护的 Hero 模型")
+	_expect(VisualCatalog.profile_for(false, "low", true) == "mobile", "低画质近距离 AI 错误绕过 Mobile 模型预算")
 	_expect(VisualCatalog.V2_SPECIES == VisualCatalog.EXTERNAL_SPECIES and VisualCatalog.V2_SPECIES.size() == 30, "Blender V2 三十物种清单异常")
 	_expect(VisualCatalog.SKELETAL_SPECIES.size() == 26, "V2 地面骨骼物种清单异常")
 	_expect(VisualCatalog.FLIGHT_RIG_SPECIES == ["owl", "eagle"], "飞行骨架物种清单异常")
@@ -838,6 +840,11 @@ func _validate_external_species_model_contract() -> void:
 	_expect(VisualCatalog.EXTERNAL_SPECIES == Catalog.ORDER and VisualCatalog.THIRD_BATCH_SPECIES.size() == 11 and VisualCatalog.FOURTH_BATCH_SPECIES.size() == 10 and VisualCatalog.VISUAL_SCALE_CONTRACT.size() == VisualCatalog.EXTERNAL_SPECIES.size(), "三十种外部动物、第四批模型或视觉比例契约不完整")
 	_expect(is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["rabbit"]), 1.02) and is_equal_approx(float(VisualCatalog.VISUAL_SCALE_CONTRACT["bear"]), 1.22), "小型雪兔与大型棕熊比例契约异常")
 	var total_mobile_vertices := 0
+	var connected_limb_species := [
+		"otter", "lynx", "goat", "wolverine", "bison", "zebra", "elephant",
+		"tiger", "monkey", "moose", "turtle", "cheetah", "rhino", "gorilla",
+		"hippo", "hyena", "lion",
+	]
 	for species_id in VisualCatalog.EXTERNAL_SPECIES:
 		var profile_vertices := {}
 		for profile in ["hero", "mobile"]:
@@ -854,10 +861,12 @@ func _validate_external_species_model_contract() -> void:
 			_expect(int(stats["meshes"]) >= minimum_meshes, "%s 的 %s 模型层级异常或网格过少" % [species_id, profile])
 			_expect(int(stats["vertices"]) > 120, "%s 的 %s 模型没有有效几何细节" % [species_id, profile])
 			_expect(int(stats["colored_surfaces"]) > 0, "%s 的 %s 模型材质丢失或退化为纯白" % [species_id, profile])
-			_expect(int(stats["individual_surface_surfaces"]) > 0, "%s 的 %s 体表没有绑定物种独立 PBR 图集" % [species_id, profile])
-			_expect((stats["individual_surface_species"] as Dictionary).size() == 1 and (stats["individual_surface_species"] as Dictionary).has(species_id), "%s 的 %s 误用了其它动物的表面图集" % [species_id, profile])
-			var expected_surface_channels := 3 if profile == "hero" else 1
-			_expect((stats["individual_surface_channel_counts"] as Dictionary).size() == 1 and (stats["individual_surface_channel_counts"] as Dictionary).has(expected_surface_channels), "%s 的 %s 体表没有按画质档绑定 %d 个运行时贴图通道" % [species_id, profile, expected_surface_channels])
+			if profile == "hero":
+				_expect(int(stats["individual_surface_surfaces"]) > 0, "%s 的 Hero 体表没有绑定独立微表面 PBR 图集" % species_id)
+				_expect((stats["individual_surface_species"] as Dictionary).size() == 1 and (stats["individual_surface_species"] as Dictionary).has(species_id), "%s 的 Hero 体表误用了其它动物的微表面图集" % species_id)
+				_expect((stats["individual_surface_channel_counts"] as Dictionary).size() == 1 and (stats["individual_surface_channel_counts"] as Dictionary).has(2), "%s 的 Hero 体表没有只叠加完整 Normal/Roughness 双通道" % species_id)
+			else:
+				_expect(int(stats["individual_surface_surfaces"]) == 0, "%s 的 Mobile 体表仍重复加载运行时方形贴图" % species_id)
 			if profile == "mobile":
 				_expect(int(stats["vertices"]) <= 16000, "%s 的 Mobile 模型超出移动端顶点预算" % species_id)
 				total_mobile_vertices += int(stats["vertices"])
@@ -890,6 +899,8 @@ func _validate_external_species_model_contract() -> void:
 							if species_id != "turtle" and species_id not in VisualCatalog.AUTHORED_SOURCE_SPECIES:
 								_expect(int(stats["authored_ear_meshes"]) >= 2, "%s 的 %s 仍使用球体耳朵，未导入 V5 渐薄耳廓" % [species_label, profile])
 						_expect(int(stats["required_actions"]) == 8, "%s 的 %s 模型没有导入完整八态动作" % [species_label, profile])
+						if species_id in connected_limb_species:
+							_expect(int(stats["connected_limb_meshes"]) == 4, "%s 的 %s 模型没有四条一体连续蒙皮肢体" % [species_label, profile])
 					else:
 						_expect(int(stats["skinned_meshes"]) == 1, "%s 的 %s 模型没有唯一连续蒙皮躯干" % [species_label, profile])
 					_expect(int(stats["weighted_vertices"]) > 100, "%s 的 %s 连续蒙皮顶点不足" % [species_label, profile])
@@ -1364,6 +1375,7 @@ func _external_model_stats(root_node: Node) -> Dictionary:
 		"authored_ear_meshes": 0,
 		"realistic_foot_details": 0,
 		"flush_pattern_bodies": 0,
+		"connected_limb_meshes": 0,
 	}
 	_accumulate_external_model_stats(root_node, stats)
 	return stats
@@ -1410,6 +1422,8 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 				stats["required_actions"] = int(stats["required_actions"]) + 1
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
+		if node_name.begins_with("ConnectedAnatomicalLimb_"):
+			stats["connected_limb_meshes"] = int(stats["connected_limb_meshes"]) + 1
 		if mesh_instance.visibility_range_end > 0.0:
 			stats["lod_meshes"] = int(stats["lod_meshes"]) + 1
 			if str(mesh_instance.get_meta("lod_class", "")) == "detail":
@@ -1478,7 +1492,6 @@ func _accumulate_external_model_stats(node: Node, stats: Dictionary) -> void:
 					stats["colored_surfaces"] = int(stats["colored_surfaces"]) + 1
 					stats["pbr_slots"]["coat"] = true
 					if shader_material.get_shader_parameter("albedo_atlas") is Texture2D and shader_material.get_shader_parameter("normal_atlas") is Texture2D and shader_material.get_shader_parameter("roughness_atlas") is Texture2D:
-						stats["textured_coat_surfaces"] = int(stats["textured_coat_surfaces"]) + 1
 						stats["atlas_coat_surfaces"] = int(stats["atlas_coat_surfaces"]) + 1
 	for child in node.get_children():
 		_accumulate_external_model_stats(child, stats)

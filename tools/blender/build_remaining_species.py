@@ -597,7 +597,9 @@ def ground_layout(cfg: dict) -> dict:
         head_y = shoulder_y + cfg["neck"] * 0.70
         muzzle_z = head_z - cfg["muzzle"]
         return dict(body_y=body_y, shoulder_y=shoulder_y, front_z=front_z, rear_z=rear_z, neck_z=neck_z, head_z=head_z, head_y=head_y, muzzle_z=muzzle_z)
-    body_y = cfg["leg"] + cfg["height"] * 0.72
+    # Settle the torso over its sockets. The previous lift left compact
+    # animals visibly perched on four thin rods.
+    body_y = cfg["leg"] + cfg["height"] * (0.68 if cfg["family"] == "ungulate" else 0.64)
     mass_pitch = (float(cfg["v3"]["chest_mass"]) - float(cfg["v3"]["rump_mass"])) * cfg["height"] * 0.28
     shoulder_y = body_y + mass_pitch + (0.14 if "high_shoulders" in cfg["features"] or "shoulder_hump" in cfg["features"] else 0.03)
     front_z = -cfg["length"] * 0.36
@@ -1090,23 +1092,32 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         parts.append(obj)
         return obj
 
-    taper_ratio = 0.84 if cfg["family"] in ("heavy", "primate", "chelonian") else 0.52 if cfg["family"] == "ungulate" else 0.68
+    taper_ratio = 0.84 if cfg["family"] in ("heavy", "primate", "chelonian") else 0.60 if cfg["family"] == "ungulate" else 0.72
     for suffix in LIMBS:
         hip, joint, ankle, toe = ground_limb_points(cfg, layout, suffix)
         front = suffix.endswith("F")
         parent_bone = "Chest" if front else "Spine"
-        upper_radius = cfg["paw"] * 0.78 * float(profile["upper_thickness"]) * float(anatomy["muscle"])
-        lower_radius = cfg["paw"] * 0.68 * float(profile["lower_thickness"]) * float(anatomy["muscle"])
+        family_upper_floor = 0.18 if cfg["family"] in ("heavy", "primate") else 0.15
+        family_lower_floor = 0.13 if cfg["family"] in ("heavy", "primate") else 0.105
+        upper_radius = max(
+            cfg["paw"] * 0.88 * float(profile["upper_thickness"]) * float(anatomy["muscle"]),
+            cfg["width"] * family_upper_floor,
+        )
+        lower_radius = max(
+            cfg["paw"] * 0.78 * float(profile["lower_thickness"]) * float(anatomy["muscle"]),
+            cfg["width"] * family_lower_floor,
+        )
         muscle_scale = (
             upper_radius * (0.94 if front else 1.04),
             max((hip[1] - joint[1]) * 0.22, upper_radius * 1.12),
             upper_radius * (0.88 if front else 0.98),
         )
-        if cfg["family"] not in ("ungulate", "chelonian"):
+        if cfg["family"] != "chelonian":
+            socket_mass = 0.62 if cfg["family"] == "ungulate" else 0.88
             sphere(
                 f"V5Muscle_{suffix}",
                 tuple(Vector(hip).lerp(Vector(joint), 0.16)),
-                tuple(value * 0.78 for value in muscle_scale),
+                tuple(value * socket_mass for value in muscle_scale),
                 coat,
                 parent_bone,
             )
@@ -1118,8 +1129,8 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
             f"V4LowerLimb_{suffix}", tuple(Vector(joint).lerp(Vector(ankle), -0.06)), ankle,
             max(lower_radius * 1.14, cfg["paw"] * 0.10), max(lower_radius * 0.66, cfg["paw"] * 0.08), coat, f"Lower_{suffix}",
         )
-        if hero:
-            sphere(f"V5Joint_{suffix}", joint, (lower_radius * 0.70, lower_radius * 0.74, lower_radius * 0.72), coat, f"Lower_{suffix}")
+        joint_scale = 0.94 if hero else 0.82
+        sphere(f"V5Joint_{suffix}", joint, (lower_radius * joint_scale, lower_radius * (joint_scale + 0.04), lower_radius * joint_scale), coat, f"Lower_{suffix}")
         limb(
             f"V4Metapodial_{suffix}", ankle, toe,
             max(lower_radius * 0.70, cfg["paw"] * 0.08), max(lower_radius * 0.50, cfg["paw"] * 0.07), coat, f"Paw_{suffix}",
@@ -1128,10 +1139,14 @@ def build_ground_parts(species: str, hero: bool, rig: bpy.types.Object, anchors:
         # Mobile. Keep the tiny ankle cap only in Hero to protect the shared
         # 30-species mobile vertex budget without removing articulation.
         if hero:
-            sphere(f"V4Hock_{suffix}", ankle, (lower_radius * 0.68, lower_radius * 0.72, lower_radius * 0.70), coat, f"Paw_{suffix}")
+            sphere(f"V4Hock_{suffix}", ankle, (lower_radius * 0.90, lower_radius * 0.94, lower_radius * 0.92), coat, f"Paw_{suffix}")
         foot_material = dark if cfg["features"] & {"hoof", "hands", "webbed_paws", "claws"} or cfg["family"] in ("canid", "felid") else coat
         foot_length = cfg["paw"] * (1.54 if cfg["family"] not in ("heavy", "primate") else 1.30)
-        foot_width = max(lower_radius * 0.78 * float(anatomy["foot_width"]), 0.055)
+        foot_width = max(
+            lower_radius * 1.08 * float(anatomy["foot_width"]),
+            cfg["paw"] * (0.46 if cfg["family"] == "ungulate" else 0.58),
+            0.060,
+        )
         sphere(
             f"V5FootDetail_{suffix}",
             (toe[0], 0.075, toe[2] - foot_length * 0.12),
@@ -1672,6 +1687,20 @@ def build_bird(species: str, hero: bool) -> tuple[bpy.types.Object, list[bpy.typ
     add_armature_weights(organic, rig, weights)
     parts = [organic]
     for suffix, side in (("L", -1.0), ("R", 1.0)):
+        # Permanent body coverts provide the compact perched silhouette. The
+        # articulated flight feathers collapse into this panel only in idle.
+        folded_cover = tapered_flat_blade(
+            f"FoldedWingCoverSilhouette_{suffix}",
+            (side * 0.46, 1.30, -0.18),
+            (side * 0.50, 1.08, 0.82 if owl else 1.02),
+            0.34 if owl else 0.28,
+            0.16 if owl else 0.12,
+            0.075 if owl else 0.060,
+            coat,
+            hero,
+        )
+        rigid_skin(folded_cover, rig, "Body")
+        parts.append(folded_cover)
         wing_base = tapered_flat_blade(
             f"WingBodyDetail_{suffix}",
             (side * 0.30, 1.16, -0.08),
@@ -1832,8 +1861,31 @@ def create_bird_actions(rig: bpy.types.Object, species: str) -> None:
         for pose_bone in rig.pose.bones:
             pose_bone.rotation_mode = "XYZ"
             pose_bone.rotation_euler = (0.0, 0.0, 0.0)
+            pose_bone.scale = (1.0, 1.0, 1.0)
             pose_bone.keyframe_insert(data_path="rotation_euler", frame=1, group=pose_bone.name)
-        if action_name in ("locomotion", "sprint", "flap"):
+            pose_bone.keyframe_insert(data_path="scale", frame=1, group=pose_bone.name)
+        if action_name == "idle":
+            # Perched birds keep the long primaries folded along the flanks.
+            # The old zero-pose was a full horizontal wingspan, so an owl at
+            # rest looked like a white aircraft instead of a compact raptor.
+            for frame, breath in ((1, -1.0), (16, 1.0), (32, -1.0)):
+                for suffix, side in (("L", -1.0), ("R", 1.0)):
+                    rig.pose.bones[f"Wing_{suffix}"].rotation_euler = (-0.04 + 0.015 * breath, 0.0, 0.0)
+                    rig.pose.bones[f"WingTip_{suffix}"].rotation_euler = (0.0, 0.0, 0.0)
+                    rig.pose.bones[f"WingPrimary_{suffix}"].rotation_euler = (0.0, 0.0, 0.0)
+                    rig.pose.bones[f"Wing_{suffix}"].scale = (0.055, 0.055, 0.055)
+                    rig.pose.bones[f"WingTip_{suffix}"].scale = (0.055, 0.055, 0.055)
+                    rig.pose.bones[f"WingPrimary_{suffix}"].scale = (0.055, 0.055, 0.055)
+                    rig.pose.bones[f"Talon_{suffix}"].rotation_euler = (0.12, 0.0, 0.0)
+                    for name in (f"Wing_{suffix}", f"WingTip_{suffix}", f"WingPrimary_{suffix}", f"Talon_{suffix}"):
+                        rig.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+                    for name in (f"Wing_{suffix}", f"WingTip_{suffix}", f"WingPrimary_{suffix}"):
+                        rig.pose.bones[name].keyframe_insert(data_path="scale", frame=frame, group=name)
+                rig.pose.bones["Body"].rotation_euler[0] = 0.018 * breath
+                rig.pose.bones["Neck"].rotation_euler[0] = -0.012 * breath
+                rig.pose.bones["Body"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Body")
+                rig.pose.bones["Neck"].keyframe_insert(data_path="rotation_euler", frame=frame, group="Neck")
+        elif action_name in ("locomotion", "sprint", "flap"):
             owl = species == "owl"
             amount = (0.78 if action_name == "locomotion" else 1.02) if owl else (0.62 if action_name == "locomotion" else 0.88)
             frames = (1, 5, 9, 13, 17, 21, 25, 29, 33)

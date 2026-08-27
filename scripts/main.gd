@@ -11,7 +11,7 @@ const DeveloperTuningScript = preload("res://scripts/developer_tuning.gd")
 
 const CONFIG_PATH := "user://eco_rebirth.cfg"
 const SAVE_VERSION := 7
-const RELEASE_VERSION := "1.76"
+const RELEASE_VERSION := "1.77"
 const RUN_HISTORY_LIMIT := 10
 const QUALITY_PRESETS: Array[String] = ["low", "medium", "high"]
 const DIFFICULTY_ORDER: Array[String] = ["easy", "adventure", "hard"]
@@ -169,6 +169,7 @@ var species_records: Dictionary = {}
 var recent_runs: Array[Dictionary] = []
 var new_discoveries_current_run: Array[String] = []
 var leaderboard_refresh_remaining: float = 0.0
+var nearby_visual_refresh_remaining: float = 0.0
 var orientation_blocked: bool = false
 var world_seed_override: int = -1
 var pending_player_adaptations: Array[int] = []
@@ -182,6 +183,7 @@ func _ready() -> void:
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
 	_ensure_input_map()
 	_load_progress()
+	_apply_render_quality()
 	audio = AudioScript.new()
 	audio.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(audio)
@@ -281,6 +283,10 @@ func _process(delta: float) -> void:
 			var survival_pressure := 1.0 - float(living_count - 1) / maxf(float(roster_size - 1), 1.0)
 			var health_pressure := 1.0 - clampf(player.health / maxf(player.max_health, 1.0), 0.0, 1.0)
 			audio.set_game_intensity(clampf(survival_pressure * 0.72 + health_pressure * 0.28, 0.0, 1.0))
+		nearby_visual_refresh_remaining -= delta
+		if nearby_visual_refresh_remaining <= 0.0:
+			nearby_visual_refresh_remaining = 0.75
+			_refresh_nearby_visual_detail()
 	if not orientation_blocked and Input.is_action_just_pressed("pause"):
 		if state == "battle_report":
 			ui.hide_battle_report()
@@ -391,6 +397,7 @@ func _start_new_world(free_mode: bool = false) -> void:
 	state = "loading"
 	level_elapsed = 0.0
 	leaderboard_refresh_remaining = 0.0
+	nearby_visual_refresh_remaining = 0.0
 	collapse_triggered = false
 	final_tracking_active = false
 	ecology_events_started = 0
@@ -2082,8 +2089,13 @@ func get_quality_preset() -> String:
 
 func set_quality_preset(value: String) -> void:
 	quality_preset = _sanitize_quality(value)
+	_apply_render_quality()
 	if is_instance_valid(world) and world.has_method("apply_quality_preset"):
 		world.apply_quality_preset(quality_preset)
+	for actor in actors:
+		if is_instance_valid(actor) and not actor.dead and actor.has_method("set_nearby_visual_detail"):
+			actor.set_nearby_visual_detail(false, quality_preset)
+	_refresh_nearby_visual_detail()
 	_save_progress()
 	if ui != null:
 		ui.show_hint("画质已切换为%s" % quality_display_name(quality_preset))
@@ -2091,6 +2103,51 @@ func set_quality_preset(value: String) -> void:
 
 func quality_display_name(value: String) -> String:
 	return {"low": "性能", "medium": "平衡", "high": "高画质"}.get(_sanitize_quality(value), "平衡")
+
+
+func _apply_render_quality() -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	match quality_preset:
+		"low":
+			viewport.msaa_3d = Viewport.MSAA_DISABLED
+		"high":
+			viewport.msaa_3d = Viewport.MSAA_4X
+		_:
+			viewport.msaa_3d = Viewport.MSAA_2X
+
+
+func _refresh_nearby_visual_detail() -> void:
+	if not is_instance_valid(player) or batch_mode or benchmark_mode:
+		return
+	var budget := 0 if quality_preset == "low" else (4 if quality_preset == "high" else 2)
+	var enter_distance := 0.0 if budget == 0 else (17.0 if quality_preset == "high" else 12.0)
+	var exit_distance := enter_distance + 5.0
+	var candidates: Array[EcoActor] = []
+	var retained: Array[EcoActor] = []
+	for actor in get_living_actors():
+		if actor == player or not actor.uses_external_model:
+			continue
+		var distance := actor.global_position.distance_to(player.global_position)
+		if actor.external_model_profile == "hero" and distance <= exit_distance:
+			retained.append(actor)
+		elif distance <= enter_distance:
+			candidates.append(actor)
+	retained.sort_custom(func(left: EcoActor, right: EcoActor): return left.global_position.distance_squared_to(player.global_position) < right.global_position.distance_squared_to(player.global_position))
+	candidates.sort_custom(func(left: EcoActor, right: EcoActor): return left.global_position.distance_squared_to(player.global_position) < right.global_position.distance_squared_to(player.global_position))
+	var selected := {}
+	for actor in retained:
+		if selected.size() >= budget:
+			break
+		selected[actor.get_instance_id()] = true
+	for actor in candidates:
+		if selected.size() >= budget:
+			break
+		selected[actor.get_instance_id()] = true
+	for actor in actors:
+		if is_instance_valid(actor) and actor != player and not actor.dead and actor.has_method("set_nearby_visual_detail"):
+			actor.set_nearby_visual_detail(selected.has(actor.get_instance_id()), quality_preset)
 
 
 func reset_tutorial_progress() -> void:

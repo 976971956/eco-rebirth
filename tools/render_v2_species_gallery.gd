@@ -81,7 +81,7 @@ func _render_group(species_group: Array, group_index: int, output_path: String, 
 			actor.external_animation_player.seek(0.38 if animation_name == "locomotion" else 0.16, true)
 		_add_label(scene, Catalog.display_name(species_id), actor.position + Vector3(0.0, 3.38, 0.0), 28)
 	var pose_title := "移动动作定格" if animation_name == "locomotion" else "静止轮廓"
-	_add_label(scene, "V1.71 · 30 套独立 PBR 体表 / Hero 512 色图 / 无共享换色 · %s · 第 %d/10 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 30)
+	_add_label(scene, "V1.77 · UV 原色 + 独立微表面 / 连续蒙皮轮廓 / Hero 近距细节 · %s · 第 %d/10 组" % [pose_title, group_index + 1], Vector3(0.0, 4.62, 2.0), 30)
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL

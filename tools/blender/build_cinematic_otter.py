@@ -30,6 +30,7 @@ def load_module(filename: str, name: str):
 
 PIPELINE = load_module("build_remaining_species.py", "eco_remaining_species")
 BEAR = load_module("build_cinematic_bear.py", "eco_cinematic_bear")
+AUTHORED = load_module("build_authored_ground_species.py", "eco_authored_ground_for_otter")
 
 
 def parse_args() -> argparse.Namespace:
@@ -352,6 +353,7 @@ def export_profile(source_dir: Path, output_root: Path, hero: bool) -> tuple[int
     paw = PIPELINE.pbr_material("otter_cinematic_paw_pbr", "#15110f", 0.93)
     eye = PIPELINE.pbr_material("otter_cinematic_eye_pbr", "#22140c", 0.10)
     replace_materials(parts, coat, accent, paw, eye)
+    AUTHORED.rebuild_connected_ground_limbs(parts, hero, rig, cfg, layout, coat)
     organic_body = next(obj for obj in parts if "OrganicBodyV2" in obj.name)
     BEAR.smart_uv(organic_body)
     remove_old_feet(parts)

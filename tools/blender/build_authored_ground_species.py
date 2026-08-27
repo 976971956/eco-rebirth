@@ -208,6 +208,100 @@ def connected_weighted_tube(
     return result
 
 
+def connected_three_segment_limb(
+    name: str,
+    hero: bool,
+    rig,
+    guides: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
+    radii: tuple[float, float, float, float],
+    material,
+    suffix: str,
+):
+    """Build one watertight upper/lower/metapodial silhouette with blended skin."""
+    ring_count = 13 if hero else 9
+    sides = 12 if hero else 8
+    guide_vectors = [Vector(point) for point in guides]
+    vertices = []
+    faces = []
+    weights = {f"Leg_{suffix}": [], f"Lower_{suffix}": [], f"Paw_{suffix}": []}
+    previous_axis_a = None
+    for ring in range(ring_count):
+        amount = ring / (ring_count - 1)
+        scaled = min(amount * 3.0, 2.9999)
+        segment = int(scaled)
+        local = scaled - segment
+        centre = guide_vectors[segment].lerp(guide_vectors[segment + 1], local)
+        tangent = (guide_vectors[segment + 1] - guide_vectors[segment]).normalized()
+        reference = Vector((0.0, 1.0, 0.0))
+        if abs(tangent.dot(reference)) > 0.90:
+            reference = Vector((0.0, 0.0, 1.0))
+        axis_a = tangent.cross(reference).normalized()
+        if previous_axis_a is not None and axis_a.dot(previous_axis_a) < 0.0:
+            axis_a = -axis_a
+        axis_b = tangent.cross(axis_a).normalized()
+        previous_axis_a = axis_a
+        radius = radii[segment] * (1.0 - local) + radii[segment + 1] * local
+        for side in range(sides):
+            angle = math.tau * side / sides
+            position = centre + axis_a * math.cos(angle) * radius + axis_b * math.sin(angle) * radius * 0.92
+            vertices.append(tuple(position))
+            raw = {
+                f"Leg_{suffix}": max(0.0, 1.0 - abs(amount - 0.16) / 0.40) ** 2,
+                f"Lower_{suffix}": max(0.0, 1.0 - abs(amount - 0.50) / 0.40) ** 2,
+                f"Paw_{suffix}": max(0.0, 1.0 - abs(amount - 0.84) / 0.40) ** 2,
+            }
+            total = sum(raw.values()) or 1.0
+            for bone_name in weights:
+                weights[bone_name].append(raw[bone_name] / total)
+    for ring in range(ring_count - 1):
+        for side in range(sides):
+            next_side = (side + 1) % sides
+            a = ring * sides + side
+            b = ring * sides + next_side
+            c = (ring + 1) * sides + next_side
+            d = (ring + 1) * sides + side
+            faces.append((a, b, c, d))
+    faces.append(tuple(reversed(range(sides))))
+    last = (ring_count - 1) * sides
+    faces.append(tuple(last + side for side in range(sides)))
+    limb = PIPELINE.authored_mesh(name, vertices, faces, [material], [0] * len(faces))
+    for polygon in limb.data.polygons:
+        polygon.use_smooth = True
+    PIPELINE.add_armature_weights(limb, rig, weights)
+    BEAR.smart_uv(limb)
+    limb["eco_limb_contract"] = "single_watertight_three_segment_blended_limb"
+    return limb
+
+
+def rebuild_connected_ground_limbs(parts, hero: bool, rig, cfg: dict, layout: dict, coat) -> None:
+    """Remove old rigid rods and replace them with continuous skinned limbs."""
+    if cfg["species"] == "turtle":
+        return
+    remove_named(parts, (
+        "V5Muscle", "V3UpperLimb", "V4LowerLimb", "V5Joint", "V4Metapodial", "V4Hock",
+    ))
+    profile = cfg["v3"]
+    anatomy = cfg["v5"]
+    for suffix in LIMBS:
+        hip, joint, ankle, toe = PIPELINE.ground_limb_points(cfg, layout, suffix)
+        family_upper_floor = 0.18 if cfg["family"] in ("heavy", "primate") else 0.15
+        family_lower_floor = 0.13 if cfg["family"] in ("heavy", "primate") else 0.105
+        upper = max(
+            cfg["paw"] * 0.92 * float(profile["upper_thickness"]) * float(anatomy["muscle"]),
+            cfg["width"] * family_upper_floor,
+        )
+        lower = max(
+            cfg["paw"] * 0.82 * float(profile["lower_thickness"]) * float(anatomy["muscle"]),
+            cfg["width"] * family_lower_floor,
+        )
+        limb = connected_three_segment_limb(
+            f"ConnectedAnatomicalLimb_{suffix}", hero, rig, (hip, joint, ankle, toe),
+            (upper * 1.12, max(upper * 0.76, lower * 1.08), lower * 0.82, lower * 0.54),
+            coat, suffix,
+        )
+        parts.append(limb)
+
+
 def customize_lynx(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
     remove_named(parts, ("CheekRuffDetail", "V5TailBaseSilhouette", "V5TailTipSilhouette"))
     for side in (-1.0, 1.0):
@@ -820,6 +914,49 @@ def customize_lion(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent
     parts.append(tuft)
 
 
+def customize_turtle(parts, hero: bool, rig, cfg: dict, layout: dict, coat, accent, detail) -> None:
+    """Replace mammal-like columns with low, continuous tortoise limbs."""
+    remove_named(parts, (
+        "V5Muscle", "V3UpperLimb", "V4LowerLimb", "V5Joint", "V4Metapodial",
+        "V4Hock", "V5FootDetail", "ClawDetail", "SplitHoofDetail",
+    ))
+    for suffix in LIMBS:
+        hip, joint, ankle, toe = PIPELINE.ground_limb_points(cfg, layout, suffix)
+        front = suffix.endswith("F")
+        foot_end = (toe[0], 0.065, toe[2] - cfg["paw"] * (0.46 if front else 0.34))
+        limb = connected_three_segment_limb(
+            f"ConnectedAnatomicalLimb_{suffix}", hero, rig,
+            (hip, joint, ankle, foot_end),
+            (
+                cfg["paw"] * (0.72 if front else 0.78),
+                cfg["paw"] * (0.64 if front else 0.68),
+                cfg["paw"] * (0.50 if front else 0.54),
+                cfg["paw"] * (0.34 if front else 0.38),
+            ),
+            coat, suffix,
+        )
+        limb["eco_limb_contract"] = "single_watertight_low_splayed_tortoise_limb"
+        parts.append(limb)
+        pad = PIPELINE.uv_sphere(
+            f"TortoiseScaledFootPadDetail_{suffix}", foot_end,
+            (cfg["paw"] * 0.32, cfg["paw"] * 0.16, cfg["paw"] * (0.44 if front else 0.38)),
+            accent, hero,
+        )
+        PIPELINE.rigid_skin(pad, rig, f"Paw_{suffix}")
+        parts.append(pad)
+        if hero:
+            for claw_index in range(3):
+                lateral = (claw_index - 1) * cfg["paw"] * 0.24
+                claw = PIPELINE.cone_between(
+                    f"TortoiseClawDetail_{suffix}_{claw_index}",
+                    (foot_end[0] + lateral, 0.072, foot_end[2] - cfg["paw"] * 0.08),
+                    (foot_end[0] + lateral, 0.046, foot_end[2] - cfg["paw"] * 0.28),
+                    cfg["paw"] * 0.055, detail, hero,
+                )
+                PIPELINE.rigid_skin(claw, rig, f"Paw_{suffix}")
+                parts.append(claw)
+
+
 def customize_actions(species: str, rig) -> None:
     if species not in ("lynx", "goat", "wolverine", "bison", "zebra", "elephant", "tiger", "monkey", "moose"):
         return
@@ -1021,6 +1158,7 @@ def export_species(
     detail = PIPELINE.pbr_material(f"{species}_cinematic_detail_pbr", cfg["dark"], 0.76)
     eye = PIPELINE.pbr_material(f"{species}_cinematic_eye_pbr", cfg["eye"], 0.10)
     replace_materials(parts, coat, accent, detail, eye)
+    rebuild_connected_ground_limbs(parts, hero, rig, cfg, layout, coat)
     organic_body = next(obj for obj in parts if "OrganicBodyV2" in obj.name)
     if not hero:
         optimize_mobile_body(organic_body)
@@ -1049,6 +1187,8 @@ def export_species(
         customize_hyena(parts, hero, rig, cfg, layout, coat, accent, detail)
     elif species == "lion":
         customize_lion(parts, hero, rig, cfg, layout, coat, accent, detail)
+    elif species == "turtle":
+        customize_turtle(parts, hero, rig, cfg, layout, coat, accent, detail)
     PIPELINE.validate_continuous_flesh(species, parts)
     rig.data.name = f"{species.title()}AuthoredCinematicRig"
     rig["rig_version"] = 6

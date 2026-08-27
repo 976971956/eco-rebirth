@@ -258,6 +258,7 @@ var ear_pivots: Array[Node3D] = []
 var tail_visuals: Array[Node3D] = []
 var uses_external_model: bool = false
 var external_model_profile: String = ""
+var external_model_root: Node3D
 var external_skeleton: Skeleton3D
 var external_animation_player: AnimationPlayer
 var external_skill_sockets: Dictionary = {}
@@ -955,14 +956,46 @@ func _build_external_species_visual() -> bool:
 		return false
 	var quality := str(game.get_quality_preset()) if game.has_method("get_quality_preset") else "medium"
 	external_model_profile = VisualCatalog.profile_for(is_player, quality)
-	var model := VisualCatalog.instantiate(species_id, external_model_profile)
+	var model := VisualCatalog.instantiate(species_id, external_model_profile, quality)
 	if not is_instance_valid(model):
 		external_model_profile = ""
 		return false
 	body_root.add_child(model)
+	external_model_root = model
 	_bind_external_motion_nodes(model)
 	_bind_external_skill_sockets(model)
 	return true
+
+
+func set_nearby_visual_detail(enabled: bool, quality: String) -> void:
+	if dead or not uses_external_model or not is_instance_valid(body_root):
+		return
+	var desired_profile := VisualCatalog.profile_for(is_player, quality, enabled)
+	if desired_profile == external_model_profile and is_instance_valid(external_model_root):
+		return
+	var replacement := VisualCatalog.instantiate(species_id, desired_profile, quality)
+	if not is_instance_valid(replacement):
+		return
+	var previous := external_model_root
+	leg_pivots.clear()
+	leg_phases.clear()
+	leg_stride_scales.clear()
+	wing_pivots.clear()
+	ear_pivots.clear()
+	tail_visuals.clear()
+	external_skill_sockets.clear()
+	external_skeleton = null
+	external_animation_player = null
+	external_baked_animation = ""
+	body_root.add_child(replacement)
+	external_model_root = replacement
+	external_model_profile = desired_profile
+	_bind_external_motion_nodes(replacement)
+	_bind_external_skill_sockets(replacement)
+	_collect_tail_visuals()
+	_update_visual_motion(0.0)
+	if is_instance_valid(previous):
+		previous.queue_free()
 
 
 func _bind_external_motion_nodes(root: Node) -> void:

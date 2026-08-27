@@ -91,8 +91,8 @@ static func supports(species_id: String) -> bool:
 	return species_id in EXTERNAL_SPECIES
 
 
-static func profile_for(player_controlled: bool, quality: String) -> String:
-	return "hero" if player_controlled and quality != "low" else "mobile"
+static func profile_for(player_controlled: bool, quality: String, nearby_detail: bool = false) -> String:
+	return "hero" if (player_controlled or nearby_detail) and quality != "low" else "mobile"
 
 
 static func model_path(species_id: String, profile: String) -> String:
@@ -106,7 +106,7 @@ static func model_path(species_id: String, profile: String) -> String:
 	return "%s/%s/%s_%s.glb" % [MODEL_ROOT, species_id, species_id, safe_profile]
 
 
-static func instantiate(species_id: String, profile: String) -> Node3D:
+static func instantiate(species_id: String, profile: String, quality: String = "medium") -> Node3D:
 	var path := model_path(species_id, profile)
 	if path == "" or not ResourceLoader.exists(path):
 		return null
@@ -140,7 +140,7 @@ static func instantiate(species_id: String, profile: String) -> Node3D:
 			FlightRig.upgrade(instance, species_id)
 		elif species_id == "crocodile":
 			CrocodileRig.upgrade(instance, species_id)
-		_apply_individual_surface_materials(instance, species_id, profile)
+		_apply_individual_surface_materials(instance, species_id, profile, quality)
 		_apply_automatic_detail_lod(instance, profile)
 	return instance
 
@@ -157,14 +157,14 @@ static func surface_texture_paths(species_id: String, profile: String = "hero") 
 	}
 
 
-static func _apply_individual_surface_materials(node: Node, species_id: String, profile: String) -> void:
+static func _apply_individual_surface_materials(node: Node, species_id: String, profile: String, quality: String) -> void:
 	var textures := _surface_textures(species_id, profile)
 	if textures.is_empty():
 		return
-	_apply_individual_surface_materials_recursive(node, species_id, profile, textures)
+	_apply_individual_surface_materials_recursive(node, species_id, profile, quality, textures)
 
 
-static func _apply_individual_surface_materials_recursive(node: Node, species_id: String, profile: String, textures: Dictionary) -> void:
+static func _apply_individual_surface_materials_recursive(node: Node, species_id: String, profile: String, quality: String, textures: Dictionary) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh != null:
@@ -177,23 +177,30 @@ static func _apply_individual_surface_materials_recursive(node: Node, species_id
 				if not _is_animal_surface_layer(layer_name):
 					continue
 				var primary := PRIMARY_SURFACE_TOKENS.any(func(token: String): return token in material_name)
+				# The exported model owns the UV layout and authored coat/pattern colour.
+				# The generated square images are surface-detail references rather than UV
+				# atlases; stretching them over faces and limbs produced the rocky/plastic
+				# look visible in the old gallery. Preserve source colour on all 30 species.
+				var preserve_source_albedo := true
 				var cache_key := "%s|%s|%s|%s|%s" % [
 					species_id,
 					profile,
 					source.resource_name,
-					source.albedo_color.to_html(true),
+					"source" if preserve_source_albedo else source.albedo_color.to_html(true),
 					"primary" if primary else "secondary",
 				]
 				var material := _surface_material_cache.get(cache_key) as StandardMaterial3D
 				if material == null:
 					material = source.duplicate(true) as StandardMaterial3D
 					material.resource_name = "%s_individual_surface__%s" % [species_id, source.resource_name]
-					material.albedo_texture = textures["albedo"]
+					# Keep UV-authored colour and layer the individual normal/roughness detail.
+					material.albedo_texture = source.albedo_texture if preserve_source_albedo else textures["albedo"]
 					material.normal_enabled = textures.has("normal")
 					material.normal_texture = textures.get("normal") as Texture2D
-					material.normal_scale = 0.58
+					material.normal_scale = surface_normal_strength(species_id)
 					material.roughness_texture = textures.get("roughness") as Texture2D
 					material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+					material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality == "high" or profile == "hero" else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 					if profile == "mobile":
 						# AI can reach 100 simultaneous individuals. The unique albedo is
 						# retained, while far-distance micro-normal/roughness use a scalar
@@ -202,7 +209,7 @@ static func _apply_individual_surface_materials_recursive(node: Node, species_id
 						material.normal_texture = null
 						material.roughness_texture = null
 						material.roughness = 0.82
-					if primary:
+					if primary and not preserve_source_albedo:
 						material.albedo_color = Color(1.0, 1.0, 1.0, source.albedo_color.a)
 					else:
 						var tint := source.albedo_color
@@ -211,13 +218,15 @@ static func _apply_individual_surface_materials_recursive(node: Node, species_id
 							tint = tint.lightened((0.42 - highest) * 0.72)
 						material.albedo_color = tint
 					material.set_meta("individual_surface_species", species_id)
-					material.set_meta("individual_surface_albedo", surface_texture_paths(species_id, profile)["albedo"])
+					material.set_meta("individual_surface_albedo", "source_uv" if preserve_source_albedo else surface_texture_paths(species_id, profile)["albedo"])
+					material.set_meta("individual_surface_normal", surface_texture_paths(species_id, profile)["normal"] if textures.has("normal") else "")
+					material.set_meta("individual_surface_roughness", surface_texture_paths(species_id, profile)["roughness"] if textures.has("roughness") else "")
 					material.set_meta("individual_surface_profile", profile)
 					material.set_meta("individual_surface_channels", textures.keys())
 					_surface_material_cache[cache_key] = material
 				mesh_instance.set_surface_override_material(surface_index, material)
 	for child in node.get_children():
-		_apply_individual_surface_materials_recursive(child, species_id, profile, textures)
+		_apply_individual_surface_materials_recursive(child, species_id, profile, quality, textures)
 
 
 static func _surface_textures(species_id: String, profile: String) -> Dictionary:
@@ -228,13 +237,15 @@ static func _surface_textures(species_id: String, profile: String) -> Dictionary
 	if paths.size() != 3:
 		return {}
 	var textures := {}
-	var active_channels := ["albedo"] if profile == "mobile" else ["albedo", "normal", "roughness"]
-	var detail_paths := surface_texture_paths(species_id, "mobile") if profile == "hero" else paths
+	# Mobile GLBs already embed their 128px authored coat where needed. Loading a
+	# second square colour swatch for every far AI cost memory and damaged UVs.
+	# Hero adds only the full-resolution species micro-surface channels.
+	var active_channels := [] if profile == "mobile" else ["normal", "roughness"]
 	for channel in active_channels:
-		# Keep the close-up colour atlas at 512 while sampling micro-normal and
-		# roughness from the same species' 128 derivative. At gameplay distance
-		# this is visually stable and avoids loading two extra 512 maps per Hero.
-		var path: String = paths[channel] if channel == "albedo" else detail_paths[channel]
+		# Only the player and a tiny, distance-budgeted set of nearby AI use Hero.
+		# Their full 512 normal/roughness maps are therefore affordable and avoid
+		# the blocky 128-pixel relief that was visible on modern phone screens.
+		var path: String = paths[channel]
 		if not ResourceLoader.exists(path):
 			return {}
 		var texture := load(path) as Texture2D
@@ -243,6 +254,20 @@ static func _surface_textures(species_id: String, profile: String) -> Dictionary
 		textures[channel] = texture
 	_surface_texture_cache[cache_key] = textures
 	return textures
+
+
+static func surface_normal_strength(species_id: String) -> float:
+	if species_id in ["owl", "eagle"]:
+		return 0.30
+	if species_id in ["snake", "crocodile", "turtle"]:
+		return 0.40
+	if species_id in ["elephant", "rhino", "hippo"]:
+		return 0.34
+	if species_id in ["bear", "bison", "boar", "porcupine", "wolverine"]:
+		return 0.33
+	if species_id == "otter":
+		return 0.22
+	return 0.27
 
 
 static func _is_animal_surface_layer(layer_name: String) -> bool:
