@@ -1658,6 +1658,32 @@ func _validate_adaptive_ui_contract() -> void:
 
 
 func _validate_multitouch_joystick_contract() -> void:
+	var raw_joystick := JoystickScript.new()
+	raw_joystick.position = Vector2(40.0, 90.0)
+	raw_joystick.size = Vector2(640.0, 420.0)
+	root.add_child(raw_joystick)
+	var raw_press := InputEventScreenTouch.new()
+	raw_press.index = 4
+	raw_press.position = Vector2(220.0, 390.0)
+	raw_press.pressed = true
+	raw_joystick._input(raw_press)
+	var raw_drag := InputEventScreenDrag.new()
+	raw_drag.index = 4
+	raw_drag.position = Vector2(140.0, 390.0)
+	raw_joystick._input(raw_drag)
+	_expect(raw_joystick.touch_index == 4 and raw_joystick.output.x < -0.75, "视口原始触摸没有正确转换为向左摇杆输入")
+	var raw_sprint := InputEventScreenTouch.new()
+	raw_sprint.index = 9
+	raw_sprint.position = Vector2(1100.0, 610.0)
+	raw_sprint.pressed = true
+	var raw_output: Vector2 = raw_joystick.output
+	raw_joystick._input(raw_sprint)
+	_expect(raw_joystick.touch_index == 4 and raw_joystick.output.is_equal_approx(raw_output), "视口中的冲刺触点干扰了摇杆首指")
+	raw_press.pressed = false
+	raw_joystick._input(raw_press)
+	_expect(not raw_joystick.active and raw_joystick.output == Vector2.ZERO, "原始首指松开后摇杆没有复位")
+	raw_joystick.free()
+
 	var joystick := JoystickScript.new()
 	joystick.size = Vector2(640.0, 420.0)
 	joystick._ready()
@@ -1670,11 +1696,12 @@ func _validate_multitouch_joystick_contract() -> void:
 
 	var steer_drag := InputEventScreenDrag.new()
 	steer_drag.index = 0
-	steer_drag.position = Vector2(238.0, 264.0)
+	steer_drag.position = Vector2(100.0, 300.0)
 	_expect(joystick._handle_pointer_event(steer_drag), "摇杆没有继续跟踪首指拖动")
 	var locked_center: Vector2 = joystick.center
 	var locked_knob: Vector2 = joystick.knob_position
 	var locked_output: Vector2 = joystick.output
+	_expect(locked_output.x < -0.75, "回归场景没有建立向左移动输入")
 
 	var sprint_touch := InputEventScreenTouch.new()
 	sprint_touch.index = 1
@@ -1690,9 +1717,15 @@ func _validate_multitouch_joystick_contract() -> void:
 	_expect(joystick.touch_index == 0 and joystick.center.is_equal_approx(locked_center), "按住冲刺后摇杆中心发生跳动")
 	_expect(joystick.knob_position.is_equal_approx(locked_knob) and joystick.output.is_equal_approx(locked_output), "按住冲刺后摇杆方向发生跳动")
 
-	steer_drag.position = Vector2(252.0, 248.0)
+	steer_drag.position = Vector2(92.0, 268.0)
 	_expect(joystick._handle_pointer_event(steer_drag) and joystick.touch_index == 0, "按住冲刺时首指无法继续控制摇杆")
 	_expect(joystick.center.is_equal_approx(locked_center), "首指继续移动时动态摇杆中心被重新定位")
+	_expect(joystick.output.x < -0.75, "按住冲刺后向左移动方向发生反转")
+
+	var joystick_source := FileAccess.get_file_as_string("res://scripts/virtual_joystick.gd")
+	_expect(joystick_source.contains("func _input(event: InputEvent)"), "动态摇杆没有在 GUI 分发前接管原始多点触控")
+	_expect(joystick_source.contains("_viewport_to_local(event.position)"), "动态摇杆没有把视口触点转换为本地坐标")
+	_expect(joystick_source.contains("if event is InputEventScreenTouch or event is InputEventScreenDrag"), "动态摇杆仍可能在 GUI 路由中重复处理触摸")
 
 	sprint_touch.pressed = false
 	_expect(not joystick._handle_pointer_event(sprint_touch) and joystick.active, "松开冲刺错误取消了仍按住的摇杆")

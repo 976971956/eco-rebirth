@@ -27,26 +27,37 @@ func _on_resized() -> void:
 	queue_redraw()
 
 
+func _input(event: InputEvent) -> void:
+	# Track real touch events before Control GUI routing. On mobile/web, pressing a
+	# regular Button with a second finger can change the emulated mouse pointer or
+	# GUI focus. Raw touch indices remain stable, so the sprint finger can never
+	# relocate or release the steering finger owned by this stick.
+	if not is_visible_in_tree():
+		return
+	if event is InputEventScreenTouch:
+		var local_position := _viewport_to_local(event.position)
+		if _handle_touch_event(event, local_position):
+			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		var local_position := _viewport_to_local(event.position)
+		if _handle_touch_event(event, local_position):
+			get_viewport().set_input_as_handled()
+
+
 func _gui_input(event: InputEvent) -> void:
+	# Screen touches are owned by _input() above. Handling them again here would
+	# mix raw multitouch with the GUI's emulated mouse stream.
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		return
 	if _handle_pointer_event(event):
 		accept_event()
 
 
 func _handle_pointer_event(event: InputEvent) -> bool:
 	if event is InputEventScreenTouch:
-		if event.pressed and touch_index == NO_POINTER:
-			touch_index = event.index
-			_activate_at(event.position)
-			_set_from_position(event.position)
-		elif not event.pressed and event.index == touch_index:
-			touch_index = NO_POINTER
-			_reset()
-		else:
-			return false
-		return true
-	elif event is InputEventScreenDrag and event.index == touch_index:
-		_set_from_position(event.position)
-		return true
+		return _handle_touch_event(event, event.position)
+	elif event is InputEventScreenDrag:
+		return _handle_touch_event(event, event.position)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			# Mobile browsers and platform compatibility layers can emit a mouse
@@ -67,6 +78,30 @@ func _handle_pointer_event(event: InputEvent) -> bool:
 		_set_from_position(event.position)
 		return true
 	return false
+
+
+func _handle_touch_event(event: InputEvent, local_position: Vector2) -> bool:
+	if event is InputEventScreenTouch:
+		if event.pressed and touch_index == NO_POINTER:
+			if not Rect2(Vector2.ZERO, size).has_point(local_position):
+				return false
+			touch_index = event.index
+			_activate_at(local_position)
+			_set_from_position(local_position)
+		elif not event.pressed and event.index == touch_index:
+			touch_index = NO_POINTER
+			_reset()
+		else:
+			return false
+		return true
+	elif event is InputEventScreenDrag and event.index == touch_index:
+		_set_from_position(local_position)
+		return true
+	return false
+
+
+func _viewport_to_local(viewport_position: Vector2) -> Vector2:
+	return get_global_transform_with_canvas().affine_inverse() * viewport_position
 
 
 func _activate_at(local_position: Vector2) -> void:
