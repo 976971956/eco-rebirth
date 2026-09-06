@@ -117,7 +117,13 @@ void fragment() {
 	vec3 terrain = mix(north, south, south_mix);
 	float macro = biome_noise(world_position.xz * 0.018 + vec2(3.1, 8.7));
 	float grain = biome_noise(world_position.xz * 0.38);
-	ALBEDO = terrain * mix(0.88, 1.08, macro) * mix(0.965, 1.035, grain);
+	// Broad light and dark pockets break up the tiled look while preserving the
+	// authored biome colours. A second, finer pass keeps close camera views from
+	// reading as a flat painted plane.
+	float canopy_shadow = biome_noise(world_position.xz * 0.085 + vec2(4.6, 12.4));
+	float tonal_variation = mix(0.84, 1.10, macro) * mix(0.94, 1.06, grain);
+	tonal_variation *= mix(0.90, 1.04, canopy_shadow);
+	ALBEDO = terrain * tonal_variation;
 
 	float bump = biome_noise(world_position.xz * 1.32);
 	float bump_x = biome_noise(world_position.xz * 1.32 + vec2(0.055, 0.0));
@@ -126,8 +132,9 @@ void fragment() {
 	NORMAL_MAP = detail_normal * 0.5 + 0.5;
 	NORMAL_MAP_DEPTH = 0.48;
 	float wetland_weight = south_mix * (1.0 - east_mix);
-	ROUGHNESS = mix(mix(0.84, 0.94, grain), 0.69, wetland_weight * 0.72);
-	SPECULAR = mix(0.16, 0.34, wetland_weight);
+	ROUGHNESS = mix(mix(0.84, 0.94, grain), 0.64, wetland_weight * 0.78);
+	SPECULAR = mix(0.16, 0.38, wetland_weight);
+	AO = mix(0.92, 0.72, (1.0 - canopy_shadow) * 0.34);
 }
 """
 	var mat := ShaderMaterial.new()
