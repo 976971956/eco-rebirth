@@ -209,6 +209,7 @@ static func _apply_individual_surface_materials_recursive(node: Node, species_id
 						material.normal_texture = null
 						material.roughness_texture = null
 						material.roughness = 0.82
+					_apply_realism_finish(material, species_id, profile)
 					if primary and not preserve_source_albedo:
 						material.albedo_color = Color(1.0, 1.0, 1.0, source.albedo_color.a)
 					else:
@@ -254,6 +255,21 @@ static func _surface_textures(species_id: String, profile: String) -> Dictionary
 		textures[channel] = texture
 	_surface_texture_cache[cache_key] = textures
 	return textures
+
+
+static func _apply_realism_finish(material: StandardMaterial3D, species_id: String, profile: String) -> void:
+	# A restrained clearcoat gives wet scales and dense coats a readable highlight
+	# without turning the low-detail Mobile meshes into glossy plastic.
+	var wet_species := species_id in ["otter", "crocodile", "snake", "hippo"]
+	var dense_coat := species_id in ["bear", "bison", "boar", "wolverine", "porcupine"]
+	material.metallic = 0.0
+	material.metallic_specular = 0.24 if profile == "hero" else 0.18
+	if material.clearcoat_enabled == false and (wet_species or dense_coat):
+		material.clearcoat_enabled = true
+		material.clearcoat = 0.16 if wet_species else 0.08
+		material.clearcoat_roughness = 0.24 if wet_species else 0.42
+	if wet_species:
+		material.roughness = minf(material.roughness, 0.62 if profile == "hero" else 0.72)
 
 
 static func surface_normal_strength(species_id: String) -> float:
