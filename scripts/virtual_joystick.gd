@@ -32,7 +32,7 @@ func _input(event: InputEvent) -> void:
 	# regular Button with a second finger can change the emulated mouse pointer or
 	# GUI focus. Raw touch indices remain stable, so the sprint finger can never
 	# relocate or release the steering finger owned by this stick.
-	if not is_visible_in_tree():
+	if not is_visible_in_tree() or _modal_is_open():
 		return
 	if event is InputEventScreenTouch:
 		var local_position := _viewport_to_local(event.position)
@@ -102,6 +102,20 @@ func _handle_touch_event(event: InputEvent, local_position: Vector2) -> bool:
 
 func _viewport_to_local(viewport_position: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * viewport_position
+
+
+func _modal_is_open() -> bool:
+	# _input() runs before GUI hit testing, so a visible sibling modal cannot
+	# otherwise prevent this joystick from consuming touches underneath it.
+	var node: Node = self
+	for _index in range(8):
+		if node == null:
+			break
+		var modal := node.get_node_or_null("ModalRoot") as CanvasItem
+		if modal != null and modal.visible:
+			return true
+		node = node.get_parent()
+	return false
 
 
 func _activate_at(local_position: Vector2) -> void:

@@ -85,6 +85,7 @@ func _run_validation() -> void:
 	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
 	_validate_multitouch_joystick_contract()
+	_validate_modal_joystick_contract()
 	_validate_opportunity_contract()
 	_validate_cover_ambush_contract()
 	_validate_terrain_counter_contract()
@@ -1655,6 +1656,22 @@ func _validate_adaptive_ui_contract() -> void:
 	intro_ui.intro_close_button.pressed.emit()
 	_expect(not intro_ui.intro_panel.visible and bool(intro_close_state[0]), "点击关闭按钮没有关闭简报或通知主流程")
 	intro_ui.free()
+
+
+func _validate_modal_joystick_contract() -> void:
+	var holder := Node.new()
+	holder.name = "GameUI"
+	root.add_child(holder)
+	var modal := Control.new()
+	modal.name = "ModalRoot"
+	modal.visible = true
+	holder.add_child(modal)
+	var joystick := JoystickScript.new()
+	holder.add_child(joystick)
+	_expect(joystick._modal_is_open(), "弹层显示时摇杆没有识别到输入阻断")
+	modal.hide()
+	_expect(not joystick._modal_is_open(), "弹层隐藏后摇杆仍被错误阻断")
+	holder.free()
 
 
 func _validate_multitouch_joystick_contract() -> void:
