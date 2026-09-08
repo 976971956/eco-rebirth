@@ -7,6 +7,7 @@ var center := Vector2.ZERO
 var knob_position := Vector2.ZERO
 var radius: float = 88.0
 var active: bool = false
+var real_touch_active: bool = false
 
 const NO_POINTER := -1
 const MOUSE_POINTER := -2
@@ -59,6 +60,11 @@ func _handle_pointer_event(event: InputEvent) -> bool:
 	elif event is InputEventScreenDrag:
 		return _handle_touch_event(event, event.position)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		# Mobile/Web compatibility layers synthesize mouse presses and motion for
+		# every touch button. While a real finger owns the stick, those events can
+		# arrive with the sprint button's coordinates and cause a one-frame snap.
+		if real_touch_active:
+			return false
 		if event.pressed:
 			# Mobile browsers and platform compatibility layers can emit a mouse
 			# press while a real touch is already steering. Never let that fallback
@@ -75,6 +81,8 @@ func _handle_pointer_event(event: InputEvent) -> bool:
 			return false
 		return true
 	elif event is InputEventMouseMotion and touch_index == MOUSE_POINTER:
+		if real_touch_active:
+			return false
 		_set_from_position(event.position)
 		return true
 	return false
@@ -86,10 +94,12 @@ func _handle_touch_event(event: InputEvent, local_position: Vector2) -> bool:
 			if not Rect2(Vector2.ZERO, size).has_point(local_position):
 				return false
 			touch_index = event.index
+			real_touch_active = true
 			_activate_at(local_position)
 			_set_from_position(local_position)
 		elif not event.pressed and event.index == touch_index:
 			touch_index = NO_POINTER
+			real_touch_active = false
 			_reset()
 		else:
 			return false
@@ -149,6 +159,8 @@ func _reset() -> void:
 	output = Vector2.ZERO
 	knob_position = center
 	active = false
+	if touch_index == MOUSE_POINTER:
+		real_touch_active = false
 	queue_redraw()
 
 
