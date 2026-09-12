@@ -273,6 +273,8 @@ func _process(delta: float) -> void:
 		var ecology_activity := ecology_hotspot_activity_status()
 		var habit_guidance := player.habit_resource_guidance_text()
 		var trace_status := habit_guidance if habit_guidance != "" else ecology_trace_status()
+		if habit_guidance == "" and (trace_status == "" or trace_status == "生态踪迹 · 暂无线索"):
+			trace_status = "当前建议 · " + _player_short_term_goal(player, living_count)
 		ui.update_hud(player, living_count, roster_size, region_name, ecology_status, ecology_activity, trace_status)
 		_update_player_ecology_hotspot()
 		leaderboard_refresh_remaining -= delta
@@ -283,10 +285,10 @@ func _process(delta: float) -> void:
 			var survival_pressure := 1.0 - float(living_count - 1) / maxf(float(roster_size - 1), 1.0)
 			var health_pressure := 1.0 - clampf(player.health / maxf(player.max_health, 1.0), 0.0, 1.0)
 			audio.set_game_intensity(clampf(survival_pressure * 0.72 + health_pressure * 0.28, 0.0, 1.0))
-		nearby_visual_refresh_remaining -= delta
-		if nearby_visual_refresh_remaining <= 0.0:
-			nearby_visual_refresh_remaining = 0.75
-			_refresh_nearby_visual_detail()
+	nearby_visual_refresh_remaining -= delta
+	if nearby_visual_refresh_remaining <= 0.0:
+		nearby_visual_refresh_remaining = 0.75
+		_refresh_nearby_visual_detail()
 	if not orientation_blocked and Input.is_action_just_pressed("pause"):
 		if state == "battle_report":
 			ui.hide_battle_report()
@@ -295,6 +297,25 @@ func _process(delta: float) -> void:
 	corpses = corpses.filter(func(item): return is_instance_valid(item) and not item.is_queued_for_deletion())
 	if benchmark_mode:
 		_tick_benchmark(delta)
+
+
+func _player_short_term_goal(actor: EcoActor, living_count: int) -> String:
+	if not is_instance_valid(actor):
+		return "观察环境并保持移动"
+	var health_ratio := clampf(actor.health / maxf(actor.max_health, 1.0), 0.0, 1.0)
+	var satiety := clampf(1.0 - actor.hunger / 100.0, 0.0, 1.0)
+	var stamina_ratio := clampf(actor.stamina / maxf(actor.max_stamina, 1.0), 0.0, 1.0)
+	if satiety < 0.30:
+		return "先找附近食物，进食后留意咀嚼破绽"
+	if health_ratio < 0.34:
+		return "脱离战斗并寻找安全资源，暂时不要追击"
+	if stamina_ratio < 0.22:
+		return "停止冲刺和攻击，恢复耐力后再换区"
+	if level_elapsed < 35.0:
+		return "先观察附近强敌，完成一次安全觅食或迁徙"
+	if living_count <= 3:
+		return "终局已近，保持耐力并观察最后两名幸存者"
+	return "寻找高价值资源，避免在开阔地与大体型敌人硬拼"
 
 
 func _notification(what: int) -> void:

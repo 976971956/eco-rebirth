@@ -84,6 +84,7 @@ func _run_validation() -> void:
 	_validate_world_navigation_contract()
 	_validate_external_species_model_contract()
 	_validate_adaptive_ui_contract()
+	_validate_short_term_goal_contract()
 	_validate_multitouch_joystick_contract()
 	_validate_modal_joystick_contract()
 	_validate_opportunity_contract()
@@ -1542,6 +1543,12 @@ func _union_mesh_vertices(parents: PackedInt32Array, first: int, second: int) ->
 	var second_root := _mesh_vertex_root(parents, second)
 	if first_root != second_root:
 		parents[second_root] = first_root
+
+
+func _validate_short_term_goal_contract() -> void:
+	var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_expect(main_source.contains("func _player_short_term_goal") and main_source.contains("当前建议 · "), "HUD 缺少可持续显示的短期生存建议")
+	_expect(main_source.contains("先找附近食物") and main_source.contains("停止冲刺和攻击"), "短期建议没有覆盖饥饿与耐力风险")
 
 
 func _validate_adaptive_ui_contract() -> void:
