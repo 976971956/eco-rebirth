@@ -277,6 +277,15 @@ static func foliage_card(name_text: String, texture: Texture2D, size_value: Vect
 	node.mesh = mesh
 	node.position = position_value
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# Two crossed canopy planes keep the authored silhouette readable from the
+	# whole play space. The second plane shares the same mesh/material, so this
+	# adds volume without importing heavier tree geometry.
+	var cross_card := MeshInstance3D.new()
+	cross_card.name = "%s_Cross" % name_text
+	cross_card.mesh = mesh
+	cross_card.rotation_degrees.y = 90.0
+	cross_card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.add_child(cross_card)
 	node.set_meta("visual_only", true)
 	return node
 
