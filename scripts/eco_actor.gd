@@ -6049,7 +6049,10 @@ func _update_visual_motion(delta: float) -> void:
 	for tail_visual in tail_visuals:
 		if not is_instance_valid(tail_visual):
 			continue
-		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * 0.065 * gait_blend
+		# Even a resting animal keeps a small, species-independent tail balance
+		# motion. Multiplying only by gait_blend made idle models look frozen.
+		var tail_motion := lerpf(0.025, 0.065, gait_blend)
+		var tail_swing := sin(move_time * 0.72 + float(actor_id) * 0.41) * tail_motion
 		tail_visual.rotation.y = lerp_angle(tail_visual.rotation.y, tail_swing, 1.0 - exp(-delta * 8.0))
 	if is_instance_valid(external_skeleton):
 		var baked_animation_updated := false
@@ -6104,14 +6107,18 @@ func _update_visual_motion(delta: float) -> void:
 		if baked_animation_updated and is_instance_valid(external_animation_player):
 			external_animation_player.advance(delta)
 	if body_root != null:
+		# Low-frequency breathing remains visible at rest and blends into the
+		# faster locomotion bob, which removes the mannequin-like freeze between
+		# decisions without moving gameplay collision or navigation.
+		var breathing := sin(move_time * 0.62 + float(actor_id) * 0.31) * 0.009
 		var bob_height := minf(flat_speed * 0.009, 0.052) * gait_blend
 		var target_immersion := water_visual_immersion(current_water_depth, effective_wade_depth(), runtime_size_class(), Catalog.water_grade(species_id), is_airborne())
 		visual_immersion_offset = lerpf(visual_immersion_offset, target_immersion, 1.0 - exp(-delta * 5.6))
 		var swimming_bob := sin(move_time * 0.72 + float(actor_id) * 0.31) * 0.026 if is_swimming() else 0.0
-		body_root.position.y = (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height + swimming_bob - visual_immersion_offset
+		body_root.position.y = breathing + (sin(move_time * 2.0) * 0.5 + 0.5) * bob_height + swimming_bob - visual_immersion_offset
 		var body_pitch_scale := 0.42 if effective_size >= 3.55 else 1.0
 		body_root.rotation.x = sin(move_time * 2.0 + 0.65) * minf(flat_speed * 0.0038, 0.021) * gait_blend * body_pitch_scale
-		body_root.rotation.z = sin(move_time) * minf(flat_speed * 0.007, 0.032) * gait_blend
+		body_root.rotation.z = breathing * 0.72 + sin(move_time) * minf(flat_speed * 0.007, 0.032) * gait_blend
 		if species_id == "snake":
 			body_root.rotation.y = lerp_angle(body_root.rotation.y, sin(move_time * 0.92) * 0.13 * gait_blend, 1.0 - exp(-delta * 8.0))
 		else:
