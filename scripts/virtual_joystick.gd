@@ -8,6 +8,7 @@ var knob_position := Vector2.ZERO
 var radius: float = 88.0
 var active: bool = false
 var real_touch_active: bool = false
+var real_touch_block_until_msec: int = 0
 
 const NO_POINTER := -1
 const MOUSE_POINTER := -2
@@ -63,9 +64,11 @@ func _handle_pointer_event(event: InputEvent) -> bool:
 		# Mobile/Web compatibility layers synthesize mouse presses and motion for
 		# every touch button. While a real finger owns the stick, those events can
 		# arrive with the sprint button's coordinates and cause a one-frame snap.
-		if real_touch_active:
+		if real_touch_active or _real_touch_blocked():
 			return false
 		if event.pressed:
+			if not Rect2(Vector2.ZERO, size).has_point(event.position):
+				return false
 			# Mobile browsers and platform compatibility layers can emit a mouse
 			# press while a real touch is already steering. Never let that fallback
 			# event steal the active finger and relocate the dynamic stick.
@@ -81,7 +84,7 @@ func _handle_pointer_event(event: InputEvent) -> bool:
 			return false
 		return true
 	elif event is InputEventMouseMotion and touch_index == MOUSE_POINTER:
-		if real_touch_active:
+		if real_touch_active or _real_touch_blocked():
 			return false
 		_set_from_position(event.position)
 		return true
@@ -95,11 +98,13 @@ func _handle_touch_event(event: InputEvent, local_position: Vector2) -> bool:
 				return false
 			touch_index = event.index
 			real_touch_active = true
+			real_touch_block_until_msec = Time.get_ticks_msec() + 180
 			_activate_at(local_position)
 			_set_from_position(local_position)
 		elif not event.pressed and event.index == touch_index:
 			touch_index = NO_POINTER
 			real_touch_active = false
+			real_touch_block_until_msec = Time.get_ticks_msec() + 80
 			_reset()
 		else:
 			return false
@@ -112,6 +117,10 @@ func _handle_touch_event(event: InputEvent, local_position: Vector2) -> bool:
 
 func _viewport_to_local(viewport_position: Vector2) -> Vector2:
 	return get_global_transform_with_canvas().affine_inverse() * viewport_position
+
+
+func _real_touch_blocked() -> bool:
+	return Time.get_ticks_msec() < real_touch_block_until_msec
 
 
 func _modal_is_open() -> bool:

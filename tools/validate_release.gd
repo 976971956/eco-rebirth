@@ -1744,6 +1744,7 @@ func _validate_multitouch_joystick_contract() -> void:
 	emulated_mouse_motion.position = Vector2(620.0, 350.0)
 	_expect(not joystick._handle_pointer_event(emulated_mouse_motion), "按住真实摇杆触点时模拟鼠标移动仍能改写方向")
 	_expect(joystick.output.is_equal_approx(locked_output), "模拟鼠标移动导致摇杆方向瞬间反向")
+	_expect(joystick._real_touch_blocked(), "真实摇杆触点开始后没有进入鼠标竞态屏蔽窗口")
 
 	steer_drag.position = Vector2(92.0, 268.0)
 	_expect(joystick._handle_pointer_event(steer_drag) and joystick.touch_index == 0, "按住冲刺时首指无法继续控制摇杆")
